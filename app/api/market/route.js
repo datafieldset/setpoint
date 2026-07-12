@@ -6,7 +6,7 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const GRAN = { "5m": 300, "15m": 900, "1h": 3600 };
+const GRAN = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600 };
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
 async function fetchCandles(sym, tf) {

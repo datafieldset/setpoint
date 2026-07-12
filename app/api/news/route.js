@@ -181,7 +181,11 @@ export async function GET(req) {
   const [rss, reddit, bsky, tg] = await Promise.all([
     getRss(), getReddit(), getBluesky(symbols), getTelegram(TELEGRAM_CHANNELS),
   ]);
-  const all = [...rss, ...reddit, ...bsky, ...tg].filter((x) => x.title && x.title.length > 4);
+  // Whale Alert has its own Whale flow panel, so keep it out of the news feed
+  // but keep its posts available for parsing whale transfers.
+  const whaleItems = tg.filter((x) => x.source === "@whale_alert_io");
+  const all = [...rss, ...reddit, ...bsky, ...tg]
+    .filter((x) => x.title && x.title.length > 4 && x.source !== "@whale_alert_io");
 
   const coins = {};
   const whales = {};
@@ -199,8 +203,7 @@ export async function GET(req) {
     }).slice(0, 6);
 
     // whale flow: parse Whale Alert posts for this asset
-    whales[sym] = all
-      .filter((x) => x.source === "@whale_alert_io")
+    whales[sym] = whaleItems
       .map((x) => parseWhale(x.title, x.when, x.link))
       .filter((w) => w && w.asset === sym)
       .sort((a, b) => b.when - a.when)

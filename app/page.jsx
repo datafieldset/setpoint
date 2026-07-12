@@ -25,6 +25,7 @@ const MAX_COINS = 6;
 const TF = {
   "5m": { label: "5m", pctMin: 0.7, gran: 300, cooldownMs: 5 * 60 * 1000 },
   "15m": { label: "15m", pctMin: 1.2, gran: 900, cooldownMs: 15 * 60 * 1000 },
+  "30m": { label: "30m", pctMin: 1.7, gran: 1800, cooldownMs: 30 * 60 * 1000 },
   "1h": { label: "1h", pctMin: 2.5, gran: 3600, cooldownMs: 60 * 60 * 1000 },
 };
 
@@ -541,6 +542,10 @@ function Dashboard({ account, onSignOut }) {
 
       {/* ticker row */}
       <div className="ticker">
+        <div className={`tk-all ${!selectedCoin ? "sel" : ""}`} onClick={() => setSelectedCoin(null)} role="button" tabIndex={0} title="Show all coins">
+          <span className="tk-all-icon">▦</span>
+          <span className="tk-all-label">All coins</span>
+        </div>
         {watchlist.map((sym) => {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
           const up = snap && snap.pct >= 0;
@@ -1004,6 +1009,11 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .tk{cursor:pointer;transition:border-color .15s,background .15s}
 .tk:hover{border-color:var(--dim)}
 .tk.sel{border-color:var(--green);background:var(--green-dim)}
+.tk-all{display:flex;align-items:center;gap:8px;background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 16px;cursor:pointer;transition:border-color .15s,background .15s;flex-shrink:0}
+.tk-all:hover{border-color:var(--dim)}
+.tk-all.sel{border-color:var(--green);background:var(--green-dim)}
+.tk-all-icon{color:var(--green);font-size:15px}
+.tk-all-label{font-family:'Bricolage Grotesque';font-weight:700;font-size:13px;white-space:nowrap}
 .sh-clear{font-size:11.5px;color:var(--green);font-weight:600;background:var(--green-dim);border:1px solid var(--green);padding:3px 9px;border-radius:6px}
 .sh-clear:hover{filter:brightness(1.1)}
 .sig-hint{font-size:11px;color:var(--dim);margin-bottom:10px;font-style:italic}
