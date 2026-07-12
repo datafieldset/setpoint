@@ -28,6 +28,31 @@ const RSS_FEEDS = [
 // accounts still need the paid X API.
 const TELEGRAM_CHANNELS = ["watcherguru", "whale_alert_io"];
 
+const EXCHANGES = ["binance", "coinbase", "kraken", "okx", "bybit", "huobi", "htx", "bitfinex", "gate.io", "gate", "kucoin", "upbit", "bitstamp", "gemini", "crypto.com", "mexc", "bithumb", "bitget"];
+
+// Turn a Whale Alert message into structured flow: which asset, how much USD, and
+// whether it moved to an exchange (possible sell pressure) or off one (possible
+// accumulation). Free substitute for a paid on-chain provider, for flow only.
+function parseWhale(text, when, link) {
+  const matches = [...text.matchAll(/([\d,]+(?:\.\d+)?)\s*#?([A-Za-z]{2,6})\b/g)];
+  const pick = matches.find((m) => m[2].toUpperCase() !== "USD");
+  if (!pick) return null;
+  const asset = pick[2].toUpperCase();
+  const usdM = text.match(/\(?\$?\s*([\d,]+(?:\.\d+)?)\s*USD/i);
+  const usd = usdM ? parseFloat(usdM[1].replace(/,/g, "")) : null;
+  const low = text.toLowerCase();
+  const ft = low.match(/from\s+(.+?)\s+to\s+(.+)$/);
+  let dir = "other";
+  if (ft) {
+    const fromEx = EXCHANGES.some((e) => ft[1].includes(e));
+    const toEx = EXCHANGES.some((e) => ft[2].includes(e));
+    if (toEx && !fromEx) dir = "to_exchange";
+    else if (fromEx && !toEx) dir = "from_exchange";
+    else if (fromEx && toEx) dir = "exchange_move";
+  }
+  return { asset, usd, dir, when, link };
+}
+
 // Curated traders/analysts to weight highly, by Bluesky handle (editable).
 // Real-time X/Twitter tracking needs the paid X API, so free tracking lives on
 // Bluesky + Reddit. Add handles like "someanalyst.bsky.social" here.
@@ -159,6 +184,7 @@ export async function GET(req) {
   const all = [...rss, ...reddit, ...bsky, ...tg].filter((x) => x.title && x.title.length > 4);
 
   const coins = {};
+  const whales = {};
   symbols.forEach((sym) => {
     const items = all
       .filter((x) => matches(x.title, sym))
@@ -171,7 +197,15 @@ export async function GET(req) {
       seen.add(k);
       return true;
     }).slice(0, 6);
+
+    // whale flow: parse Whale Alert posts for this asset
+    whales[sym] = all
+      .filter((x) => x.source === "@whale_alert_io")
+      .map((x) => parseWhale(x.title, x.when, x.link))
+      .filter((w) => w && w.asset === sym)
+      .sort((a, b) => b.when - a.when)
+      .slice(0, 6);
   });
 
-  return Response.json({ coins, at: Date.now() });
+  return Response.json({ coins, whales, at: Date.now() });
 }

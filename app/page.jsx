@@ -223,7 +223,7 @@ function Landing({ onPickPlan, onDemo }) {
   const tiers = [
     { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · EMA cross", "Email delivery"], cta: "Start free" },
     { id: "trader", name: "Trader", price: "$19", per: "/mo", pop: true, feats: ["Up to 6 coins", "Everything in Watch", "Entry / stop / target on every alert", "Whale & exchange-flow signals", "Telegram + Discord + email", "Hourly digest"], cta: "Get Trader" },
-    { id: "desk", name: "Desk", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Smart-money vs retail divergence", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Desk" },
+    { id: "desk", name: "Desk", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Whale-flow alerts with size thresholds", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Desk" },
   ];
   return (
     <div className="landing">
@@ -265,7 +265,7 @@ function Landing({ onPickPlan, onDemo }) {
             ["RSI stretch", "Overbought or oversold readings, on the timeframe you actually trade."],
             ["EMA cross", "The 9 EMA crosses the 21 EMA. A slower signal that flags a possible trend change and fires rarely."],
             ["Whale flow", "Large transfers moving to and from exchanges on your watchlist, the kind of on-chain activity a price chart never shows you."],
-            ["Smart vs retail", "When the smart-money wallets and the retail crowd are positioned on opposite sides of a trade."]].map(([t, d]) => (
+            ["AI read", "An LLM weighs the signal against live headlines and tells you fade or breakout, not just a ping."]].map(([t, d]) => (
             <div className="feat-item" key={t}><div className="feat-h">{t}</div><div className="feat-d">{d}</div></div>
           ))}
         </div>
@@ -386,6 +386,7 @@ function Dashboard({ account, onSignOut }) {
   const [globalError, setGlobalError] = useState(null);
   const [fng, setFng] = useState(null);
   const [news, setNews] = useState({});         // sym -> [items]
+  const [whales, setWhales] = useState({});     // sym -> [transfers]
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -401,6 +402,7 @@ function Dashboard({ account, onSignOut }) {
       if (!res.ok) return;
       const json = await res.json();
       setNews(json.coins || {});
+      setWhales(json.whales || {});
     } catch { /* non-fatal */ }
   }, [watchlist]);
 
@@ -589,33 +591,6 @@ function Dashboard({ account, onSignOut }) {
               {allSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
             </div>
           )}
-        </div>
-
-        <aside className="onchain">
-          <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
-          {fng && (
-            <div className="fng">
-              <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
-              <div className="fng-meta"><div className="fng-lab">{fng.label}</div><div className="fng-sub">Fear &amp; Greed Index</div></div>
-            </div>
-          )}
-          <div className="oc-cols"><span>24h change</span><span>24h volume</span></div>
-          {watchlist.map((sym) => {
-            const st = data[sym]?.stats;
-            const up = st && st.change24 >= 0;
-            return (
-              <div className="oc-row" key={sym}>
-                <div className="oc-sym">{sym}</div>
-                {st ? (
-                  <>
-                    <div className={`oc-chg ${up ? "up" : "down"}`}>{fmtPct(st.change24)}</div>
-                    <div className="oc-vol mono">{fmtVol(st.volUsd)}</div>
-                  </>
-                ) : <div className="oc-chg quiet">no data</div>}
-              </div>
-            );
-          })}
-          <div className="oc-foot">Whale flow and smart-money vs retail divergence arrive in 1.2, which needs a keyed on-chain provider.</div>
 
           <div className="signals-panel">
             <div className="section-head">
@@ -660,19 +635,67 @@ function Dashboard({ account, onSignOut }) {
               return (
                 <>
                   {!selectedCoin && <div className="sig-hint">Tap a coin above for an AI note on just that coin.</div>}
-                  {top.map((n, i) => (
-                    <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
-                      <div className="sig-item-top">
-                        <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
-                        <span className="sig-src">{n.source}</span>
-                        <span className="sig-when">{timeAgo(n.when, now)}</span>
-                      </div>
-                      <div className="sig-title">{n.title}</div>
-                    </a>
-                  ))}
+                  <div className="sig-grid">
+                    {top.map((n, i) => (
+                      <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
+                        <div className="sig-item-top">
+                          <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
+                          <span className="sig-src">{n.source}</span>
+                          <span className="sig-when">{timeAgo(n.when, now)}</span>
+                        </div>
+                        <div className="sig-title">{n.title}</div>
+                      </a>
+                    ))}
+                  </div>
                 </>
               );
             })()}
+          </div>
+        </div>
+
+        <aside className="onchain">
+          <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
+          {fng && (
+            <div className="fng">
+              <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
+              <div className="fng-meta"><div className="fng-lab">{fng.label}</div><div className="fng-sub">Fear &amp; Greed Index</div></div>
+            </div>
+          )}
+          <div className="oc-cols"><span>24h change</span><span>24h volume</span></div>
+          {watchlist.map((sym) => {
+            const st = data[sym]?.stats;
+            const up = st && st.change24 >= 0;
+            return (
+              <div className="oc-row" key={sym}>
+                <div className="oc-sym">{sym}</div>
+                {st ? (
+                  <>
+                    <div className={`oc-chg ${up ? "up" : "down"}`}>{fmtPct(st.change24)}</div>
+                    <div className="oc-vol mono">{fmtVol(st.volUsd)}</div>
+                  </>
+                ) : <div className="oc-chg quiet">no data</div>}
+              </div>
+            );
+          })}
+          <div className="whale-panel">
+            <div className="section-head"><h2>Whale flow</h2><span className="sh-sub">Whale Alert</span></div>
+            {(() => {
+              const coins = selectedCoin ? [selectedCoin] : watchlist;
+              const flat = [];
+              coins.forEach((sym) => (whales[sym] || []).forEach((w) => flat.push({ ...w, sym })));
+              flat.sort((a, b) => b.when - a.when);
+              const top = flat.slice(0, selectedCoin ? 8 : 6);
+              if (!top.length) return <div className="sig-empty">No large transfers reported{selectedCoin ? ` for ${selectedCoin}` : ""} recently.</div>;
+              return top.map((w, i) => (
+                <a className="whale-row" href={w.link} target="_blank" rel="noreferrer" key={i}>
+                  <span className={`whale-dir ${w.dir}`}>{w.dir === "to_exchange" ? "▲ to exchange" : w.dir === "from_exchange" ? "▼ off exchange" : "↔ transfer"}</span>
+                  <span className="whale-usd mono">{w.usd ? fmtVol(w.usd) : "—"}</span>
+                  <span className="whale-coin">{w.sym}</span>
+                  <span className="whale-when">{timeAgo(w.when, now)}</span>
+                </a>
+              ));
+            })()}
+            <div className="whale-note">Live from Whale Alert. To exchange can mean sell pressure, off exchange can mean accumulation.</div>
           </div>
         </aside>
       </div>
@@ -966,8 +989,9 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .ai-reason{color:var(--muted);font-size:12px;line-height:1.55}
 .ai-caution{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid var(--hair)}
 
-.signals-panel{margin-top:18px;padding-top:16px;border-top:1px solid var(--hair)}
+.signals-panel{margin-top:22px;padding-top:18px;border-top:1px solid var(--border)}
 .signals-panel .section-head{margin-bottom:12px}
+.sig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:0 22px}
 .sig-empty{color:var(--dim);font-size:11.5px;line-height:1.5}
 .sig-item{display:block;padding:9px 0;border-top:1px solid var(--hair);text-decoration:none;color:inherit}
 .sig-item:hover .sig-title{color:var(--green)}
@@ -985,6 +1009,18 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .sig-hint{font-size:11px;color:var(--dim);margin-bottom:10px;font-style:italic}
 .coin-note{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--hair)}
 .cn-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:9px}
+.whale-panel{margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
+.whale-panel .section-head{margin-bottom:10px}
+.whale-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--hair);text-decoration:none;color:inherit}
+.whale-row:first-of-type{border-top:none}
+.whale-dir{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap}
+.whale-dir.to_exchange{color:var(--red);background:var(--red-dim)}
+.whale-dir.from_exchange{color:var(--green);background:var(--green-dim)}
+.whale-dir.other,.whale-dir.exchange_move{color:var(--muted);background:var(--panel3)}
+.whale-usd{font-size:12.5px;font-weight:600}
+.whale-coin{font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:var(--muted);background:var(--panel3);padding:2px 6px;border-radius:5px}
+.whale-when{font-size:10.5px;color:var(--dim);margin-left:auto}
+.whale-note{color:var(--dim);font-size:11px;line-height:1.5;margin-top:12px;padding-top:10px;border-top:1px solid var(--hair)}
 
 .dash-disc{color:var(--dim);font-size:11px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid var(--hair)}
 
