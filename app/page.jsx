@@ -125,6 +125,13 @@ const fmtVol = (v) => {
   return "$" + v.toFixed(0);
 };
 const fngColor = (v) => (v >= 75 ? "#00D179" : v >= 55 ? "#5EE9AE" : v >= 45 ? "#93A69D" : v >= 25 ? "#F5B851" : "#FF5C6C");
+
+// Notable = posts from watched sources (Watcher Guru, Whale Alert, curated accounts).
+// The coin note is cached against this, so it only regenerates when something notable breaks.
+function newsFingerprint(items) {
+  const notable = (items || []).filter((n) => n.watched).slice(0, 5).map((n) => (n.title || "").slice(0, 50));
+  return notable.join("|") || "none";
+}
 const timeAgo = (ts, now) => {
   const s = Math.max(0, Math.floor((now - ts) / 1000));
   if (s < 60) return s + "s ago";
@@ -381,6 +388,9 @@ function Dashboard({ account, onSignOut }) {
   const [news, setNews] = useState({});         // sym -> [items]
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
+  const [selectedCoin, setSelectedCoin] = useState(null);
+  const [coinNote, setCoinNote] = useState({}); // "sym:tf" -> read | {error}
+  const [coinNoteLoading, setCoinNoteLoading] = useState({});
   const fired = useRef({}); // key -> {firstFired, lastSeen}
 
   const th2 = useMemo(() => ({ ...th, pctMin: TF[tfKey].pctMin }), [th, tfKey]);
@@ -414,6 +424,43 @@ function Dashboard({ account, onSignOut }) {
       setAssessing((a) => ({ ...a, [id]: false }));
     }
   }, [data, news, tfKey]);
+
+  const noteId = useCallback((sym) => `${sym}:${tfKey}:${newsFingerprint(news[sym])}`, [tfKey, news]);
+
+  const runCoinNote = useCallback(async (sym) => {
+    const id = noteId(sym);
+    if (coinNote[id] || coinNoteLoading[id]) return; // held until notable news changes
+    setCoinNoteLoading((a) => ({ ...a, [id]: true }));
+    try {
+      const res = await fetch("/api/assess", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          coin: sym, name: NAME[sym] || sym, timeframe: TF[tfKey].label,
+          snap: data[sym]?.snap, signal: null, news: news[sym] || [], mode: "chatter",
+        }),
+      });
+      const json = await res.json();
+      setCoinNote((a) => ({ ...a, [id]: json.error ? { error: json.error } : json.read }));
+    } catch {
+      setCoinNote((a) => ({ ...a, [id]: { error: "exception" } }));
+    } finally {
+      setCoinNoteLoading((a) => ({ ...a, [id]: false }));
+    }
+  }, [coinNote, coinNoteLoading, noteId, data, news, tfKey]);
+
+  const runCoinNoteRef = useRef(() => {});
+  runCoinNoteRef.current = runCoinNote;
+
+  const selectCoin = useCallback((sym) => {
+    setSelectedCoin((cur) => (cur === sym ? null : sym));
+  }, []);
+
+  // Regenerate the note only when the coin, timeframe, or its notable-news fingerprint changes.
+  const selFp = selectedCoin ? newsFingerprint(news[selectedCoin]) : "";
+  useEffect(() => {
+    if (selectedCoin) runCoinNoteRef.current(selectedCoin);
+  }, [selectedCoin, selFp, tfKey]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -496,7 +543,7 @@ function Dashboard({ account, onSignOut }) {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
           const up = snap && snap.pct >= 0;
           return (
-            <div className="tk" key={sym}>
+            <div className={`tk ${selectedCoin === sym ? "sel" : ""}`} key={sym} onClick={() => selectCoin(sym)} role="button" tabIndex={0}>
               <div className="tk-l">
                 <span className="tk-sym">{sym}</span>
                 <span className="tk-name">{NAME[sym] || ""}</span>
@@ -509,7 +556,7 @@ function Dashboard({ account, onSignOut }) {
                     <span className="tk-rsi">RSI {snap.rsi != null ? snap.rsi.toFixed(0) : "—"}</span>
                   </>
                 ) : <span className="tk-warm">warming…</span>}
-                {watchlist.length > 1 && <button className="tk-x" onClick={() => removeCoin(sym)} title="remove">×</button>}
+                {watchlist.length > 1 && <button className="tk-x" onClick={(e) => { e.stopPropagation(); removeCoin(sym); }} title="remove">×</button>}
               </div>
             </div>
           );
@@ -571,23 +618,60 @@ function Dashboard({ account, onSignOut }) {
           <div className="oc-foot">Whale flow and smart-money vs retail divergence arrive in 1.2, which needs a keyed on-chain provider.</div>
 
           <div className="signals-panel">
-            <div className="section-head"><h2>Early signals</h2><span className="sh-sub">news &amp; social</span></div>
+            <div className="section-head">
+              <h2>Early signals</h2>
+              {selectedCoin
+                ? <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>
+                : <span className="sh-sub">news &amp; social</span>}
+            </div>
+
+            {selectedCoin && (() => {
+              const id = noteId(selectedCoin);
+              const note = coinNote[id];
+              const loadingNote = coinNoteLoading[id];
+              return (
+                <div className="coin-note">
+                  <div className="cn-head">AI note on {selectedCoin} · {TF[tfKey].label}</div>
+                  {note && note.error ? (
+                    <div className="ai-err">{note.error === "no_key" ? "Add ANTHROPIC_API_KEY in Vercel to enable AI notes." : "AI note unavailable right now."}</div>
+                  ) : note ? (
+                    <div className={`ai-read ${note.stance || "neutral"}`}>
+                      <div className="ai-head"><span className="ai-stance">{note.stance}</span><span className="ai-conf">{note.confidence} confidence</span></div>
+                      <div className="ai-headline">{note.headline}</div>
+                      <div className="ai-reason">{note.reasoning}</div>
+                      {note.caution ? <div className="ai-caution">{note.caution}</div> : null}
+                    </div>
+                  ) : loadingNote ? (
+                    <div className="ai-loading"><span className="dot-pulse" /> Reading the chatter on {selectedCoin}…</div>
+                  ) : (
+                    <button className="ai-btn" onClick={() => runCoinNote(selectedCoin)}>Write AI note</button>
+                  )}
+                </div>
+              );
+            })()}
+
             {(() => {
               const flat = [];
-              watchlist.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
+              const coins = selectedCoin ? [selectedCoin] : watchlist;
+              coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
               flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
-              const top = flat.slice(0, 10);
-              if (!top.length) return <div className="sig-empty">Scanning news, Reddit, and Bluesky for {watchlist.join(", ")}…</div>;
-              return top.map((n, i) => (
-                <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
-                  <div className="sig-item-top">
-                    <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
-                    <span className="sig-src">{n.source}</span>
-                    <span className="sig-when">{timeAgo(n.when, now)}</span>
-                  </div>
-                  <div className="sig-title">{n.title}</div>
-                </a>
-              ));
+              const top = flat.slice(0, selectedCoin ? 12 : 10);
+              if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Tap a coin above for its AI note. Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
+              return (
+                <>
+                  {!selectedCoin && <div className="sig-hint">Tap a coin above for an AI note on just that coin.</div>}
+                  {top.map((n, i) => (
+                    <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
+                      <div className="sig-item-top">
+                        <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
+                        <span className="sig-src">{n.source}</span>
+                        <span className="sig-when">{timeAgo(n.when, now)}</span>
+                      </div>
+                      <div className="sig-title">{n.title}</div>
+                    </a>
+                  ))}
+                </>
+              );
             })()}
           </div>
         </aside>
@@ -893,6 +977,14 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .sig-src{font-size:10.5px;color:var(--dim)}
 .sig-when{font-size:10.5px;color:var(--dim);margin-left:auto}
 .sig-title{font-size:12px;line-height:1.45;color:var(--text);transition:color .15s;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.tk{cursor:pointer;transition:border-color .15s,background .15s}
+.tk:hover{border-color:var(--dim)}
+.tk.sel{border-color:var(--green);background:var(--green-dim)}
+.sh-clear{font-size:11.5px;color:var(--green);font-weight:600;background:var(--green-dim);border:1px solid var(--green);padding:3px 9px;border-radius:6px}
+.sh-clear:hover{filter:brightness(1.1)}
+.sig-hint{font-size:11px;color:var(--dim);margin-bottom:10px;font-style:italic}
+.coin-note{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--hair)}
+.cn-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:9px}
 
 .dash-disc{color:var(--dim);font-size:11px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid var(--hair)}
 

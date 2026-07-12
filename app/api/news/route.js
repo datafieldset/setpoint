@@ -17,7 +17,16 @@ const RSS_FEEDS = [
   { source: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },
   { source: "Cointelegraph", url: "https://cointelegraph.com/rss" },
   { source: "Decrypt", url: "https://decrypt.co/feed" },
+  { source: "The Block", url: "https://www.theblock.co/rss.xml" },
+  { source: "Bitcoin.com", url: "https://news.bitcoin.com/feed/" },
+  { source: "CryptoSlate", url: "https://cryptoslate.com/feed/" },
 ];
+
+// Fast, reliable crypto accounts pulled free from their public Telegram channels.
+// Watcher Guru and Whale Alert break moves faster than mainstream RSS. Add more
+// channel handles here (their t.me/s/<handle> must be public). X/Twitter-only
+// accounts still need the paid X API.
+const TELEGRAM_CHANNELS = ["watcherguru", "whale_alert_io"];
 
 // Curated traders/analysts to weight highly, by Bluesky handle (editable).
 // Real-time X/Twitter tracking needs the paid X API, so free tracking lives on
@@ -77,6 +86,35 @@ async function getReddit() {
   return results.flat();
 }
 
+async function getTelegram(channels) {
+  const results = await Promise.all(channels.map(async (ch) => {
+    try {
+      const r = await fetch(`https://t.me/s/${ch}`, { headers: UA, cache: "no-store" });
+      if (!r.ok) return [];
+      const html = await r.text();
+      const blocks = html.split("js-message_text").slice(1);
+      const items = [];
+      for (const b of blocks) {
+        const tm = b.match(/^[^>]*>([\s\S]*?)<\/div>/);
+        const text = tm ? clean(tm[1]) : "";
+        if (!text || text.length < 5) continue;
+        const time = (b.match(/datetime="([^"]+)"/) || [])[1];
+        const link = (b.match(/href="(https:\/\/t\.me\/[^"]+\/\d+)"/) || [])[1] || `https://t.me/${ch}`;
+        items.push({
+          title: text,
+          link,
+          when: time ? new Date(time).getTime() : Date.now(),
+          source: "@" + ch,
+          kind: "social",
+          watched: true,
+        });
+      }
+      return items;
+    } catch { return []; }
+  }));
+  return results.flat();
+}
+
 async function getBluesky(symbols) {
   const queries = [];
   symbols.forEach((s) => { queries.push("$" + s); queries.push(NAME[s] || s); });
@@ -115,8 +153,10 @@ export async function GET(req) {
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
     .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 6);
 
-  const [rss, reddit, bsky] = await Promise.all([getRss(), getReddit(), getBluesky(symbols)]);
-  const all = [...rss, ...reddit, ...bsky].filter((x) => x.title && x.title.length > 4);
+  const [rss, reddit, bsky, tg] = await Promise.all([
+    getRss(), getReddit(), getBluesky(symbols), getTelegram(TELEGRAM_CHANNELS),
+  ]);
+  const all = [...rss, ...reddit, ...bsky, ...tg].filter((x) => x.title && x.title.length > 4);
 
   const coins = {};
   symbols.forEach((sym) => {
