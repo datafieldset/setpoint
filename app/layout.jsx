@@ -1,5 +1,5 @@
 export const metadata = {
-  title: "Setpoint",
+  title: "Setpoint Alerts",
   description: "Crypto alert terminal. See the alert, the price, and the levels on one card.",
 };
 

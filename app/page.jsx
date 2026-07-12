@@ -23,6 +23,7 @@ const NAME = Object.fromEntries(COIN_PRESETS.map((c) => [c.sym, c.name]));
 const MAX_COINS = 6;
 
 const TF = {
+  "5m": { label: "5m", pctMin: 0.7, gran: 300, cooldownMs: 5 * 60 * 1000 },
   "15m": { label: "15m", pctMin: 1.2, gran: 900, cooldownMs: 15 * 60 * 1000 },
   "1h": { label: "1h", pctMin: 2.5, gran: 3600, cooldownMs: 60 * 60 * 1000 },
 };
@@ -166,7 +167,7 @@ function Ladder({ entry, stop, target, price, dir }) {
   );
 }
 
-function SignalCard({ s, sym, price, firedAt, now, demo }) {
+function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess }) {
   return (
     <div className={`sig-card ${s.dir}`}>
       <div className="sig-top">
@@ -186,6 +187,24 @@ function SignalCard({ s, sym, price, firedAt, now, demo }) {
         <span className="tf-pill">{s.tf}</span>
         <span className="fired">{demo ? "triggered 3m ago" : "triggered " + timeAgo(firedAt, now)}</span>
       </div>
+      {!demo && (
+        <div className="ai-take">
+          {read && read.error ? (
+            <div className="ai-err">{read.error === "no_key" ? "Add ANTHROPIC_API_KEY in Vercel to enable AI reads." : "AI read unavailable right now."}</div>
+          ) : read ? (
+            <div className={`ai-read ${read.stance || "neutral"}`}>
+              <div className="ai-head"><span className="ai-stance">{read.stance}</span><span className="ai-conf">{read.confidence} confidence</span></div>
+              <div className="ai-headline">{read.headline}</div>
+              <div className="ai-reason">{read.reasoning}</div>
+              {read.caution ? <div className="ai-caution">{read.caution}</div> : null}
+            </div>
+          ) : loading ? (
+            <div className="ai-loading"><span className="dot-pulse" /> Reading the setup and headlines…</div>
+          ) : (
+            <button className="ai-btn" onClick={onAssess}>AI take on this signal</button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -202,7 +221,7 @@ function Landing({ onPickPlan, onDemo }) {
   return (
     <div className="landing">
       <nav className="nav">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="nav-r">
           <button className="ghost" onClick={onDemo}>Live demo</button>
           <button className="solid" onClick={onWaitlist}>Early access</button>
@@ -276,7 +295,7 @@ function Landing({ onPickPlan, onDemo }) {
       </section>
 
       <footer className="foot">
-        <div className="brand sm"><span className="logo-dot" />Setpoint</div>
+        <div className="brand sm"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="disc">Setpoint sends informational alerts only. It is not a broker, does not execute trades, and does not provide financial advice. Levels shown are computed reference points, not recommendations. Crypto is volatile, so do your own research.</div>
       </footer>
     </div>
@@ -328,7 +347,7 @@ function Auth({ mode, plan, onDone, onBack }) {
     <div className="auth-wrap">
       <button className="auth-back" onClick={onBack}>← back</button>
       <div className="auth-card">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <h3>{mode === "signin" ? "Welcome back" : "Create your account"}</h3>
         {mode !== "signin" && <div className="plan-chip">{planName}</div>}
         <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" /></label>
@@ -359,9 +378,42 @@ function Dashboard({ account, onSignOut }) {
   const [addText, setAddText] = useState("");
   const [globalError, setGlobalError] = useState(null);
   const [fng, setFng] = useState(null);
+  const [news, setNews] = useState({});         // sym -> [items]
+  const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
+  const [assessing, setAssessing] = useState({});
   const fired = useRef({}); // key -> {firstFired, lastSeen}
 
   const th2 = useMemo(() => ({ ...th, pctMin: TF[tfKey].pctMin }), [th, tfKey]);
+
+  const loadNews = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/news?symbols=${watchlist.join(",")}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      setNews(json.coins || {});
+    } catch { /* non-fatal */ }
+  }, [watchlist]);
+
+  const runAssess = useCallback(async (sym, signal) => {
+    const id = `${sym}:${signal.key}`;
+    setAssessing((a) => ({ ...a, [id]: true }));
+    try {
+      const res = await fetch("/api/assess", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          coin: sym, name: NAME[sym] || sym, timeframe: TF[tfKey].label,
+          snap: data[sym]?.snap, signal, news: news[sym] || [],
+        }),
+      });
+      const json = await res.json();
+      setAssess((a) => ({ ...a, [id]: json.error ? { error: json.error } : json.read }));
+    } catch {
+      setAssess((a) => ({ ...a, [id]: { error: "exception" } }));
+    } finally {
+      setAssessing((a) => ({ ...a, [id]: false }));
+    }
+  }, [data, news, tfKey]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -401,6 +453,8 @@ function Dashboard({ account, onSignOut }) {
   }, [watchlist, tfKey, th2]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => { loadNews(); }, [loadNews]);
+  useEffect(() => { const id = setInterval(loadNews, 300000); return () => clearInterval(id); }, [loadNews]);
   useEffect(() => { const id = setInterval(load, 60000); return () => clearInterval(id); }, [load]);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
 
@@ -422,7 +476,7 @@ function Dashboard({ account, onSignOut }) {
   return (
     <div className="dash">
       <div className="topbar">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="tf-toggle">
           {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
         </div>
@@ -485,7 +539,7 @@ function Dashboard({ account, onSignOut }) {
             </div>
           ) : (
             <div className="cards-grid">
-              {allSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} />)}
+              {allSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
             </div>
           )}
         </div>
@@ -514,7 +568,28 @@ function Dashboard({ account, onSignOut }) {
               </div>
             );
           })}
-          <div className="oc-foot">Whale flow and smart-money vs retail divergence need a keyed on-chain provider, so they land in the hosted version, not this browser demo.</div>
+          <div className="oc-foot">Whale flow and smart-money vs retail divergence arrive in 1.2, which needs a keyed on-chain provider.</div>
+
+          <div className="signals-panel">
+            <div className="section-head"><h2>Early signals</h2><span className="sh-sub">news &amp; social</span></div>
+            {(() => {
+              const flat = [];
+              watchlist.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
+              flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
+              const top = flat.slice(0, 10);
+              if (!top.length) return <div className="sig-empty">Scanning news, Reddit, and Bluesky for {watchlist.join(", ")}…</div>;
+              return top.map((n, i) => (
+                <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
+                  <div className="sig-item-top">
+                    <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
+                    <span className="sig-src">{n.source}</span>
+                    <span className="sig-when">{timeAgo(n.when, now)}</span>
+                  </div>
+                  <div className="sig-title">{n.title}</div>
+                </a>
+              ));
+            })()}
+          </div>
         </aside>
       </div>
 
@@ -784,6 +859,40 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .oc-chg.up{color:var(--green)} .oc-chg.down{color:var(--red)} .oc-chg.quiet{color:var(--dim);font-family:inherit}
 .oc-vol{font-size:12px;color:var(--muted);text-align:right;min-width:56px}
 .oc-foot{color:var(--dim);font-size:11px;line-height:1.55;margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
+
+.brand-tag{color:var(--red);font-family:'JetBrains Mono',monospace;font-size:.5em;font-weight:700;letter-spacing:.14em;margin-left:6px;vertical-align:top;position:relative;top:.15em}
+
+.ai-take{margin-top:12px;padding-top:12px;border-top:1px solid var(--hair)}
+.ai-btn{width:100%;background:var(--panel3);border:1px solid var(--border);color:var(--text);font-size:12.5px;font-weight:600;padding:9px;border-radius:9px;transition:border-color .15s,background .15s}
+.ai-btn:hover{border-color:var(--green);background:var(--green-dim);color:var(--green)}
+.ai-btn::before{content:"✦ ";color:var(--green)}
+.ai-loading{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12px;padding:4px 0}
+.ai-err{color:var(--dim);font-size:11.5px;line-height:1.5}
+.ai-read{border-radius:10px;padding:11px;background:var(--ink);border:1px solid var(--border)}
+.ai-read.bullish{border-left:3px solid var(--green)}
+.ai-read.bearish{border-left:3px solid var(--red)}
+.ai-read.neutral{border-left:3px solid var(--muted)}
+.ai-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.ai-stance{font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.ai-read.bullish .ai-stance{color:var(--green)}
+.ai-read.bearish .ai-stance{color:var(--red)}
+.ai-read.neutral .ai-stance{color:var(--muted)}
+.ai-conf{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.05em}
+.ai-headline{font-family:'Bricolage Grotesque';font-weight:600;font-size:13.5px;margin-bottom:6px}
+.ai-reason{color:var(--muted);font-size:12px;line-height:1.55}
+.ai-caution{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid var(--hair)}
+
+.signals-panel{margin-top:18px;padding-top:16px;border-top:1px solid var(--hair)}
+.signals-panel .section-head{margin-bottom:12px}
+.sig-empty{color:var(--dim);font-size:11.5px;line-height:1.5}
+.sig-item{display:block;padding:9px 0;border-top:1px solid var(--hair);text-decoration:none;color:inherit}
+.sig-item:hover .sig-title{color:var(--green)}
+.sig-item-top{display:flex;align-items:center;gap:8px;margin-bottom:4px}
+.sig-coin{font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:var(--muted);background:var(--panel3);padding:2px 6px;border-radius:5px}
+.sig-coin.watched{color:var(--amber);background:var(--amber-dim)}
+.sig-src{font-size:10.5px;color:var(--dim)}
+.sig-when{font-size:10.5px;color:var(--dim);margin-left:auto}
+.sig-title{font-size:12px;line-height:1.45;color:var(--text);transition:color .15s;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
 
 .dash-disc{color:var(--dim);font-size:11px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid var(--hair)}
 

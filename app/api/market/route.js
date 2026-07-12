@@ -6,7 +6,7 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const GRAN = { "15m": 900, "1h": 3600 };
+const GRAN = { "5m": 300, "15m": 900, "1h": 3600 };
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
 async function fetchCandles(sym, tf) {
@@ -50,7 +50,8 @@ export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
     .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 6);
-  const tf = searchParams.get("tf") === "1h" ? "1h" : "15m";
+  const tfParam = searchParams.get("tf");
+  const tf = GRAN[tfParam] ? tfParam : "15m";
 
   const coins = await Promise.all(
     symbols.map(async (sym) => {
