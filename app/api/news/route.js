@@ -6,12 +6,9 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const UA = { "User-Agent": "setpointalerts/1.1 (+https://setpointalerts.com)" };
+import { NAME } from "../../../lib/coins.js";
 
-const NAME = {
-  BTC: "Bitcoin", SOL: "Solana", XLM: "Stellar", ETH: "Ethereum", XRP: "XRP",
-  DOGE: "Dogecoin", ADA: "Cardano", AVAX: "Avalanche", LINK: "Chainlink", SUI: "Sui",
-};
+const UA = { "User-Agent": "setpointalerts/1.1 (+https://setpointalerts.com)" };
 
 const RSS_FEEDS = [
   { source: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },

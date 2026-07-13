@@ -1,113 +1,14 @@
 "use client";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
+import { TF } from "../lib/timeframes.js";
+import { computeSignals } from "../lib/signals.js";
 
 /* =========================================================================
-   SETPOINT — crypto alert terminal (placeholder name, easy to rename)
-   Alerts-only. Live price signals + entry/exit ladders. On-chain panel = sample.
-   Data: CryptoCompare (no key, light use). Not financial advice.
+   SETPOINT ALERTS — crypto alert terminal
+   Alerts-only. Live price signals + entry/exit ladders.
+   Data: Coinbase (no key). Not financial advice.
    ========================================================================= */
-
-const COIN_PRESETS = [
-  { sym: "BTC", name: "Bitcoin" },
-  { sym: "SOL", name: "Solana" },
-  { sym: "XLM", name: "Stellar" },
-  { sym: "ETH", name: "Ethereum" },
-  { sym: "XRP", name: "XRP" },
-  { sym: "DOGE", name: "Dogecoin" },
-  { sym: "ADA", name: "Cardano" },
-  { sym: "AVAX", name: "Avalanche" },
-  { sym: "LINK", name: "Chainlink" },
-  { sym: "SUI", name: "Sui" },
-];
-const NAME = Object.fromEntries(COIN_PRESETS.map((c) => [c.sym, c.name]));
-const MAX_COINS = 6;
-
-const TF = {
-  "5m": { label: "5m", pctMin: 0.7, gran: 300, cooldownMs: 5 * 60 * 1000 },
-  "15m": { label: "15m", pctMin: 1.2, gran: 900, cooldownMs: 15 * 60 * 1000 },
-  "30m": { label: "30m", pctMin: 1.7, gran: 1800, cooldownMs: 30 * 60 * 1000 },
-  "1h": { label: "1h", pctMin: 2.5, gran: 3600, cooldownMs: 60 * 60 * 1000 },
-};
-
-/* ----------------------------- indicator math ---------------------------- */
-function rsi(closes, period = 14) {
-  if (closes.length < period + 1) return null;
-  let g = 0, l = 0;
-  for (let i = 1; i <= period; i++) { const d = closes[i] - closes[i - 1]; if (d >= 0) g += d; else l -= d; }
-  let ag = g / period, al = l / period;
-  for (let i = period + 1; i < closes.length; i++) {
-    const d = closes[i] - closes[i - 1];
-    ag = (ag * (period - 1) + (d > 0 ? d : 0)) / period;
-    al = (al * (period - 1) + (d < 0 ? -d : 0)) / period;
-  }
-  if (al === 0) return 100;
-  return 100 - 100 / (1 + ag / al);
-}
-function emaSeries(values, period) {
-  if (values.length < period) return [];
-  const k = 2 / (period + 1), out = [];
-  let prev = values.slice(0, period).reduce((a, b) => a + b, 0) / period;
-  out[period - 1] = prev;
-  for (let i = period; i < values.length; i++) { prev = values[i] * k + prev * (1 - k); out[i] = prev; }
-  return out;
-}
-function atr(h, l, c, period = 14) {
-  if (c.length < period + 1) return null;
-  const trs = [];
-  for (let i = 1; i < c.length; i++) trs.push(Math.max(h[i] - l[i], Math.abs(h[i] - c[i - 1]), Math.abs(l[i] - c[i - 1])));
-  let a = trs.slice(0, period).reduce((x, y) => x + y, 0) / period;
-  for (let i = period; i < trs.length; i++) a = (a * (period - 1) + trs[i]) / period;
-  return a;
-}
-function levels(price, atrv, dir) {
-  const risk = 1.5 * atrv;
-  return dir === "bull"
-    ? { entry: price, stop: price - risk, target: price + 2 * risk, rr: 2 }
-    : { entry: price, stop: price + risk, target: price - 2 * risk, rr: 2 };
-}
-
-function computeSignals(candles, tfKey, th) {
-  const n = candles.length;
-  if (n < 30) return { signals: [], warming: true, snap: null };
-  const closes = candles.map((c) => c.close);
-  const highs = candles.map((c) => c.high);
-  const lows = candles.map((c) => c.low);
-  const vols = candles.map((c) => c.volumeto);
-  const price = closes[n - 1];
-  const pct = ((price - closes[n - 2]) / closes[n - 2]) * 100;
-  const volAvg = vols.slice(n - 21, n - 1).reduce((a, b) => a + b, 0) / 20;
-  const volRatio = volAvg > 0 ? vols[n - 1] / volAvg : 1;
-  const r = rsi(closes, 14);
-  const e9 = emaSeries(closes, 9), e21 = emaSeries(closes, 21);
-  const a = atr(highs, lows, closes, 14) || price * 0.01;
-  const last = candles[n - 1];
-  const signals = [];
-  const clamp = (x) => Math.max(0, Math.min(1, x));
-
-  if (Math.abs(pct) >= th.pctMin) {
-    const dir = pct > 0 ? "bull" : "bear";
-    signals.push({ type: "move", label: "Momentum", dir, strength: clamp((Math.abs(pct) - th.pctMin) / th.pctMin), note: `${pct > 0 ? "+" : ""}${pct.toFixed(2)}% in one ${TF[tfKey].label} bar`, ...levels(price, a, dir) });
-  }
-  if (volRatio >= th.volMult) {
-    const dir = last.close >= last.open ? "bull" : "bear";
-    signals.push({ type: "volume", label: "Volume spike", dir, strength: clamp((volRatio - th.volMult) / th.volMult), note: `${volRatio.toFixed(1)}× the 20-bar average volume`, ...levels(price, a, dir) });
-  }
-  if (r != null && r <= th.rsiLow) {
-    signals.push({ type: "rsi", label: "RSI oversold", dir: "bull", strength: clamp((th.rsiLow - r) / th.rsiLow), note: `RSI ${r.toFixed(0)}, oversold reading`, ...levels(price, a, "bull") });
-  } else if (r != null && r >= th.rsiHigh) {
-    signals.push({ type: "rsi", label: "RSI overbought", dir: "bear", strength: clamp((r - th.rsiHigh) / (100 - th.rsiHigh)), note: `RSI ${r.toFixed(0)}, overbought reading`, ...levels(price, a, "bear") });
-  }
-  if (e9.length && e21.length) {
-    const i = n - 1;
-    const dNow = (e9[i] ?? 0) - (e21[i] ?? 0), dPrev = (e9[i - 1] ?? 0) - (e21[i - 1] ?? 0);
-    if (dPrev <= 0 && dNow > 0) signals.push({ type: "cross", label: "EMA cross up", dir: "bull", strength: 0.65, note: "9 EMA crossed above 21 EMA", ...levels(price, a, "bull") });
-    else if (dPrev >= 0 && dNow < 0) signals.push({ type: "cross", label: "EMA cross down", dir: "bear", strength: 0.65, note: "9 EMA crossed below 21 EMA", ...levels(price, a, "bear") });
-  }
-  return { signals, warming: false, snap: { price, pct, rsi: r, volRatio, atr: a } };
-}
-
-// Data is fetched from the server route /api/market (see app/api/market/route.js),
-// which calls Coinbase server-side. The client never talks to an exchange directly.
 
 
 /* ------------------------------- formatting ------------------------------ */
@@ -182,6 +83,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <div className="sig-id">
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.label}</span>
+          {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
         </div>
         <DirBadge dir={s.dir} />
       </div>
@@ -263,7 +165,9 @@ function Landing({ onPickPlan, onDemo }) {
         <div className="feat-grid">
           {[["Momentum", "A real percentage move inside a 15m or 1h bar, instead of a fixed price line you set weeks ago and forgot about."],
             ["Volume spike", "Volume jumps well past its recent average, which often happens right before price makes its move."],
-            ["RSI stretch", "Overbought or oversold readings, on the timeframe you actually trade."],
+            ["Early pace", "Volume on the bar that is still forming already running hot for how far in we are, so you see it before the bar even closes."],
+            ["Quiet accumulation", "Volume climbing while price holds flat, the kind of quiet build-up that often comes before a real move."],
+            ["RSI stretch", "Overbought or oversold readings, on the timeframe you actually trade, weighed against whether volume actually backs it."],
             ["EMA cross", "The 9 EMA crosses the 21 EMA. A slower signal that flags a possible trend change and fires rarely."],
             ["Whale flow", "Large transfers moving to and from exchanges on your watchlist, the kind of on-chain activity a price chart never shows you."],
             ["AI read", "An LLM weighs the signal against live headlines and tells you fade or breakout, not just a ping."]].map(([t, d]) => (
@@ -371,7 +275,7 @@ function Auth({ mode, plan, onDone, onBack }) {
 }
 
 /* =============================== DASHBOARD =============================== */
-const DEFAULT_TH = { volMult: 2.0, rsiLow: 30, rsiHigh: 70 };
+const DEFAULT_TH = { volMult: 2.0, rsiLow: 30, rsiHigh: 70, paceMult: 2.2, accumVolTrend: 1.5 };
 
 function Dashboard({ account, onSignOut }) {
   const [watchlist, setWatchlist] = useState(["BTC", "SOL", "XLM"]);
@@ -480,7 +384,7 @@ function Dashboard({ account, onSignOut }) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null };
           return;
         }
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2);
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t });
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -716,6 +620,10 @@ function Dashboard({ account, onSignOut }) {
             <div className="set-row"><label>Volume spike multiple</label><input type="range" min="1.5" max="4" step="0.1" value={th.volMult} onChange={(e) => setTh({ ...th, volMult: parseFloat(e.target.value) })} /><span className="mono">{th.volMult.toFixed(1)}×</span></div>
             <div className="set-row"><label>RSI oversold</label><input type="range" min="15" max="40" step="1" value={th.rsiLow} onChange={(e) => setTh({ ...th, rsiLow: parseInt(e.target.value) })} /><span className="mono">{th.rsiLow}</span></div>
             <div className="set-row"><label>RSI overbought</label><input type="range" min="60" max="85" step="1" value={th.rsiHigh} onChange={(e) => setTh({ ...th, rsiHigh: parseInt(e.target.value) })} /><span className="mono">{th.rsiHigh}</span></div>
+            <div className="set-row"><label>Early volume pace</label><input type="range" min="1.5" max="4" step="0.1" value={th.paceMult} onChange={(e) => setTh({ ...th, paceMult: parseFloat(e.target.value) })} /><span className="mono">{th.paceMult.toFixed(1)}×</span></div>
+            <div className="set-hint">Flags volume running hot on the bar that is still forming, before it closes.</div>
+            <div className="set-row"><label>Accumulation sensitivity</label><input type="range" min="1.2" max="2.5" step="0.1" value={th.accumVolTrend} onChange={(e) => setTh({ ...th, accumVolTrend: parseFloat(e.target.value) })} /><span className="mono">{th.accumVolTrend.toFixed(1)}×</span></div>
+            <div className="set-hint">Flags volume climbing while price stays flat, a possible quiet build-up before a move.</div>
             <div className="set-foot">A cooldown holds each signal for one full bar so you are not pinged twice for the same condition. Aim for an alert-to-action ratio of roughly one in three. If you act on fewer than that, tighten these.</div>
           </div>
         </div>
@@ -762,7 +670,7 @@ const CSS = `
   --text:#EAF2EE; --muted:#93A69D; --dim:#5E7168;
 }
 *{box-sizing:border-box}
-.app{min-height:100vh;background:var(--ink);color:var(--text);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+.app{min-height:100vh;background:var(--ink);color:var(--text);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;max-width:100vw}
 .mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.02em}
@@ -920,6 +828,10 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .sig-id{display:flex;align-items:baseline;gap:8px}
 .sig-id .sym{font-family:'Bricolage Grotesque';font-weight:800;font-size:17px}
 .sig-type{font-size:12.5px;color:var(--muted);font-weight:500}
+.vol-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
+.vol-tag.confirmed{color:var(--green);background:var(--green-dim)}
+.vol-tag.rising{color:var(--green-soft);background:var(--green-dim)}
+.vol-tag.light{color:var(--amber);background:var(--amber-dim)}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:6px}
 .badge.up{color:var(--green);background:var(--green-dim)}
 .badge.down{color:var(--red);background:var(--red-dim)}
@@ -1052,6 +964,16 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
   .feat-grid,.how-grid,.tiers{grid-template-columns:1fr}
   .dash-body{grid-template-columns:1fr}
   .onchain{position:static}
+}
+@media(max-width:640px){
+  .topbar{flex-wrap:wrap;gap:10px;padding:12px 0}
+  .tf-toggle{order:3;width:100%;justify-content:space-between}
+  .tf-toggle button{flex:1;text-align:center}
+  .top-r{gap:10px}
+  .plan-badge{display:none}
+  .dash{padding:0 12px 40px}
+  .cards-grid,.sig-grid{grid-template-columns:1fr}
+  .landing,.dash{overflow-x:hidden}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 `;

@@ -6,14 +6,8 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-// Coinbase native granularities: 60, 300, 900, 3600, 21600, 86400. There is no
-// native 30m, so 30m is built by aggregating two 15m candles server-side.
-const TFMETA = {
-  "5m": { gran: 300, agg: 1 },
-  "15m": { gran: 900, agg: 1 },
-  "30m": { gran: 900, agg: 2 },
-  "1h": { gran: 3600, agg: 1 },
-};
+import { TF, isValidTf } from "../../../lib/timeframes.js";
+
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
 function aggregate(candles, gran, factor) {
@@ -35,7 +29,7 @@ function aggregate(candles, gran, factor) {
 }
 
 async function fetchCandles(sym, tf) {
-  const meta = TFMETA[tf] || TFMETA["15m"];
+  const meta = TF[tf] || TF["15m"];
   const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
   const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
   if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
@@ -47,7 +41,7 @@ async function fetchCandles(sym, tf) {
     .reverse()
     .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
     .filter((c) => c.close > 0);
-  return meta.agg > 1 ? aggregate(candles, meta.gran, meta.agg) : candles;
+  return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
 }
 
 async function fetchStats(sym) {
@@ -78,7 +72,7 @@ export async function GET(req) {
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
     .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 6);
   const tfParam = searchParams.get("tf");
-  const tf = TFMETA[tfParam] ? tfParam : "15m";
+  const tf = isValidTf(tfParam) ? tfParam : "15m";
 
   const coins = await Promise.all(
     symbols.map(async (sym) => {
