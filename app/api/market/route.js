@@ -6,21 +6,48 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const GRAN = { "5m": 300, "15m": 900, "30m": 1800, "1h": 3600 };
+// Coinbase native granularities: 60, 300, 900, 3600, 21600, 86400. There is no
+// native 30m, so 30m is built by aggregating two 15m candles server-side.
+const TFMETA = {
+  "5m": { gran: 300, agg: 1 },
+  "15m": { gran: 900, agg: 1 },
+  "30m": { gran: 900, agg: 2 },
+  "1h": { gran: 3600, agg: 1 },
+};
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
+function aggregate(candles, gran, factor) {
+  if (factor <= 1) return candles;
+  const bucketMs = gran * factor * 1000;
+  const map = new Map();
+  for (const c of candles) {
+    const b = Math.floor(c.time / bucketMs) * bucketMs;
+    const cur = map.get(b);
+    if (!cur) map.set(b, { time: b, open: c.open, high: c.high, low: c.low, close: c.close, volumeto: c.volumeto });
+    else {
+      cur.high = Math.max(cur.high, c.high);
+      cur.low = Math.min(cur.low, c.low);
+      cur.close = c.close; // candles are ascending, so last write is the latest close
+      cur.volumeto += c.volumeto;
+    }
+  }
+  return [...map.values()].sort((a, b) => a.time - b.time);
+}
+
 async function fetchCandles(sym, tf) {
-  const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${GRAN[tf] || 900}`;
+  const meta = TFMETA[tf] || TFMETA["15m"];
+  const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
   const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
   if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
   const raw = await r.json();
   if (!Array.isArray(raw) || raw.length === 0) throw new Error("no data");
   // Coinbase rows: [time, low, high, open, close, volume], newest first
-  return raw
+  const candles = raw
     .slice()
     .reverse()
     .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
     .filter((c) => c.close > 0);
+  return meta.agg > 1 ? aggregate(candles, meta.gran, meta.agg) : candles;
 }
 
 async function fetchStats(sym) {
@@ -51,7 +78,7 @@ export async function GET(req) {
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
     .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 6);
   const tfParam = searchParams.get("tf");
-  const tf = GRAN[tfParam] ? tfParam : "15m";
+  const tf = TFMETA[tfParam] ? tfParam : "15m";
 
   const coins = await Promise.all(
     symbols.map(async (sym) => {
