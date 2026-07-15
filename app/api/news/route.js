@@ -31,7 +31,7 @@ const EXCHANGES = ["binance", "coinbase", "kraken", "okx", "bybit", "huobi", "ht
 // whether it moved to an exchange (possible sell pressure) or off one (possible
 // accumulation). Free substitute for a paid on-chain provider, for flow only.
 function parseWhale(text, when, link) {
-  const matches = [...text.matchAll(/([\d,]+(?:\.\d+)?)\s*#?([A-Za-z]{2,6})\b/g)];
+  const matches = [...text.matchAll(/([\d,]+(?:\.\d+)?)\s*[#$]?([A-Za-z]{2,6})\b/g)];
   const pick = matches.find((m) => m[2].toUpperCase() !== "USD");
   if (!pick) return null;
   const asset = pick[2].toUpperCase();

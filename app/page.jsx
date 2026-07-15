@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH } from "../lib/signals.js";
 
 /* =========================================================================
    SETPOINT ALERTS — crypto alert terminal
@@ -275,7 +275,7 @@ function Auth({ mode, plan, onDone, onBack }) {
 }
 
 /* =============================== DASHBOARD =============================== */
-const DEFAULT_TH = { volMult: 2.0, rsiLow: 30, rsiHigh: 70, paceMult: 2.2, accumVolTrend: 1.5 };
+// DEFAULT_TH now comes from lib/signals.js, imported above.
 
 function Dashboard({ account, onSignOut }) {
   const [watchlist, setWatchlist] = useState(["BTC", "SOL", "XLM"]);
