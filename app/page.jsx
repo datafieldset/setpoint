@@ -84,6 +84,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.label}</span>
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
+          {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
         </div>
         <DirBadge dir={s.dir} />
       </div>
@@ -453,11 +454,14 @@ function Dashboard({ account, onSignOut }) {
         {watchlist.map((sym) => {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
           const up = snap && snap.pct >= 0;
+          const tr = snap?.trend;
+          const trendState = !tr || tr.adx < 20 ? { label: "RANGE", cls: "range" } : tr.plusDI > tr.minusDI ? { label: "UP", cls: "up" } : { label: "DOWN", cls: "down" };
           return (
             <div className={`tk ${selectedCoin === sym ? "sel" : ""}`} key={sym} onClick={() => selectCoin(sym)} role="button" tabIndex={0}>
               <div className="tk-l">
                 <span className="tk-sym">{sym}</span>
                 <span className="tk-name">{NAME[sym] || ""}</span>
+                {snap && <span className={`tk-trend ${trendState.cls}`}>{trendState.label}</span>}
               </div>
               <div className="tk-r">
                 {err ? <span className="tk-err">no feed</span> : snap ? (
@@ -788,9 +792,13 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 
 .ticker{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0}
 .tk{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-width:180px;flex:1}
-.tk-l{display:flex;align-items:baseline;gap:8px}
+.tk-l{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .tk-sym{font-family:'Bricolage Grotesque';font-weight:700;font-size:15px}
 .tk-name{color:var(--dim);font-size:11.5px}
+.tk-trend{font-size:9px;font-weight:700;letter-spacing:.05em;padding:2px 6px;border-radius:5px;margin-left:2px}
+.tk-trend.up{color:var(--green);background:var(--green-dim)}
+.tk-trend.down{color:var(--red);background:var(--red-dim)}
+.tk-trend.range{color:var(--muted);background:var(--panel3)}
 .tk-r{display:flex;align-items:center;gap:10px}
 .tk-price{font-size:15px;font-weight:600}
 .tk-pct{font-size:12.5px;font-weight:600}
@@ -825,13 +833,16 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .sig-card.bull{border-left-color:var(--green)}
 .sig-card.bear{border-left-color:var(--red)}
 .sig-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
-.sig-id{display:flex;align-items:baseline;gap:8px}
+.sig-id{display:flex;align-items:center;gap:6px;flex-wrap:wrap;row-gap:4px}
 .sig-id .sym{font-family:'Bricolage Grotesque';font-weight:800;font-size:17px}
 .sig-type{font-size:12.5px;color:var(--muted);font-weight:500}
 .vol-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .vol-tag.confirmed{color:var(--green);background:var(--green-dim)}
 .vol-tag.rising{color:var(--green-soft);background:var(--green-dim)}
 .vol-tag.light{color:var(--amber);background:var(--amber-dim)}
+.trend-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
+.trend-tag.with{color:var(--green);background:var(--green-dim)}
+.trend-tag.against{color:var(--red);background:var(--red-dim)}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:6px}
 .badge.up{color:var(--green);background:var(--green-dim)}
 .badge.down{color:var(--red);background:var(--red-dim)}

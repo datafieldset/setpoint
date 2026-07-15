@@ -100,7 +100,7 @@ function walkForward(candles, tfKey, coin) {
         if (hitTarget) { outcome = "win"; break; }
         if (hitStop) { outcome = "loss"; break; }
       }
-      out.push({ coin, tfKey, type: s.type, label: s.label, dir: s.dir, volTag: s.volTag || "none", outcome });
+      out.push({ coin, tfKey, type: s.type, label: s.label, dir: s.dir, volTag: s.volTag || "none", trendTag: s.trendTag || "none", outcome });
     }
   }
   return out;
@@ -119,6 +119,7 @@ function summarize(rows) {
   for (const r of rows) {
     bump(`${r.label} · ${TF[r.tfKey]?.label || r.tfKey} · ${r.dir}`, r.outcome);
     bump(`Volume: ${r.volTag}`, r.outcome);
+    bump(`Trend: ${r.trendTag}`, r.outcome);
   }
   const list = [...buckets.values()].map((b) => ({
     ...b,
@@ -228,7 +229,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
   <tbody>${rows}</tbody></table>
 
   <div class="note">
-    Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
+    Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms. Signals now also carry a trend tag (ADX-based, with/against/none) alongside the volume tag, so this run reflects the trend-filter change too.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
   </body></html>`;
