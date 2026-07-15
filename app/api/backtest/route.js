@@ -5,12 +5,21 @@
 // elsewhere) once the research is done. Visit it in a browser, read the
 // report, no setup or files to run.
 //
-// What it does: pulls real historical candles from Binance's free public API
-// (no key needed), walks through that history one bar at a time calling the
-// EXACT same computeSignals() used by the live dashboard, and records whether
-// each signal it would have fired went on to hit its target or its stop
-// first. Only the short summary (never the raw per-alert detail) gets
-// written to Neon, so a future run can be compared against this one.
+// What it does: pulls real historical candles from Coinbase's free public API
+// (no key needed, the same source and fetch logic as app/api/market/route.js),
+// and walks through that history one bar at a time calling the EXACT same
+// computeSignals() used by the live dashboard, recording whether each signal
+// it would have fired went on to hit its target or its stop first.
+// Only the short summary (never the raw per-alert detail) gets written to
+// Neon, so a future run can be compared against this one.
+//
+// Note: Binance was tried first, but Binance blocks US-based servers
+// (HTTP 451), and Vercel's functions run from US regions by default, so every
+// request was rejected outright. Coinbase is what the live dashboard already
+// uses successfully from this exact deployment, so it's the reliable choice
+// here too, and the 30m aggregation below is the identical logic the live
+// market route uses, so this backtest's 30m now matches live exactly rather
+// than approximating it from a different exchange.
 //
 // Honest limitations, on purpose, not hidden:
 // - The early-pace volume signal needs a live, still-forming candle. Closed
@@ -18,35 +27,52 @@
 // - If a single bar's high/low would have hit both the target and the stop,
 //   there's no way to know which happened first from candle data alone. This
 //   counts that as a loss, the conservative assumption, not the generous one.
-// - 30m on the live dashboard is built by merging two Coinbase 15m candles.
-//   Binance has a native 30m candle, so this backtest uses that directly.
-//   Prices track closely across major exchanges, but it's not literally the
-//   same feed, worth knowing if a result looks slightly off from live.
+// - Coinbase's public candle endpoint returns up to 300 bars per call, so
+//   sample size is naturally smaller on slower timeframes (1h ≈ 12 days of
+//   history, 5m ≈ 25 hours). Read low-sample buckets accordingly.
 
 import { computeSignals, DEFAULT_TH } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
 
 export const dynamic = "force-dynamic";
 
-const COINS = { BTC: "BTCUSDT", SOL: "SOLUSDT", XLM: "XLMUSDT" };
+const COINS = ["BTC", "SOL", "XLM"];
 const FOLLOW_BARS = 40; // how many bars forward to look for a target/stop hit
 const WARMUP = 30;      // matches computeSignals' own minimum history requirement
+const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
-async function fetchBinanceCandles(symbol, tfKey) {
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol}&interval=${tfKey}&limit=1000`;
-  const r = await fetch(url, { cache: "no-store" });
-  if (!r.ok) throw new Error(`Binance ${r.status} for ${symbol} ${tfKey}`);
+function aggregate(candles, gran, factor) {
+  if (factor <= 1) return candles;
+  const bucketMs = gran * factor * 1000;
+  const map = new Map();
+  for (const c of candles) {
+    const b = Math.floor(c.time / bucketMs) * bucketMs;
+    const cur = map.get(b);
+    if (!cur) map.set(b, { time: b, open: c.open, high: c.high, low: c.low, close: c.close, volumeto: c.volumeto });
+    else {
+      cur.high = Math.max(cur.high, c.high);
+      cur.low = Math.min(cur.low, c.low);
+      cur.close = c.close; // candles are ascending, so last write is the latest close
+      cur.volumeto += c.volumeto;
+    }
+  }
+  return [...map.values()].sort((a, b) => a.time - b.time);
+}
+
+async function fetchCoinbaseCandles(sym, tfKey) {
+  const meta = TF[tfKey] || TF["15m"];
+  const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
+  const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
+  if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
   const raw = await r.json();
-  if (!Array.isArray(raw) || raw.length === 0) throw new Error(`no data for ${symbol} ${tfKey}`);
-  // Binance kline row: [openTime, open, high, low, close, volume, closeTime, ...]
-  return raw.map((k) => ({
-    time: k[0],
-    open: parseFloat(k[1]),
-    high: parseFloat(k[2]),
-    low: parseFloat(k[3]),
-    close: parseFloat(k[4]),
-    volumeto: parseFloat(k[5]),
-  }));
+  if (!Array.isArray(raw) || raw.length === 0) throw new Error("no data");
+  // Coinbase rows: [time, low, high, open, close, volume], newest first
+  const candles = raw
+    .slice()
+    .reverse()
+    .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
+    .filter((c) => c.close > 0);
+  return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
 }
 
 function walkForward(candles, tfKey, coin) {
@@ -202,7 +228,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
   <tbody>${rows}</tbody></table>
 
   <div class="note">
-    Methodology: replays real Binance historical candles bar by bar through the live signal engine (lib/signals.js), only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first.
+    Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
   </body></html>`;
@@ -213,10 +239,10 @@ export async function GET() {
   const errors = [];
   const allRows = [];
 
-  for (const [coin, symbol] of Object.entries(COINS)) {
+  for (const coin of COINS) {
     for (const tfKey of Object.keys(TF)) {
       try {
-        const candles = await fetchBinanceCandles(symbol, tfKey);
+        const candles = await fetchCoinbaseCandles(coin, tfKey);
         allRows.push(...walkForward(candles, tfKey, coin));
       } catch (e) {
         errors.push(`${coin} ${tfKey}: ${String(e.message || e).slice(0, 120)}`);
