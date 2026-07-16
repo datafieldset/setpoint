@@ -85,6 +85,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
           <span className="sig-type">{s.label}</span>
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
           {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
+          {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? "backtest-proven" : "backtest-weak"}</span>}
         </div>
         <DirBadge dir={s.dir} />
       </div>
@@ -415,11 +416,16 @@ function Dashboard({ account, onSignOut }) {
 
   const secsToRefresh = lastUpdate ? Math.max(0, 60 - Math.floor((now - lastUpdate) / 1000)) : null;
 
+  const [showWeak, setShowWeak] = useState(false);
+
   const allSignals = useMemo(() => {
     const out = [];
     watchlist.forEach((sym) => (data[sym]?.signals || []).forEach((s) => out.push({ ...s, sym, price: data[sym]?.snap?.price })));
     return out.sort((a, b) => b.strength - a.strength);
   }, [data, watchlist]);
+
+  const weakCount = useMemo(() => allSignals.filter((s) => s.tier === "weak").length, [allSignals]);
+  const visibleSignals = useMemo(() => (showWeak ? allSignals : allSignals.filter((s) => s.tier !== "weak")), [allSignals, showWeak]);
 
   const addCoin = (raw) => {
     const sym = (raw || "").trim().toUpperCase();
@@ -493,15 +499,27 @@ function Dashboard({ account, onSignOut }) {
 
       <div className="dash-body">
         <div className="opps">
-          <div className="section-head"><h2>Opportunities</h2><span className="sh-sub">{allSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span></div>
-          {allSignals.length === 0 ? (
+          <div className="section-head">
+            <h2>Opportunities</h2>
+            <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
+            {weakCount > 0 && (
+              <button className="weak-toggle" onClick={() => setShowWeak((v) => !v)}>
+                {showWeak ? `hide ${weakCount} backtest-weak` : `${weakCount} backtest-weak hidden, show anyway`}
+              </button>
+            )}
+          </div>
+          {visibleSignals.length === 0 ? (
             <div className="empty">
-              <div className="empty-h">Nothing firing right now.</div>
-              <div className="empty-d">This is normal. Setpoint stays quiet until a real move shows up on {watchlist.join(", ")}. Currently watching on the {TF[tfKey].label}.</div>
+              <div className="empty-h">{allSignals.length > 0 ? "Nothing worth showing right now." : "Nothing firing right now."}</div>
+              <div className="empty-d">
+                {allSignals.length > 0
+                  ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired but backtested poorly for this exact setup twice, so they're hidden by default. Use the toggle above to see them anyway.`
+                  : `This is normal. Setpoint stays quiet until a real move shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
+              </div>
             </div>
           ) : (
             <div className="cards-grid">
-              {allSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
+              {visibleSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
             </div>
           )}
 
@@ -820,6 +838,8 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+.weak-toggle{margin-left:auto;font-size:11px;color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.3);padding:4px 10px;border-radius:20px;white-space:nowrap}
+.weak-toggle:hover{filter:brightness(1.1)}
 .section-head h2{font-size:20px;font-weight:700}
 .sh-sub{color:var(--dim);font-size:12.5px}
 .sh-sub.sample{color:var(--amber)}
@@ -843,6 +863,9 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .trend-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .trend-tag.with{color:var(--green);background:var(--green-dim)}
 .trend-tag.against{color:var(--red);background:var(--red-dim)}
+.tier-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
+.tier-tag.proven{color:#03110B;background:var(--green)}
+.tier-tag.weak{color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.4)}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:6px}
 .badge.up{color:var(--green);background:var(--green-dim)}
 .badge.down{color:var(--red);background:var(--red-dim)}

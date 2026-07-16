@@ -21,6 +21,12 @@
 // market route uses, so this backtest's 30m now matches live exactly rather
 // than approximating it from a different exchange.
 //
+// Also reports on: a proven/weak backtest-tier breakdown (validates the
+// hand-curated table in lib/signals.js against fresh data), a strength-tier
+// breakdown (tests whether the strength score itself predicts outcome), and
+// a candle-shape breakdown per timeframe (measurement only, flags spike-and-
+// snap-back candles, not wired into live scoring yet).
+//
 // Honest limitations, on purpose, not hidden:
 // - The early-pace volume signal needs a live, still-forming candle. Closed
 //   historical bars can't fairly simulate that, so "pace" is excluded here.
@@ -100,7 +106,25 @@ function walkForward(candles, tfKey, coin) {
         if (hitTarget) { outcome = "win"; break; }
         if (hitStop) { outcome = "loss"; break; }
       }
-      out.push({ coin, tfKey, type: s.type, label: s.label, dir: s.dir, volTag: s.volTag || "none", trendTag: s.trendTag || "none", outcome });
+
+      // Candle shape on the bar the signal fired on: a big high/low range with a
+      // small open/close body is a spike-and-snap-back shape, the pattern the
+      // Stanford settlement-manipulation study flagged on fast windows. This is
+      // measurement only in this release, not wired into live scoring, until a
+      // run shows it actually predicts anything.
+      const sigCandle = candles[i];
+      const body = Math.abs(sigCandle.close - sigCandle.open);
+      const range = sigCandle.high - sigCandle.low;
+      const wickRatio = range > 0 ? 1 - body / range : 0;
+      const candleShape = wickRatio >= 0.5 ? "spiky" : "clean";
+
+      const strengthTier = s.strength >= 0.5 ? "high" : s.strength >= 0.2 ? "mid" : "low";
+
+      out.push({
+        coin, tfKey, type: s.type, label: s.label, dir: s.dir,
+        volTag: s.volTag || "none", trendTag: s.trendTag || "none", tier: s.tier || "none",
+        strengthTier, candleShape, outcome,
+      });
     }
   }
   return out;
@@ -120,6 +144,9 @@ function summarize(rows) {
     bump(`${r.label} · ${TF[r.tfKey]?.label || r.tfKey} · ${r.dir}`, r.outcome);
     bump(`Volume: ${r.volTag}`, r.outcome);
     bump(`Trend: ${r.trendTag}`, r.outcome);
+    bump(`Backtest tier: ${r.tier}`, r.outcome);
+    bump(`Strength: ${r.strengthTier}`, r.outcome);
+    bump(`Candle shape: ${r.candleShape} · ${TF[r.tfKey]?.label || r.tfKey}`, r.outcome);
   }
   const list = [...buckets.values()].map((b) => ({
     ...b,
@@ -229,7 +256,8 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
   <tbody>${rows}</tbody></table>
 
   <div class="note">
-    Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms. Signals now also carry a trend tag (ADX-based, with/against/none) alongside the volume tag, so this run reflects the trend-filter change too.
+    Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
+    New this run: a "Backtest tier" breakdown shows whether the proven/weak combination table (built from pooling two earlier real runs) actually holds up going forward. A "Strength" breakdown tests whether a signal's own strength score predicts its outcome, high should beat low if the ranking is doing its job. A "Candle shape" breakdown per timeframe flags a big high/low range with a small open/close body as "spiky", the spike-and-snap-back shape a Stanford/SMU study found being exploited on 5-minute Bitcoin prediction market settlements. This is measurement only, not wired into live scoring yet, it will only get built into the engine if it actually shows up as predictive here.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
   </body></html>`;
