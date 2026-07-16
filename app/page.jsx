@@ -1,5 +1,6 @@
 "use client";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH } from "../lib/signals.js";
@@ -122,7 +123,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 }
 
 /* ============================== LANDING PAGE ============================= */
-function Landing({ onPickPlan, onDemo }) {
+function Landing({ onPickPlan, onDemo, onSignIn }) {
   const onWaitlist = () => { const el = document.getElementById("waitlist"); if (el) el.scrollIntoView({ behavior: "smooth" }); };
   const demoSig = { label: "Momentum", dir: "bull", strength: 0.72, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = [
@@ -135,6 +136,7 @@ function Landing({ onPickPlan, onDemo }) {
       <nav className="nav">
         <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="nav-r">
+          <button className="ghost" onClick={onSignIn}>Sign in</button>
           <button className="ghost" onClick={onDemo}>Live demo</button>
           <button className="solid" onClick={onWaitlist}>Early access</button>
         </div>
@@ -253,11 +255,44 @@ function Waitlist() {
 }
 
 /* ================================= AUTH ================================= */
-function Auth({ mode, plan, onDone, onBack }) {
+function Auth({ mode, plan, onBack }) {
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
+  const [err, setErr] = useState("");
+  const [busy, setBusy] = useState(false);
   const planName = { watch: "Watch (free)", trader: "Trader, $19/mo", desk: "Desk, $49/mo" }[plan] || "Watch (free)";
-  const go = () => onDone({ email: email || "demo@setpoint.app", plan: plan || "watch" });
+
+  const ERR_MSG = {
+    email_taken: "That email already has an account. Try signing in instead.",
+    weak_password: "Password needs to be at least 8 characters.",
+    invalid_email: "That doesn't look like a valid email.",
+    CredentialsSignin: "Wrong email or password.",
+  };
+
+  const go = async () => {
+    setErr("");
+    if (!email || !pw) { setErr("Enter an email and password."); return; }
+    setBusy(true);
+    try {
+      if (mode !== "signin") {
+        const res = await fetch("/api/register", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ email, password: pw, plan: plan || "watch" }),
+        });
+        const json = await res.json();
+        if (!res.ok) { setErr(ERR_MSG[json.error] || "Could not create the account. Try again."); setBusy(false); return; }
+      }
+      const result = await signIn("credentials", { email, password: pw, redirect: false });
+      if (result?.error) { setErr(ERR_MSG[result.error] || "Wrong email or password."); setBusy(false); return; }
+      // useSession() in the App root picks up the new session automatically.
+    } catch {
+      setErr("Something went wrong. Try again.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <div className="auth-wrap">
       <button className="auth-back" onClick={onBack}>← back</button>
@@ -265,13 +300,14 @@ function Auth({ mode, plan, onDone, onBack }) {
         <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <h3>{mode === "signin" ? "Welcome back" : "Create your account"}</h3>
         {mode !== "signin" && <div className="plan-chip">{planName}</div>}
-        <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" /></label>
-        <label className="fld"><span>Password</span><input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="••••••••" type="password" /></label>
+        <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" autoComplete="email" /></label>
+        <label className="fld"><span>Password</span><input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="••••••••" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>
         {mode !== "signin" && plan && plan !== "watch" && (
-          <div className="pay-note">This is a demo build, so no card is charged. Checkout would go here in the real version.</div>
+          <div className="pay-note">Card checkout isn't wired up yet, your plan is saved but nothing is charged.</div>
         )}
-        <button className="solid full lg" onClick={go}>{mode === "signin" ? "Sign in" : "Create account and continue"}</button>
-        <div className="auth-alt">{mode === "signin" ? "New here? Just continue, this is a demo." : "By continuing you agree this is a demo environment."}</div>
+        {err && <div className="auth-err">{err}</div>}
+        <button className="solid full lg" onClick={go} disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account and continue"}</button>
+        <div className="auth-alt">{mode === "signin" ? "New here? Use the plans on the homepage to create an account." : "Your password is stored hashed, never in plain text."}</div>
       </div>
     </div>
   );
@@ -657,25 +693,45 @@ function Dashboard({ account, onSignOut }) {
 
 /* ================================= ROOT ================================= */
 export default function App() {
-  const [view, setView] = useState("landing"); // landing | auth | dashboard
+  const { data: session, status } = useSession(); // "loading" | "authenticated" | "unauthenticated"
+  const [view, setView] = useState("landing"); // landing | auth
   const [authMode, setAuthMode] = useState("signup");
   const [plan, setPlan] = useState(null);
-  const [account, setAccount] = useState(null);
+  const [demo, setDemo] = useState(false); // "see live demo" bypasses real accounts entirely
+
+  const isAuthed = status === "authenticated";
+  const account = isAuthed ? { email: session.user.email, plan: session.user.plan } : demo ? { email: "demo@setpoint.app", plan: "trader" } : null;
+
+  const handleSignOut = () => {
+    setDemo(false);
+    if (isAuthed) signOut({ redirect: false });
+    setView("landing");
+  };
+
+  if (status === "loading") {
+    return (
+      <div className="app">
+        <style>{CSS}</style>
+        <div className="boot-screen"><span className="logo-dot" />Setpoint</div>
+      </div>
+    );
+  }
 
   return (
     <div className="app">
       <style>{CSS}</style>
-      {view === "landing" && (
+      {!account && view === "landing" && (
         <Landing
           onPickPlan={(p) => { setAuthMode("signup"); setPlan(p); setView("auth"); }}
-          onDemo={() => { setAccount({ email: "demo@setpoint.app", plan: "trader" }); setView("dashboard"); }}
+          onDemo={() => setDemo(true)}
+          onSignIn={() => { setAuthMode("signin"); setPlan(null); setView("auth"); }}
         />
       )}
-      {view === "auth" && (
-        <Auth mode={authMode} plan={plan} onBack={() => setView("landing")} onDone={(acc) => { setAccount(acc); setView("dashboard"); }} />
+      {!account && view === "auth" && (
+        <Auth mode={authMode} plan={plan} onBack={() => setView("landing")} />
       )}
-      {view === "dashboard" && account && (
-        <Dashboard account={account} onSignOut={() => { setAccount(null); setView("landing"); }} />
+      {account && (
+        <Dashboard account={account} onSignOut={handleSignOut} />
       )}
     </div>
   );
@@ -790,6 +846,9 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .fld input{width:100%;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:12px 14px;color:var(--text);font-size:15px;font-family:inherit}
 .fld input:focus{border-color:var(--green);outline:none}
 .pay-note{background:var(--amber-dim);border:1px solid rgba(245,184,81,.3);color:var(--amber);font-size:12.5px;padding:11px 13px;border-radius:10px;margin-top:16px;line-height:1.5}
+.auth-err{background:var(--red-dim);border:1px solid rgba(255,92,108,.3);color:var(--red-soft);font-size:12.5px;padding:10px 13px;border-radius:10px;margin-top:14px;line-height:1.5}
+button:disabled{opacity:.6;cursor:not-allowed}
+.boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;color:var(--text)}
 .auth-card .solid{margin-top:20px}
 .auth-alt{text-align:center;color:var(--dim);font-size:12.5px;margin-top:16px}
 
