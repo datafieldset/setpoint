@@ -160,6 +160,7 @@ function Landing({ onPickPlan, onDemo }) {
 
       <section className="strip">
         <div className="strip-item"><span className="si-k">The gap</span><span className="si-v">Most tools send you a ping and leave you to work out the levels yourself. Setpoint puts the entry, stop, and target right on the alert.</span></div>
+        <div className="strip-item"><span className="si-k">The bar</span><span className="si-v">Setpoint only surfaces setups that have already backtested well, not just any indicator crossing a line. Fewer alerts, on purpose.</span></div>
       </section>
 
       <section className="feat">
@@ -424,8 +425,8 @@ function Dashboard({ account, onSignOut }) {
     return out.sort((a, b) => b.strength - a.strength);
   }, [data, watchlist]);
 
-  const weakCount = useMemo(() => allSignals.filter((s) => s.tier === "weak").length, [allSignals]);
-  const visibleSignals = useMemo(() => (showWeak ? allSignals : allSignals.filter((s) => s.tier !== "weak")), [allSignals, showWeak]);
+  const hiddenCount = useMemo(() => allSignals.filter((s) => s.tier !== "proven").length, [allSignals]);
+  const visibleSignals = useMemo(() => (showWeak ? allSignals : allSignals.filter((s) => s.tier === "proven")), [allSignals, showWeak]);
 
   const addCoin = (raw) => {
     const sym = (raw || "").trim().toUpperCase();
@@ -502,19 +503,19 @@ function Dashboard({ account, onSignOut }) {
           <div className="section-head">
             <h2>Opportunities</h2>
             <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
-            {weakCount > 0 && (
+            {hiddenCount > 0 && (
               <button className="weak-toggle" onClick={() => setShowWeak((v) => !v)}>
-                {showWeak ? `hide ${weakCount} backtest-weak` : `${weakCount} backtest-weak hidden, show anyway`}
+                {showWeak ? `hide ${hiddenCount} not yet proven` : `${hiddenCount} not yet proven hidden, show anyway`}
               </button>
             )}
           </div>
           {visibleSignals.length === 0 ? (
             <div className="empty">
-              <div className="empty-h">{allSignals.length > 0 ? "Nothing worth showing right now." : "Nothing firing right now."}</div>
+              <div className="empty-h">{allSignals.length > 0 ? "Nothing proven right now." : "Nothing firing right now."}</div>
               <div className="empty-d">
                 {allSignals.length > 0
-                  ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired but backtested poorly for this exact setup twice, so they're hidden by default. Use the toggle above to see them anyway.`
-                  : `This is normal. Setpoint stays quiet until a real move shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
+                  ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's backtested well twice yet. That's the point, not a bug, only proven setups show by default. Use the toggle above to see the rest.`
+                  : `This is normal. Setpoint only shows setups proven by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
               </div>
             </div>
           ) : (
@@ -724,7 +725,7 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .hero-tags span{font-size:12px;color:var(--dim);border:1px solid var(--hair);padding:5px 11px;border-radius:20px}
 .float-card{filter:drop-shadow(0 30px 60px rgba(0,0,0,.5))}
 
-.strip{border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:22px 0;margin-bottom:12px}
+.strip{border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:22px 0;margin-bottom:12px;display:flex;flex-direction:column;gap:14px}
 .strip-item{display:flex;gap:16px;align-items:baseline}
 .si-k{font-size:12px;letter-spacing:.16em;color:var(--amber);font-weight:600;text-transform:uppercase;white-space:nowrap}
 .si-v{color:var(--text);font-size:17px;font-weight:500}
