@@ -7,6 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { TF, isValidTf } from "../../../lib/timeframes.js";
+import { marketBias, reversalRisk } from "../../../lib/signals.js";
 
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
@@ -67,6 +68,37 @@ async function fetchFng() {
   }
 }
 
+// Market-wide bias, computed from an independent top-100 basket via
+// CoinGecko's free, keyless public API, not from whatever the user happens
+// to be watching. That independence matters: a bias built only from a
+// 3-6 coin watchlist can be partly shaped by one of those same coins' own
+// move, a mild circularity. A broad, external basket removes that, and is
+// closer to an honest "how is the crypto market doing" read. Requests a
+// fast 1h change per coin; falls back to 24h if that field isn't present,
+// so a CoinGecko response-shape change degrades gracefully instead of
+// silently returning nothing. No key, no signup, ~30 req/min is far more
+// than this needs at one call per dashboard refresh.
+async function fetchBroadMarketBias() {
+  try {
+    const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=1h&sparkline=false";
+    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
+    if (!r.ok) return null;
+    const raw = await r.json();
+    if (!Array.isArray(raw) || raw.length === 0) return null;
+    const readings = raw
+      .map((c) => {
+        const pct = c.price_change_percentage_1h_in_currency ?? c.price_change_percentage_24h ?? null;
+        const sym = (c.symbol || "").toUpperCase();
+        return { sym, pct, isBTC: sym === "BTC" };
+      })
+      .filter((c) => c.pct != null && c.sym);
+    if (!readings.length) return null;
+    return marketBias(readings);
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
@@ -74,17 +106,21 @@ export async function GET(req) {
   const tfParam = searchParams.get("tf");
   const tf = isValidTf(tfParam) ? tfParam : "15m";
 
-  const coins = await Promise.all(
-    symbols.map(async (sym) => {
-      try {
-        const [candles, stats] = await Promise.all([fetchCandles(sym, tf), fetchStats(sym)]);
-        return { sym, candles, stats, error: null };
-      } catch (e) {
-        return { sym, candles: [], stats: null, error: e.message || "failed" };
-      }
-    })
-  );
+  const [coins, fng, bias] = await Promise.all([
+    Promise.all(
+      symbols.map(async (sym) => {
+        try {
+          const [candles, stats] = await Promise.all([fetchCandles(sym, tf), fetchStats(sym)]);
+          return { sym, candles, stats, error: null };
+        } catch (e) {
+          return { sym, candles: [], stats: null, error: e.message || "failed" };
+        }
+      })
+    ),
+    fetchFng(),
+    fetchBroadMarketBias(),
+  ]);
 
-  const fng = await fetchFng();
-  return Response.json({ coins, fng, tf, at: Date.now() });
+  const risk = reversalRisk(bias, fng?.value);
+  return Response.json({ coins, fng, bias, risk, tf, at: Date.now() });
 }

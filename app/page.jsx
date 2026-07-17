@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH } from "../lib/signals.js";
 
 /* =========================================================================
    SETPOINT ALERTS — crypto alert terminal
@@ -420,15 +420,11 @@ function Dashboard({ account, onSignOut }) {
       const json = await res.json();
       const coins = json.coins || [];
 
-      // Pass 1: a fast, market-wide bias, computed before any single-coin
-      // signal runs. BTC counts double. This is deliberately reactive,
-      // roughly a 2-hour window on 15m, the opposite tradeoff from ADX,
-      // which is slow by design and can take a while to confirm a fresh flip.
-      const coinReadings = coins
-        .filter((c) => !c.error && c.candles && c.candles.length)
-        .map((c) => ({ sym: c.sym, pct: windowPct(c.candles, 8), isBTC: c.sym === "BTC" }));
-      const currentBias = marketBias(coinReadings);
-      const currentRisk = reversalRisk(currentBias, json.fng?.value);
+      // Bias and reversal-risk are now computed server-side in /api/market,
+      // from an independent broad-market basket, not from the watchlist.
+      // See app/api/market/route.js: fetchBroadMarketBias().
+      const currentBias = json.bias || null;
+      const currentRisk = json.risk || null;
       setBias(currentBias);
       setRisk(currentRisk);
 
@@ -440,9 +436,7 @@ function Dashboard({ account, onSignOut }) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null };
           return;
         }
-        // Pass 2: now that the market-wide bias is known, run the real
-        // signal computation with it available.
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias });
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk });
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];

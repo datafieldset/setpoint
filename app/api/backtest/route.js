@@ -41,7 +41,7 @@
 //   sample size is naturally smaller on slower timeframes (1h ≈ 12 days of
 //   history, 5m ≈ 25 hours). Read low-sample buckets accordingly.
 
-import { computeSignals, DEFAULT_TH, windowPct, marketBias } from "../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
 
 export const dynamic = "force-dynamic";
@@ -111,13 +111,19 @@ function jointWalkForward(candlesByCoin, tfKey) {
       isBTC: coin === "BTC",
     }));
     const bias = marketBias(readings);
+    // No historical Fear & Greed series available cheaply, so this can only
+    // ever register "elevated" or "low" here, never "high" (which needs a
+    // sentiment extreme too). That's an honest gap, not a bug: it still lets
+    // this run test the core question, does fading a stretched bias beat
+    // fading in general, just without the extra sentiment-extreme tier.
+    const risk = reversalRisk(bias, null);
 
     for (const coin of coins) {
       const candles = candlesByCoin[coin];
       const slice = candles.slice(0, i + 1);
       let signals;
       try {
-        ({ signals } = computeSignals(slice, tfKey, DEFAULT_TH, { now: simNow, marketBias: bias }));
+        ({ signals } = computeSignals(slice, tfKey, DEFAULT_TH, { now: simNow, marketBias: bias, reversalRisk: risk }));
       } catch {
         continue;
       }
@@ -288,6 +294,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
   <div class="note">
     Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
     Also reports on: a "Backtest tier" breakdown (validates the proven/weak combination table against fresh data), a "Strength" breakdown (tests whether the strength score itself predicts outcome), a "Candle shape" breakdown per timeframe (measurement only, flags spike-and-snap-back candles, not wired into live scoring), and a "Bias" breakdown testing the market-wide bias layer: at every historical step, all three coins' own recent moves are pooled into the same shared bias reading the live dashboard uses, computed from only the data available at that point, then each coin's signals are checked against it. This assumes each coin's candle series lines up in time with the others, true in practice since all three are fetched with the same granularity from the same exchange.
+    New this run: "Reversal watch" is a distinct signal, not a scoring tweak, that only fires when the market's lean looks visibly stretched, testing a specific idea, that fading a stretched extreme is a real, separate opportunity from fading in general. Compare its own "Reversal watch" rows below against the existing "Bias: against" row to see whether stretched-only fades actually beat fading whenever direction merely disagrees. One honest gap: there's no cheap historical Fear & Greed series to replay, so this backtest can only ever register the "elevated" stretch tier, never "high" (which live also requires a sentiment extreme), so the strongest version of this idea isn't fully testable here yet, only live.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
   </body></html>`;
