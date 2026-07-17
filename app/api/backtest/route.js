@@ -23,9 +23,13 @@
 //
 // Also reports on: a proven/weak backtest-tier breakdown (validates the
 // hand-curated table in lib/signals.js against fresh data), a strength-tier
-// breakdown (tests whether the strength score itself predicts outcome), and
-// a candle-shape breakdown per timeframe (measurement only, flags spike-and-
-// snap-back candles, not wired into live scoring yet).
+// breakdown (tests whether the strength score itself predicts outcome), a
+// candle-shape breakdown per timeframe (measurement only, flags spike-and-
+// snap-back candles, not wired into live scoring yet), and a bias breakdown
+// (tests the market-wide bias layer: replays all three coins for a
+// timeframe together, one shared historical step at a time, so bias is
+// computed from what the whole watchlist was doing at that same moment, not
+// one coin replayed in isolation).
 //
 // Honest limitations, on purpose, not hidden:
 // - The early-pace volume signal needs a live, still-forming candle. Closed
@@ -37,7 +41,7 @@
 //   sample size is naturally smaller on slower timeframes (1h ≈ 12 days of
 //   history, 5m ≈ 25 hours). Read low-sample buckets accordingly.
 
-import { computeSignals, DEFAULT_TH } from "../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, windowPct, marketBias } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
 
 export const dynamic = "force-dynamic";
@@ -81,50 +85,75 @@ async function fetchCoinbaseCandles(sym, tfKey) {
   return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
 }
 
-function walkForward(candles, tfKey, coin) {
+// Bias needs to know what the WHOLE watchlist was doing at the same
+// historical instant, not just one coin in isolation, so this replays all
+// coins for a timeframe together, one shared step at a time, rather than
+// each coin independently. At step i, every coin's windowPct is computed
+// using only that coin's own data up to and including bar i, no lookahead,
+// pooled into the same marketBias() the live dashboard uses, then each
+// coin's own signals are computed against that shared historical bias.
+// Assumes candle arrays across coins are index-aligned in time, true in
+// practice since all three are fetched with the same granularity from the
+// same exchange at the same moment, both long-established Coinbase pairs.
+function jointWalkForward(candlesByCoin, tfKey) {
   const out = [];
   const bar = barMs(tfKey);
-  for (let i = WARMUP; i < candles.length - 1; i++) {
-    const slice = candles.slice(0, i + 1);
-    const simNow = candles[i].time + bar; // treat bar i as freshly closed, not forming
-    let signals;
-    try {
-      ({ signals } = computeSignals(slice, tfKey, DEFAULT_TH, { now: simNow }));
-    } catch {
-      continue;
-    }
-    for (const s of signals) {
-      if (s.type === "pace") continue; // can't be fairly tested on closed history
+  const coins = Object.keys(candlesByCoin).filter((c) => candlesByCoin[c] && candlesByCoin[c].length > WARMUP + 5);
+  if (!coins.length) return out;
+  const minLen = Math.min(...coins.map((c) => candlesByCoin[c].length));
 
-      let outcome = "open";
-      const end = Math.min(candles.length, i + 1 + FOLLOW_BARS);
-      for (let j = i + 1; j < end; j++) {
-        const c = candles[j];
-        const hitTarget = s.dir === "bull" ? c.high >= s.target : c.low <= s.target;
-        const hitStop = s.dir === "bull" ? c.low <= s.stop : c.high >= s.stop;
-        if (hitTarget && hitStop) { outcome = "loss"; break; } // ambiguous same-bar case: assume the worse outcome
-        if (hitTarget) { outcome = "win"; break; }
-        if (hitStop) { outcome = "loss"; break; }
+  for (let i = WARMUP; i < minLen - 1; i++) {
+    const simNow = candlesByCoin[coins[0]][i].time + bar;
+
+    const readings = coins.map((coin) => ({
+      sym: coin,
+      pct: windowPct(candlesByCoin[coin].slice(0, i + 1), 8),
+      isBTC: coin === "BTC",
+    }));
+    const bias = marketBias(readings);
+
+    for (const coin of coins) {
+      const candles = candlesByCoin[coin];
+      const slice = candles.slice(0, i + 1);
+      let signals;
+      try {
+        ({ signals } = computeSignals(slice, tfKey, DEFAULT_TH, { now: simNow, marketBias: bias }));
+      } catch {
+        continue;
       }
+      for (const s of signals) {
+        if (s.type === "pace") continue; // can't be fairly tested on closed history
 
-      // Candle shape on the bar the signal fired on: a big high/low range with a
-      // small open/close body is a spike-and-snap-back shape, the pattern the
-      // Stanford settlement-manipulation study flagged on fast windows. This is
-      // measurement only in this release, not wired into live scoring, until a
-      // run shows it actually predicts anything.
-      const sigCandle = candles[i];
-      const body = Math.abs(sigCandle.close - sigCandle.open);
-      const range = sigCandle.high - sigCandle.low;
-      const wickRatio = range > 0 ? 1 - body / range : 0;
-      const candleShape = wickRatio >= 0.5 ? "spiky" : "clean";
+        let outcome = "open";
+        const end = Math.min(candles.length, i + 1 + FOLLOW_BARS);
+        for (let j = i + 1; j < end; j++) {
+          const c = candles[j];
+          const hitTarget = s.dir === "bull" ? c.high >= s.target : c.low <= s.target;
+          const hitStop = s.dir === "bull" ? c.low <= s.stop : c.high >= s.stop;
+          if (hitTarget && hitStop) { outcome = "loss"; break; } // ambiguous same-bar case: assume the worse outcome
+          if (hitTarget) { outcome = "win"; break; }
+          if (hitStop) { outcome = "loss"; break; }
+        }
 
-      const strengthTier = s.strength >= 0.5 ? "high" : s.strength >= 0.2 ? "mid" : "low";
+        // Candle shape on the bar the signal fired on: a big high/low range with a
+        // small open/close body is a spike-and-snap-back shape, the pattern the
+        // Stanford settlement-manipulation study flagged on fast windows. This is
+        // measurement only in this release, not wired into live scoring, until a
+        // run shows it actually predicts anything.
+        const sigCandle = candles[i];
+        const body = Math.abs(sigCandle.close - sigCandle.open);
+        const range = sigCandle.high - sigCandle.low;
+        const wickRatio = range > 0 ? 1 - body / range : 0;
+        const candleShape = wickRatio >= 0.5 ? "spiky" : "clean";
 
-      out.push({
-        coin, tfKey, type: s.type, label: s.label, dir: s.dir,
-        volTag: s.volTag || "none", trendTag: s.trendTag || "none", tier: s.tier || "none",
-        strengthTier, candleShape, outcome,
-      });
+        const strengthTier = s.strength >= 0.5 ? "high" : s.strength >= 0.2 ? "mid" : "low";
+
+        out.push({
+          coin, tfKey, type: s.type, label: s.label, dir: s.dir,
+          volTag: s.volTag || "none", trendTag: s.trendTag || "none", biasTag: s.biasTag || "none", tier: s.tier || "none",
+          strengthTier, candleShape, outcome,
+        });
+      }
     }
   }
   return out;
@@ -144,6 +173,7 @@ function summarize(rows) {
     bump(`${r.label} · ${TF[r.tfKey]?.label || r.tfKey} · ${r.dir}`, r.outcome);
     bump(`Volume: ${r.volTag}`, r.outcome);
     bump(`Trend: ${r.trendTag}`, r.outcome);
+    bump(`Bias: ${r.biasTag}`, r.outcome);
     bump(`Backtest tier: ${r.tier}`, r.outcome);
     bump(`Strength: ${r.strengthTier}`, r.outcome);
     bump(`Candle shape: ${r.candleShape} · ${TF[r.tfKey]?.label || r.tfKey}`, r.outcome);
@@ -257,7 +287,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
 
   <div class="note">
     Methodology: replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet. The early-pace volume signal is excluded, it needs a live forming candle that closed history can't simulate. If target and stop were both touched in the same bar, that's scored as a loss, the conservative read, since candle data alone can't say which came first. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
-    New this run: a "Backtest tier" breakdown shows whether the proven/weak combination table (built from pooling two earlier real runs) actually holds up going forward. A "Strength" breakdown tests whether a signal's own strength score predicts its outcome, high should beat low if the ranking is doing its job. A "Candle shape" breakdown per timeframe flags a big high/low range with a small open/close body as "spiky", the spike-and-snap-back shape a Stanford/SMU study found being exploited on 5-minute Bitcoin prediction market settlements. This is measurement only, not wired into live scoring yet, it will only get built into the engine if it actually shows up as predictive here.
+    Also reports on: a "Backtest tier" breakdown (validates the proven/weak combination table against fresh data), a "Strength" breakdown (tests whether the strength score itself predicts outcome), a "Candle shape" breakdown per timeframe (measurement only, flags spike-and-snap-back candles, not wired into live scoring), and a "Bias" breakdown testing the market-wide bias layer: at every historical step, all three coins' own recent moves are pooled into the same shared bias reading the live dashboard uses, computed from only the data available at that point, then each coin's signals are checked against it. This assumes each coin's candle series lines up in time with the others, true in practice since all three are fetched with the same granularity from the same exchange.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
   </body></html>`;
@@ -268,15 +298,17 @@ export async function GET() {
   const errors = [];
   const allRows = [];
 
-  for (const coin of COINS) {
-    for (const tfKey of Object.keys(TF)) {
+  for (const tfKey of Object.keys(TF)) {
+    const candlesByCoin = {};
+    for (const coin of COINS) {
       try {
-        const candles = await fetchCoinbaseCandles(coin, tfKey);
-        allRows.push(...walkForward(candles, tfKey, coin));
+        candlesByCoin[coin] = await fetchCoinbaseCandles(coin, tfKey);
       } catch (e) {
+        candlesByCoin[coin] = null;
         errors.push(`${coin} ${tfKey}: ${String(e.message || e).slice(0, 120)}`);
       }
     }
+    allRows.push(...jointWalkForward(candlesByCoin, tfKey));
   }
 
   const buckets = summarize(allRows);
