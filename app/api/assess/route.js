@@ -46,6 +46,7 @@ Rules:
 - Reference the actual numbers you are given (price, RSI, volume ratio, recent % move). Never invent data or prices.
 - If a momentum/RSI/volume reading and a news catalyst point different directions, say so plainly.
 - Distinguish "overbought during a breakout with rising volume or a real catalyst" (possible strength, do not blindly fade) from "overbought while stalling with no catalyst" (possible fade).
+- You are also given the broader market's current bias (bullish/bearish/none, based on the whole watchlist, not just this coin) and a reversal-risk read. Weigh the signal against this. A bullish signal fighting a stretched, high-risk bearish market deserves real skepticism in your reasoning, not a free pass. If reversal risk is elevated or high, say so plainly, since a stretched move can turn without much warning.
 - Be direct and useful. This is informational, not financial advice, and you never tell the user to buy or sell.
 
 ${STYLE_GUIDE}
@@ -66,7 +67,7 @@ export async function POST(req) {
 
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: "bad_request" }); }
-  const { coin, name, timeframe, snap, signal, news, mode } = body || {};
+  const { coin, name, timeframe, snap, signal, news, mode, marketBias, reversalRisk } = body || {};
   const model = process.env.SETPOINT_MODEL || "claude-haiku-4-5-20251001";
   const system = mode === "chatter" ? SYSTEM + CHATTER_EXTRA : SYSTEM;
 
@@ -77,6 +78,8 @@ export async function POST(req) {
     indicators: snap,
     activeSignal: signal ? { type: signal.type, direction: signal.dir, note: signal.note } : null,
     recentHeadlines: (news || []).slice(0, 6).map((n) => ({ title: n.title, source: n.source, kind: n.kind })),
+    broaderMarket: marketBias && marketBias.dir ? { bias: marketBias.dir, pctOfWatchlistAgreeing: marketBias.pctUp } : { bias: "none" },
+    reversalRisk: reversalRisk && reversalRisk.level !== "low" ? reversalRisk : { level: "low" },
   };
 
   try {

@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../lib/signals.js";
 
 /* =========================================================================
    SETPOINT ALERTS — crypto alert terminal
@@ -86,6 +86,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
           <span className="sig-type">{s.label}</span>
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
           {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
+          {s.biasTag && <span className={`bias-tag ${s.biasTag}`}>{s.biasTag === "with" ? "with market" : "against market"}</span>}
           {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? "backtest-proven" : "backtest-weak"}</span>}
         </div>
         <DirBadge dir={s.dir} />
@@ -329,6 +330,8 @@ function Dashboard({ account, onSignOut }) {
   const [addText, setAddText] = useState("");
   const [globalError, setGlobalError] = useState(null);
   const [fng, setFng] = useState(null);
+  const [bias, setBias] = useState(null);
+  const [risk, setRisk] = useState(null);
   const [news, setNews] = useState({});         // sym -> [items]
   const [whales, setWhales] = useState({});     // sym -> [transfers]
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
@@ -359,7 +362,7 @@ function Dashboard({ account, onSignOut }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           coin: sym, name: NAME[sym] || sym, timeframe: TF[tfKey].label,
-          snap: data[sym]?.snap, signal, news: news[sym] || [],
+          snap: data[sym]?.snap, signal, news: news[sym] || [], marketBias: bias, reversalRisk: risk,
         }),
       });
       const json = await res.json();
@@ -369,7 +372,7 @@ function Dashboard({ account, onSignOut }) {
     } finally {
       setAssessing((a) => ({ ...a, [id]: false }));
     }
-  }, [data, news, tfKey]);
+  }, [data, news, tfKey, bias, risk]);
 
   const noteId = useCallback((sym) => `${sym}:${tfKey}:${newsFingerprint(news[sym])}`, [tfKey, news]);
 
@@ -383,7 +386,7 @@ function Dashboard({ account, onSignOut }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           coin: sym, name: NAME[sym] || sym, timeframe: TF[tfKey].label,
-          snap: data[sym]?.snap, signal: null, news: news[sym] || [], mode: "chatter",
+          snap: data[sym]?.snap, signal: null, news: news[sym] || [], mode: "chatter", marketBias: bias, reversalRisk: risk,
         }),
       });
       const json = await res.json();
@@ -393,7 +396,7 @@ function Dashboard({ account, onSignOut }) {
     } finally {
       setCoinNoteLoading((a) => ({ ...a, [id]: false }));
     }
-  }, [coinNote, coinNoteLoading, noteId, data, news, tfKey]);
+  }, [coinNote, coinNoteLoading, noteId, data, news, tfKey, bias, risk]);
 
   const runCoinNoteRef = useRef(() => {});
   runCoinNoteRef.current = runCoinNote;
@@ -415,15 +418,31 @@ function Dashboard({ account, onSignOut }) {
       const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=${tfKey}`, { cache: "no-store" });
       if (!res.ok) throw new Error("api " + res.status);
       const json = await res.json();
+      const coins = json.coins || [];
+
+      // Pass 1: a fast, market-wide bias, computed before any single-coin
+      // signal runs. BTC counts double. This is deliberately reactive,
+      // roughly a 2-hour window on 15m, the opposite tradeoff from ADX,
+      // which is slow by design and can take a while to confirm a fresh flip.
+      const coinReadings = coins
+        .filter((c) => !c.error && c.candles && c.candles.length)
+        .map((c) => ({ sym: c.sym, pct: windowPct(c.candles, 8), isBTC: c.sym === "BTC" }));
+      const currentBias = marketBias(coinReadings);
+      const currentRisk = reversalRisk(currentBias, json.fng?.value);
+      setBias(currentBias);
+      setRisk(currentRisk);
+
       const next = {};
       let anyOk = false;
       const t = Date.now();
-      (json.coins || []).forEach((c) => {
+      coins.forEach((c) => {
         if (c.error || !c.candles || !c.candles.length) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null };
           return;
         }
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t });
+        // Pass 2: now that the market-wide bias is known, run the real
+        // signal computation with it available.
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias });
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -623,6 +642,17 @@ function Dashboard({ account, onSignOut }) {
 
         <aside className="onchain">
           <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
+          {bias && bias.dir && (
+            <div className={`bias-panel ${bias.dir}`}>
+              <div className="bias-row">
+                <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
+                <span className="bias-pct">{bias.pctUp != null ? Math.round(bias.pctUp * 100) : "—"}% of watchlist agrees</span>
+              </div>
+              {risk && risk.level !== "low" && (
+                <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
+              )}
+            </div>
+          )}
           {fng && (
             <div className="fng">
               <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
@@ -923,6 +953,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .trend-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .trend-tag.with{color:var(--green);background:var(--green-dim)}
 .trend-tag.against{color:var(--red);background:var(--red-dim)}
+.bias-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
+.bias-tag.with{color:var(--green-soft);background:var(--green-dim)}
+.bias-tag.against{color:var(--red-soft);background:var(--red-dim)}
 .tier-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .tier-tag.proven{color:#03110B;background:var(--green)}
 .tier-tag.weak{color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.4)}
@@ -965,6 +998,17 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .fired{font-size:11px;color:var(--dim)}
 
 .onchain{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;align-self:start;position:sticky;top:70px}
+.bias-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
+.bias-panel.bull{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.bias-panel.bear{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
+.bias-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.bias-dir{font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;letter-spacing:.02em}
+.bias-panel.bull .bias-dir{color:var(--green)}
+.bias-panel.bear .bias-dir{color:var(--red-soft)}
+.bias-pct{font-size:11px;color:var(--muted);white-space:nowrap}
+.risk-note{font-size:11px;line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
+.risk-note.high{color:var(--amber);font-weight:600}
+.risk-note.elevated{color:var(--muted)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
 .fng-lab{font-weight:600;font-size:14px}
