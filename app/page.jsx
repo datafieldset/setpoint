@@ -440,8 +440,18 @@ function Dashboard({ account, onSignOut }) {
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
-          if (!rec || t - rec.lastSeen > TF[tfKey].cooldownMs) fired.current[key] = { firstFired: t, lastSeen: t };
+          const isNew = !rec || t - rec.lastSeen > TF[tfKey].cooldownMs;
+          if (isNew) fired.current[key] = { firstFired: t, lastSeen: t };
           else fired.current[key] = { firstFired: rec.firstFired, lastSeen: t };
+          if (isNew) {
+            // Log to the rolling scoreboard (/api/scoreboard). Fire-and-forget,
+            // a logging hiccup should never block the dashboard from working.
+            fetch("/api/track", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ coin: c.sym, tf: tfKey, label: s.label, dir: s.dir, entry: s.entry, stop: s.stop, target: s.target, firedAt: t }),
+            }).catch(() => {});
+          }
           return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key };
         });
         next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null };
