@@ -215,10 +215,10 @@ function summarize(rows) {
 // every bucket that showed up with real data in most of them, scores it as
 // average win rate minus how much it swung. A high number that bounces
 // around loses to a merely-decent number that doesn't move.
-const CONSISTENCY_RUNS = 6;
-const CONSISTENCY_MIN_RUNS = 3; // bucket must appear with real data in at least this many
+export const CONSISTENCY_RUNS = 6;
+export const CONSISTENCY_MIN_RUNS = 3; // bucket must appear with real data in at least this many
 
-async function getConsistencyRanking() {
+export async function getConsistencyRanking() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return { ranked: [], reason: "DATABASE_URL not set" };
   try {

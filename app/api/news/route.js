@@ -178,14 +178,13 @@ export async function GET(req) {
   const [rss, reddit, bsky, tg] = await Promise.all([
     getRss(), getReddit(), getBluesky(symbols), getTelegram(TELEGRAM_CHANNELS),
   ]);
-  // Whale Alert has its own Whale flow panel, so keep it out of the news feed
-  // but keep its posts available for parsing whale transfers.
+  // Whale Alert has its own net-flow read in Market Context now, so it stays
+  // out of the news feed, but its posts still feed that aggregate below.
   const whaleItems = tg.filter((x) => x.source === "@whale_alert_io");
   const all = [...rss, ...reddit, ...bsky, ...tg]
     .filter((x) => x.title && x.title.length > 4 && x.source !== "@whale_alert_io");
 
   const coins = {};
-  const whales = {};
   symbols.forEach((sym) => {
     const items = all
       .filter((x) => matches(x.title, sym))
@@ -198,14 +197,26 @@ export async function GET(req) {
       seen.add(k);
       return true;
     }).slice(0, 6);
-
-    // whale flow: parse Whale Alert posts for this asset
-    whales[sym] = whaleItems
-      .map((x) => parseWhale(x.title, x.when, x.link))
-      .filter((w) => w && w.asset === sym)
-      .sort((a, b) => b.when - a.when)
-      .slice(0, 6);
   });
 
-  return Response.json({ coins, whales, at: Date.now() });
+  // Net flow: pooled across every large transfer Whale Alert posted, not
+  // filtered to any one coin. Individual coins go quiet for days, whale
+  // activity overall never does, BTC and stablecoins alone move billions
+  // daily. Positive net means more money moving onto exchanges lately
+  // (often read as building sell pressure), negative means more moving off
+  // (often read as accumulation). This is a read, not a rule, worded that
+  // way everywhere it's shown.
+  const parsed = whaleItems.map((x) => parseWhale(x.title, x.when, x.link)).filter(Boolean);
+  let toExchange = 0, fromExchange = 0, txCount = 0;
+  for (const w of parsed) {
+    if (w.usd == null) continue;
+    if (w.dir === "to_exchange") { toExchange += w.usd; txCount++; }
+    else if (w.dir === "from_exchange") { fromExchange += w.usd; txCount++; }
+  }
+  const netFlow = txCount > 0 ? {
+    toExchange, fromExchange, net: toExchange - fromExchange, txCount,
+    recent: parsed.filter((w) => w.dir === "to_exchange" || w.dir === "from_exchange").slice(0, 4),
+  } : null;
+
+  return Response.json({ coins, netFlow, at: Date.now() });
 }

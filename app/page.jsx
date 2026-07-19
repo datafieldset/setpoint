@@ -335,7 +335,7 @@ function Dashboard({ account, onSignOut }) {
   const [weekly200, setWeekly200] = useState(null);
   const [macroRead, setMacroRead] = useState(null);
   const [news, setNews] = useState({});         // sym -> [items]
-  const [whales, setWhales] = useState({});     // sym -> [transfers]
+  const [netFlow, setNetFlow] = useState(null);     // aggregate whale flow, not per-coin
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -351,7 +351,7 @@ function Dashboard({ account, onSignOut }) {
       if (!res.ok) return;
       const json = await res.json();
       setNews(json.coins || {});
-      setWhales(json.whales || {});
+      setNetFlow(json.netFlow || null);
     } catch { /* non-fatal */ }
   }, [watchlist]);
 
@@ -695,6 +695,21 @@ function Dashboard({ account, onSignOut }) {
               {macroRead.read.catalyst && <div className="macro-catalyst">⏳ {macroRead.read.catalyst}</div>}
             </div>
           )}
+          {netFlow && (() => {
+            const total = netFlow.toExchange + netFlow.fromExchange;
+            const netDir = netFlow.net > 0 ? "in" : "out";
+            const netPct = total > 0 ? Math.round((Math.abs(netFlow.net) / total) * 100) : 0;
+            return (
+              <div className={`netflow-panel ${netDir}`}>
+                <div className="netflow-head">Whale net flow <span className="netflow-tag">{netFlow.txCount} large moves tracked</span></div>
+                <div className="netflow-row">
+                  <span className="netflow-dir">{netDir === "in" ? "▲ net onto exchanges" : "▼ net off exchanges"}</span>
+                  <span className="netflow-amt mono">{fmtVol(Math.abs(netFlow.net))} ({netPct}%)</span>
+                </div>
+                <div className="netflow-note">{netDir === "in" ? "Can lean toward sell pressure." : "Can lean toward accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
+              </div>
+            );
+          })()}
           {fng && (
             <div className="fng">
               <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
@@ -717,26 +732,6 @@ function Dashboard({ account, onSignOut }) {
               </div>
             );
           })}
-          <div className="whale-panel">
-            <div className="section-head"><h2>Whale flow</h2><span className="sh-sub">Whale Alert</span></div>
-            {(() => {
-              const coins = selectedCoin ? [selectedCoin] : watchlist;
-              const flat = [];
-              coins.forEach((sym) => (whales[sym] || []).forEach((w) => flat.push({ ...w, sym })));
-              flat.sort((a, b) => b.when - a.when);
-              const top = flat.slice(0, selectedCoin ? 8 : 6);
-              if (!top.length) return <div className="sig-empty">No large transfers reported{selectedCoin ? ` for ${selectedCoin}` : ""} recently.</div>;
-              return top.map((w, i) => (
-                <a className="whale-row" href={w.link} target="_blank" rel="noreferrer" key={i}>
-                  <span className={`whale-dir ${w.dir}`}>{w.dir === "to_exchange" ? "▲ to exchange" : w.dir === "from_exchange" ? "▼ off exchange" : "↔ transfer"}</span>
-                  <span className="whale-usd mono">{w.usd ? fmtVol(w.usd) : "—"}</span>
-                  <span className="whale-coin">{w.sym}</span>
-                  <span className="whale-when">{timeAgo(w.when, now)}</span>
-                </a>
-              ));
-            })()}
-            <div className="whale-note">Live from Whale Alert. To exchange can mean sell pressure, off exchange can mean accumulation.</div>
-          </div>
         </aside>
       </div>
 
@@ -1135,18 +1130,17 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .sig-hint{font-size:11px;color:var(--dim);margin-bottom:10px;font-style:italic}
 .coin-note{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--hair)}
 .cn-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:9px}
-.whale-panel{margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
-.whale-panel .section-head{margin-bottom:10px}
-.whale-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-top:1px solid var(--hair);text-decoration:none;color:inherit}
-.whale-row:first-of-type{border-top:none}
-.whale-dir{font-size:10.5px;font-weight:600;padding:2px 7px;border-radius:5px;white-space:nowrap}
-.whale-dir.to_exchange{color:var(--red);background:var(--red-dim)}
-.whale-dir.from_exchange{color:var(--green);background:var(--green-dim)}
-.whale-dir.other,.whale-dir.exchange_move{color:var(--muted);background:var(--panel3)}
-.whale-usd{font-size:12.5px;font-weight:600}
-.whale-coin{font-family:'JetBrains Mono';font-size:10px;font-weight:700;color:var(--muted);background:var(--panel3);padding:2px 6px;border-radius:5px}
-.whale-when{font-size:10.5px;color:var(--dim);margin-left:auto}
-.whale-note{color:var(--dim);font-size:11px;line-height:1.5;margin-top:12px;padding-top:10px;border-top:1px solid var(--hair)}
+.netflow-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
+.netflow-panel.in{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
+.netflow-panel.out{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.netflow-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.netflow-tag{text-transform:none;letter-spacing:0;font-style:italic;font-weight:400}
+.netflow-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.netflow-dir{font-size:12px;font-weight:700}
+.netflow-panel.in .netflow-dir{color:var(--red-soft)}
+.netflow-panel.out .netflow-dir{color:var(--green)}
+.netflow-amt{font-size:13px;font-weight:700}
+.netflow-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
 
 .dash-disc{color:var(--dim);font-size:11px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid var(--hair)}
 
