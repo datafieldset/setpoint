@@ -97,10 +97,12 @@ async function fetchCoinbaseCandles(sym, tfKey) {
 // same exchange at the same moment, both long-established Coinbase pairs.
 function jointWalkForward(candlesByCoin, tfKey) {
   const out = [];
+  const turns = []; // exact moments bias.dir flipped, the thing we couldn't see before
   const bar = barMs(tfKey);
   const coins = Object.keys(candlesByCoin).filter((c) => candlesByCoin[c] && candlesByCoin[c].length > WARMUP + 5);
-  if (!coins.length) return out;
+  if (!coins.length) return { rows: out, turns };
   const minLen = Math.min(...coins.map((c) => candlesByCoin[c].length));
+  let prevDir = null;
 
   for (let i = WARMUP; i < minLen - 1; i++) {
     const simNow = candlesByCoin[coins[0]][i].time + bar;
@@ -117,6 +119,14 @@ function jointWalkForward(candlesByCoin, tfKey) {
     // this run test the core question, does fading a stretched bias beat
     // fading in general, just without the extra sentiment-extreme tier.
     const risk = reversalRisk(bias, null);
+
+    // Only "bull" or "bear" count as a real lean; a flip through "none"
+    // (no clear lean) isn't itself the interesting moment, the flip between
+    // two opposite, clear leans is.
+    if (bias.dir && bias.dir !== prevDir && (prevDir === "bull" || prevDir === "bear")) {
+      turns.push({ tf: tfKey, time: simNow, from: prevDir, to: bias.dir, avgPct: bias.avgPct, pctUp: bias.pctUp });
+    }
+    if (bias.dir) prevDir = bias.dir;
 
     for (const coin of coins) {
       const candles = candlesByCoin[coin];
@@ -162,7 +172,7 @@ function jointWalkForward(candlesByCoin, tfKey) {
       }
     }
   }
-  return out;
+  return { rows: out, turns };
 }
 
 function summarize(rows) {
@@ -176,13 +186,20 @@ function summarize(rows) {
     buckets.set(key, b);
   };
   for (const r of rows) {
-    bump(`${r.label} · ${TF[r.tfKey]?.label || r.tfKey} · ${r.dir}`, r.outcome);
+    const setupKey = `${r.label} · ${TF[r.tfKey]?.label || r.tfKey} · ${r.dir}`;
+    bump(setupKey, r.outcome);
     bump(`Volume: ${r.volTag}`, r.outcome);
     bump(`Trend: ${r.trendTag}`, r.outcome);
     bump(`Bias: ${r.biasTag}`, r.outcome);
     bump(`Backtest tier: ${r.tier}`, r.outcome);
     bump(`Strength: ${r.strengthTier}`, r.outcome);
     bump(`Candle shape: ${r.candleShape} · ${TF[r.tfKey]?.label || r.tfKey}`, r.outcome);
+    // The regime question: does THIS specific setup do better under some
+    // market condition than others, not just what it averages to overall.
+    // Same rows, same data, just split by what trend/bias looked like at
+    // the exact moment it fired, instead of blended into one number.
+    bump(`${setupKey} · Trend:${r.trendTag}`, r.outcome);
+    bump(`${setupKey} · Bias:${r.biasTag}`, r.outcome);
   }
   const list = [...buckets.values()].map((b) => ({
     ...b,
@@ -190,6 +207,50 @@ function summarize(rows) {
   }));
   list.sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1));
   return list;
+}
+
+// The real test of "worth trusting": does the win rate hold up across
+// several runs, not just look good once. Pulls the last CONSISTENCY_RUNS
+// saved runs from Neon (the same table saveToNeon already writes), and for
+// every bucket that showed up with real data in most of them, scores it as
+// average win rate minus how much it swung. A high number that bounces
+// around loses to a merely-decent number that doesn't move.
+const CONSISTENCY_RUNS = 6;
+const CONSISTENCY_MIN_RUNS = 3; // bucket must appear with real data in at least this many
+
+async function getConsistencyRanking() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return { ranked: [], reason: "DATABASE_URL not set" };
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn);
+    const rows = await sql`
+      WITH recent_runs AS (
+        SELECT DISTINCT run_at FROM backtest_results ORDER BY run_at DESC LIMIT ${CONSISTENCY_RUNS}
+      )
+      SELECT bucket,
+             COUNT(*)::int AS n_runs,
+             AVG(win_rate) AS avg_rate,
+             (MAX(win_rate) - MIN(win_rate)) AS range,
+             SUM(fired)::int AS total_fired
+      FROM backtest_results
+      WHERE run_at IN (SELECT run_at FROM recent_runs) AND win_rate IS NOT NULL AND fired >= 5
+      GROUP BY bucket
+      HAVING COUNT(*) >= ${CONSISTENCY_MIN_RUNS}
+      ORDER BY (AVG(win_rate) - (MAX(win_rate) - MIN(win_rate))) DESC
+    `;
+    const ranked = rows.map((r) => ({
+      bucket: r.bucket,
+      nRuns: r.n_runs,
+      avgRate: parseFloat(r.avg_rate),
+      range: parseFloat(r.range),
+      totalFired: r.total_fired,
+      score: parseFloat(r.avg_rate) - parseFloat(r.range),
+    }));
+    return { ranked, reason: null };
+  } catch (e) {
+    return { ranked: [], reason: String(e).slice(0, 200) };
+  }
 }
 
 async function saveToNeon(runAt, buckets) {
@@ -238,10 +299,24 @@ function pct(x) {
   return x == null ? "—" : (x * 100).toFixed(0) + "%";
 }
 
-function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
-  const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null);
+function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency }) {
+  const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
   const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
   const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
+
+  const consistencyRows = (consistency?.ranked || []).map((c) => {
+    return `<tr><td>${c.bucket}</td><td>${c.nRuns}</td><td>${pct(c.avgRate)}</td><td>${(c.range * 100).toFixed(0)}pt</td><td>${c.totalFired}</td></tr>`;
+  }).join("");
+
+  // Same setups, split by what the market condition actually was when each
+  // one fired, not blended into one average. This is what finds a real
+  // regime-dependent pattern that an averaged number can hide completely.
+  const regimeBuckets = buckets.filter((b) => (b.key.includes(" · Trend:") || b.key.includes(" · Bias:")) && b.fired >= 5 && b.winRate != null);
+  const regimeRows = regimeBuckets
+    .slice()
+    .sort((a, b) => b.winRate - a.winRate)
+    .map((b) => `<tr><td>${b.key}</td><td>${b.fired}</td><td>${b.wins}</td><td>${b.losses}</td><td>${pct(b.winRate)}</td></tr>`)
+    .join("");
 
   const callout = (b, tag) => {
     const delta = dbInfo?.prevMap && dbInfo.prevMap.has(b.key) && dbInfo.prevMap.get(b.key) != null
@@ -250,11 +325,17 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
     return `<div class="callout ${tag}"><span class="cb">${b.key}</span><span class="cn">${b.wins}W / ${b.losses}L (${pct(b.winRate)})${delta}</span></div>`;
   };
 
-  const rows = buckets.map((b) => {
+  const rows = buckets.filter((b) => !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:")).map((b) => {
     const delta = dbInfo?.prevMap && dbInfo.prevMap.has(b.key) && dbInfo.prevMap.get(b.key) != null && b.winRate != null
       ? `<span class="${b.winRate >= dbInfo.prevMap.get(b.key) ? 'up' : 'down'}">${b.winRate >= dbInfo.prevMap.get(b.key) ? "+" : ""}${Math.round((b.winRate - dbInfo.prevMap.get(b.key)) * 100)}pt</span>`
       : "—";
     return `<tr><td>${b.key}${b.fired < 5 ? ' <span class="low">low sample</span>' : ""}</td><td>${b.fired}</td><td>${b.wins}</td><td>${b.losses}</td><td>${b.open}</td><td>${pct(b.winRate)}</td><td>${delta}</td></tr>`;
+  }).join("");
+
+  const sortedTurns = (turns || []).slice().sort((a, b) => b.time - a.time).slice(0, 40);
+  const turnRows = sortedTurns.map((t) => {
+    const flip = t.to === "bull" ? "→ bullish" : "→ bearish";
+    return `<tr><td>${new Date(t.time).toUTCString()}</td><td>${TF[t.tf]?.label || t.tf}</td><td class="${t.to}">${flip}</td><td>${t.avgPct != null ? t.avgPct.toFixed(2) + "%" : "—"}</td><td>${t.pctUp != null ? Math.round(t.pctUp * 100) + "%" : "—"}</td></tr>`;
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Setpoint research backtest</title>
@@ -275,17 +356,33 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired }) {
     .up{color:#00D179}.down{color:#FF5C6C}
     .note{color:#5E7168;font-size:12px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid #223029}
     .err{color:#F5B851;font-size:12px}
+    td.bull{color:#00D179;font-weight:600}
+    td.bear{color:#FF5C6C;font-weight:600}
   </style></head><body>
   <h1>Setpoint research backtest</h1>
   <div class="sub">Run at ${new Date(runAt).toUTCString()} · ${totalFired} signals evaluated across BTC, SOL, XLM · 5m/15m/30m/1h · this page and route are temporary</div>
 
   ${errors.length ? `<div class="err">${errors.join("<br>")}</div>` : ""}
 
+  <h2>Most consistent, across the last ${CONSISTENCY_RUNS} runs</h2>
+  <div class="sub" style="margin-bottom:12px">This is the trustworthy read, not one lucky run. Scored as average win rate minus how much it swung, a high number that bounces around loses to a steady one that doesn't move.</div>
+  ${consistencyRows ? `<table><thead><tr><th>Bucket</th><th>Runs</th><th>Avg win rate</th><th>Swing</th><th>Total fired</th></tr></thead><tbody>${consistencyRows}</tbody></table>`
+    : `<div class="sub">${consistency?.reason ? `Not available this run (${consistency.reason}).` : `Not enough saved runs yet, need at least ${CONSISTENCY_MIN_RUNS} to rank anything.`}</div>`}
+
   <h2>Worth a look, underperforming</h2>
   ${worst.length ? worst.map((b) => callout(b, "bad")).join("") : "<div class='sub'>Not enough fired signals yet to call out a weak spot.</div>"}
 
   <h2>Worth a look, outperforming</h2>
   ${best.length ? best.map((b) => callout(b, "good")).join("") : "<div class='sub'>Not enough fired signals yet to call out a strong spot.</div>"}
+
+  <h2>By market condition</h2>
+  <div class="sub" style="margin-bottom:12px">Same setups, split by what trend and bias actually looked like the moment each one fired, not blended into one average. An overall number near 50% can be hiding a real pattern underneath, this is where that shows up.</div>
+  ${regimeRows ? `<table><thead><tr><th>Setup · condition</th><th>Fired</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${regimeRows}</tbody></table>`
+    : `<div class="sub">Not enough fired signals with a clear trend or bias reading yet to split this out.</div>`}
+
+  <h2>Market turning points</h2>
+  <div class="sub" style="margin-bottom:12px">Every point in this replay where the shared bias flipped from bullish to bearish or back, most recent first. This is the thing we could only infer sideways before, comparing whole runs days apart. Now you can point at the exact hour it happened and go look at what the data was doing right before it.</div>
+  ${turnRows ? `<table><thead><tr><th>When</th><th>Timeframe</th><th>Flip</th><th>Weighted move</th><th>% of watchlist agreeing</th></tr></thead><tbody>${turnRows}</tbody></table>` : `<div class="sub">No clean bullish/bearish flips in this replay window.</div>`}
 
   <h2>Full breakdown</h2>
   <table><thead><tr><th>Bucket</th><th>Fired</th><th>Won</th><th>Lost</th><th>Open</th><th>Win rate</th><th>Vs last run</th></tr></thead>
@@ -304,6 +401,7 @@ export async function GET() {
   const runAt = new Date();
   const errors = [];
   const allRows = [];
+  const allTurns = [];
 
   for (const tfKey of Object.keys(TF)) {
     const candlesByCoin = {};
@@ -315,12 +413,15 @@ export async function GET() {
         errors.push(`${coin} ${tfKey}: ${String(e.message || e).slice(0, 120)}`);
       }
     }
-    allRows.push(...jointWalkForward(candlesByCoin, tfKey));
+    const { rows, turns } = jointWalkForward(candlesByCoin, tfKey);
+    allRows.push(...rows);
+    allTurns.push(...turns);
   }
 
   const buckets = summarize(allRows);
   const dbInfo = await saveToNeon(runAt, buckets);
+  const consistency = await getConsistencyRanking();
 
-  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length });
+  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency });
   return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
 }

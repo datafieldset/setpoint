@@ -57,6 +57,91 @@ async function fetchStats(sym) {
   }
 }
 
+// The 200-week moving average: Bitcoin's long-run structural floor. Every
+// bear market since 2015 bottomed at or near this line. It's a genuinely
+// different kind of read from everything else in this app, weeks instead
+// of minutes, a macro backdrop, not a trading signal, so it's built and
+// cached completely differently too.
+//
+// Needs ~200 weeks (~1400 days) of daily history, which Coinbase only
+// returns up to 300 candles per call, so this pages backward through
+// several calls. That's expensive and this number barely moves day to day,
+// so the result is cached in Neon and only recomputed once it's a day old,
+// not on every dashboard refresh like everything else here.
+const MA_CACHE_HOURS = 24;
+const WEEKS_NEEDED = 210; // small buffer over 200 for a clean weekly close
+
+async function fetchDailyCandlesPaged(sym, totalDays) {
+  const dayMs = 86400 * 1000;
+  const chunks = [];
+  let end = new Date();
+  while (chunks.flat().length < totalDays) {
+    const start = new Date(end.getTime() - 299 * dayMs);
+    const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=86400&start=${start.toISOString()}&end=${end.toISOString()}`;
+    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
+    if (!r.ok) break;
+    const raw = await r.json();
+    if (!Array.isArray(raw) || raw.length === 0) break;
+    chunks.push(raw.map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] })));
+    end = new Date(start.getTime() - dayMs);
+    if (chunks.length > 8) break; // hard cap so a bad response can't loop forever
+  }
+  return chunks.flat().sort((a, b) => a.time - b.time).filter((c) => c.close > 0);
+}
+
+function toWeeklyCloses(dailyCandles) {
+  const weekMs = 7 * 86400 * 1000;
+  const map = new Map();
+  for (const c of dailyCandles) {
+    const bucket = Math.floor(c.time / weekMs) * weekMs;
+    map.set(bucket, c.close); // ascending input, so the last write per week is that week's close
+  }
+  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([, close]) => close);
+}
+
+async function computeWeekly200MA() {
+  const daily = await fetchDailyCandlesPaged("BTC", WEEKS_NEEDED * 7);
+  const weeklyCloses = toWeeklyCloses(daily);
+  if (weeklyCloses.length < 50) return null; // not enough real history to trust this yet
+  const window = weeklyCloses.slice(-200);
+  const sma = window.reduce((a, b) => a + b, 0) / window.length;
+  const k = 2 / (window.length + 1);
+  let ema = window[0];
+  for (let i = 1; i < window.length; i++) ema = window[i] * k + ema * (1 - k);
+  return { sma, ema, weeksUsed: window.length, computedAt: Date.now() };
+}
+
+async function getWeekly200MA() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) {
+    try { return await computeWeekly200MA(); } catch { return null; }
+  }
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn);
+    await sql`
+      CREATE TABLE IF NOT EXISTS macro_cache (
+        key TEXT PRIMARY KEY,
+        value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+      )
+    `;
+    const rows = await sql`SELECT value, updated_at FROM macro_cache WHERE key = 'weekly_200ma'`;
+    const fresh = rows.length && (Date.now() - new Date(rows[0].updated_at).getTime()) < MA_CACHE_HOURS * 3600 * 1000;
+    if (fresh) return rows[0].value;
+
+    const computed = await computeWeekly200MA();
+    if (!computed) return rows.length ? rows[0].value : null; // fetch failed, fall back to stale cache over nothing
+    await sql`
+      INSERT INTO macro_cache (key, value, updated_at) VALUES ('weekly_200ma', ${JSON.stringify(computed)}::jsonb, now())
+      ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(computed)}::jsonb, updated_at = now()
+    `;
+    return computed;
+  } catch {
+    try { return await computeWeekly200MA(); } catch { return null; }
+  }
+}
+
 async function fetchFng() {
   try {
     const r = await fetch("https://api.alternative.me/fng/?limit=1", { cache: "no-store" });
@@ -99,6 +184,13 @@ async function fetchBroadMarketBias() {
   }
 }
 
+function withTimeout(promise, ms, fallback) {
+  return Promise.race([
+    promise,
+    new Promise((resolve) => setTimeout(() => resolve(fallback), ms)),
+  ]);
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
@@ -106,7 +198,7 @@ export async function GET(req) {
   const tfParam = searchParams.get("tf");
   const tf = isValidTf(tfParam) ? tfParam : "15m";
 
-  const [coins, fng, bias] = await Promise.all([
+  const [coins, fng, bias, weekly200] = await Promise.all([
     Promise.all(
       symbols.map(async (sym) => {
         try {
@@ -119,8 +211,11 @@ export async function GET(req) {
     ),
     fetchFng(),
     fetchBroadMarketBias(),
+    // Cached almost always, but guard the rare cold-cache case anyway, this
+    // is background context, it should never be why the dashboard feels slow.
+    withTimeout(getWeekly200MA().catch(() => null), 8000, null),
   ]);
 
   const risk = reversalRisk(bias, fng?.value);
-  return Response.json({ coins, fng, bias, risk, tf, at: Date.now() });
+  return Response.json({ coins, fng, bias, risk, weekly200, tf, at: Date.now() });
 }

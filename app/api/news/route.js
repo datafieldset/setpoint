@@ -23,7 +23,7 @@ const RSS_FEEDS = [
 // Watcher Guru and Whale Alert break moves faster than mainstream RSS. Add more
 // channel handles here (their t.me/s/<handle> must be public). X/Twitter-only
 // accounts still need the paid X API.
-const TELEGRAM_CHANNELS = ["watcherguru", "whale_alert_io"];
+export const TELEGRAM_CHANNELS = ["watcherguru", "whale_alert_io"];
 
 const EXCHANGES = ["binance", "coinbase", "kraken", "okx", "bybit", "huobi", "htx", "bitfinex", "gate.io", "gate", "kucoin", "upbit", "bitstamp", "gemini", "crypto.com", "mexc", "bithumb", "bitget"];
 
@@ -78,7 +78,7 @@ function parseRss(xml, source) {
   return out;
 }
 
-async function getRss() {
+export async function getRss() {
   const results = await Promise.all(RSS_FEEDS.map(async (f) => {
     try {
       const r = await fetch(f.url, { headers: UA, cache: "no-store" });
@@ -89,7 +89,7 @@ async function getRss() {
   return results.flat();
 }
 
-async function getReddit() {
+export async function getReddit() {
   const subs = ["CryptoCurrency", "CryptoMarkets"];
   const results = await Promise.all(subs.map(async (sub) => {
     try {
@@ -108,7 +108,7 @@ async function getReddit() {
   return results.flat();
 }
 
-async function getTelegram(channels) {
+export async function getTelegram(channels) {
   const results = await Promise.all(channels.map(async (ch) => {
     try {
       const r = await fetch(`https://t.me/s/${ch}`, { headers: UA, cache: "no-store" });

@@ -332,6 +332,8 @@ function Dashboard({ account, onSignOut }) {
   const [fng, setFng] = useState(null);
   const [bias, setBias] = useState(null);
   const [risk, setRisk] = useState(null);
+  const [weekly200, setWeekly200] = useState(null);
+  const [macroRead, setMacroRead] = useState(null);
   const [news, setNews] = useState({});         // sym -> [items]
   const [whales, setWhales] = useState({});     // sym -> [transfers]
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
@@ -352,6 +354,18 @@ function Dashboard({ account, onSignOut }) {
       setWhales(json.whales || {});
     } catch { /* non-fatal */ }
   }, [watchlist]);
+
+  // The macro read is slow-moving on purpose, cached server-side for hours,
+  // so it rides the same slow cadence as news rather than the fast 60s
+  // price poll.
+  const loadMacro = useCallback(async () => {
+    try {
+      const res = await fetch("/api/macro", { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      if (!json.error) setMacroRead(json);
+    } catch { /* non-fatal */ }
+  }, []);
 
   const runAssess = useCallback(async (sym, signal) => {
     const id = `${sym}:${signal.key}`;
@@ -427,6 +441,7 @@ function Dashboard({ account, onSignOut }) {
       const currentRisk = json.risk || null;
       setBias(currentBias);
       setRisk(currentRisk);
+      setWeekly200(json.weekly200 || null);
 
       const next = {};
       let anyOk = false;
@@ -470,7 +485,9 @@ function Dashboard({ account, onSignOut }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadNews(); }, [loadNews]);
+  useEffect(() => { loadMacro(); }, [loadMacro]);
   useEffect(() => { const id = setInterval(loadNews, 300000); return () => clearInterval(id); }, [loadNews]);
+  useEffect(() => { const id = setInterval(loadMacro, 300000); return () => clearInterval(id); }, [loadMacro]);
   useEffect(() => { const id = setInterval(load, 60000); return () => clearInterval(id); }, [load]);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
 
@@ -655,6 +672,27 @@ function Dashboard({ account, onSignOut }) {
               {risk && risk.level !== "low" && (
                 <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
               )}
+            </div>
+          )}
+          {weekly200 && (() => {
+            const btcPrice = data.BTC?.snap?.price;
+            const distPct = btcPrice ? ((btcPrice - weekly200.sma) / weekly200.sma) * 100 : null;
+            const near = distPct != null && Math.abs(distPct) <= 10;
+            return (
+              <div className={`w200-panel ${near ? "near" : ""}`}>
+                <div className="w200-head">BTC 200-week MA</div>
+                <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
+                <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
+              </div>
+            );
+          })()}
+          {macroRead && macroRead.read && (
+            <div className={`macro-panel ${macroRead.read.stance}`}>
+              <div className="macro-head">News read <span className="macro-tag">outside the price data</span></div>
+              <div className="macro-row"><span className="macro-stance">{macroRead.read.stance}</span><span className="macro-conf">{macroRead.read.confidence} confidence</span></div>
+              <div className="macro-headline">{macroRead.read.headline}</div>
+              <div className="macro-reason">{macroRead.read.reasoning}</div>
+              {macroRead.read.catalyst && <div className="macro-catalyst">⏳ {macroRead.read.catalyst}</div>}
             </div>
           )}
           {fng && (
@@ -1013,6 +1051,30 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .risk-note{font-size:11px;line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
 .risk-note.high{color:var(--amber);font-weight:600}
 .risk-note.elevated{color:var(--muted)}
+.w200-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border);background:var(--panel)}
+.w200-panel.near{border-color:rgba(245,184,81,.4);background:var(--amber-dim)}
+.w200-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:6px}
+.w200-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.w200-val{font-size:15px;font-weight:700}
+.w200-dist{font-size:11.5px;font-weight:600}
+.w200-dist.up{color:var(--muted)}
+.w200-dist.down{color:var(--amber)}
+.w200-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
+.macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
+.macro-panel.bullish{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.macro-panel.bearish{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
+.macro-panel.neutral{background:var(--panel3)}
+.macro-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.macro-tag{text-transform:none;letter-spacing:0;font-style:italic;color:var(--dim);font-weight:400}
+.macro-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:5px}
+.macro-stance{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+.macro-panel.bullish .macro-stance{color:var(--green)}
+.macro-panel.bearish .macro-stance{color:var(--red-soft)}
+.macro-panel.neutral .macro-stance{color:var(--muted)}
+.macro-conf{font-size:10px;color:var(--dim);text-transform:uppercase}
+.macro-headline{font-family:'Bricolage Grotesque';font-weight:600;font-size:13px;margin-bottom:5px}
+.macro-reason{color:var(--muted);font-size:11.5px;line-height:1.5}
+.macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
 .fng-lab{font-weight:600;font-size:14px}
