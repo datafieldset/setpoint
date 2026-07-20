@@ -23,7 +23,11 @@ async function findUserByEmail(email) {
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     )
   `;
-  const rows = await sql`SELECT id, email, password_hash, plan FROM users WHERE email = ${email.toLowerCase()}`;
+  // The users table already exists live from before this column was added,
+  // so CREATE TABLE IF NOT EXISTS alone won't add it there. This is safe to
+  // run every time, it's a no-op once the column is already present.
+  await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`;
+  const rows = await sql`SELECT id, email, password_hash, plan, is_admin FROM users WHERE email = ${email.toLowerCase()}`;
   return rows[0] || null;
 }
 
@@ -50,7 +54,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
           if (!user) return null;
           const ok = await bcrypt.compare(credentials.password, user.password_hash);
           if (!ok) return null;
-          return { id: String(user.id), email: user.email, plan: user.plan };
+          return { id: String(user.id), email: user.email, plan: user.plan, isAdmin: !!user.is_admin };
         } catch {
           return null;
         }
@@ -58,12 +62,26 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     }),
   ],
   callbacks: {
-    async jwt({ token, user }) {
-      if (user) { token.plan = user.plan; }
+    async jwt({ token, user, trigger }) {
+      if (user) { token.plan = user.plan; token.isAdmin = user.isAdmin; }
+      // The client calls update() right after returning from a successful
+      // Stripe checkout. Without this, the JWT would keep showing the plan
+      // from whenever they originally signed in, since a JWT session
+      // doesn't re-check the database on every request by design. This is
+      // the one deliberate exception, refresh for real when asked to.
+      if (trigger === "update" && token.email) {
+        try {
+          const fresh = await findUserByEmail(token.email);
+          if (fresh) { token.plan = fresh.plan; token.isAdmin = !!fresh.is_admin; }
+        } catch {
+          // Refresh failed, keep whatever the token already had rather than
+          // breaking the session over a transient database hiccup.
+        }
+      }
       return token;
     },
     async session({ session, token }) {
-      if (session.user) { session.user.plan = token.plan || "watch"; }
+      if (session.user) { session.user.plan = token.plan || "watch"; session.user.isAdmin = !!token.isAdmin; }
       return session;
     },
   },

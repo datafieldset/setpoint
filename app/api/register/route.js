@@ -19,7 +19,12 @@ export async function POST(req) {
   try { body = await req.json(); } catch { return Response.json({ error: "bad_request" }, { status: 400 }); }
   const email = (body.email || "").trim().toLowerCase();
   const password = body.password || "";
-  const plan = ["watch", "trader", "desk"].includes(body.plan) ? body.plan : "watch";
+  // New accounts always start on the free tier, regardless of which plan
+  // someone picked on the pricing page. The plan they actually wanted is
+  // handled separately, by redirecting to real Stripe checkout right after
+  // this. Only the webhook, once Stripe confirms a real payment, ever
+  // upgrades a plan. Saving the paid plan here directly would mean typing
+  // an email and hitting "Get Pro" grants Pro access with no payment at all.
 
   if (!validEmail(email)) return Response.json({ error: "invalid_email" }, { status: 400 });
   if (password.length < 8) return Response.json({ error: "weak_password" }, { status: 400 });
@@ -35,11 +40,12 @@ export async function POST(req) {
         created_at TIMESTAMPTZ NOT NULL DEFAULT now()
       )
     `;
+    await sql`ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT false`;
     const existing = await sql`SELECT id FROM users WHERE email = ${email}`;
     if (existing.length) return Response.json({ error: "email_taken" }, { status: 409 });
 
     const hash = await bcrypt.hash(password, 10);
-    await sql`INSERT INTO users (email, password_hash, plan) VALUES (${email}, ${hash}, ${plan})`;
+    await sql`INSERT INTO users (email, password_hash, plan) VALUES (${email}, ${hash}, 'watch')`;
     return Response.json({ ok: true });
   } catch (e) {
     return Response.json({ error: "server_error", detail: String(e).slice(0, 200) }, { status: 500 });

@@ -124,13 +124,13 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 }
 
 /* ============================== LANDING PAGE ============================= */
-function Landing({ onPickPlan, onDemo, onSignIn }) {
+function Landing({ onPickPlan, onSignIn }) {
   const onWaitlist = () => { const el = document.getElementById("waitlist"); if (el) el.scrollIntoView({ behavior: "smooth" }); };
   const demoSig = { label: "Momentum", dir: "bull", strength: 0.72, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = [
     { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · EMA cross", "Email delivery"], cta: "Start free" },
     { id: "trader", name: "Trader", price: "$19", per: "/mo", pop: true, feats: ["Up to 6 coins", "Everything in Watch", "Entry / stop / target on every alert", "Whale & exchange-flow signals", "Telegram + Discord + email", "Hourly digest"], cta: "Get Trader" },
-    { id: "desk", name: "Desk", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Whale-flow alerts with size thresholds", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Desk" },
+    { id: "desk", name: "Pro", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Whale-flow alerts with size thresholds", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Pro" },
   ];
   return (
     <div className="landing">
@@ -138,7 +138,6 @@ function Landing({ onPickPlan, onDemo, onSignIn }) {
         <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="nav-r">
           <button className="ghost" onClick={onSignIn}>Sign in</button>
-          <button className="ghost" onClick={onDemo}>Live demo</button>
           <button className="solid" onClick={onWaitlist}>Early access</button>
         </div>
       </nav>
@@ -152,7 +151,7 @@ function Landing({ onPickPlan, onDemo, onSignIn }) {
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
             <button className="solid lg" onClick={onWaitlist}>Join early access</button>
-            <button className="ghost lg" onClick={onDemo}>See the live demo</button>
+            <button className="ghost lg" onClick={() => onPickPlan("watch")}>Start free, no card needed</button>
           </div>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
         </div>
@@ -205,7 +204,7 @@ function Landing({ onPickPlan, onDemo, onSignIn }) {
             </div>
           ))}
         </div>
-        <p className="pricing-foot">Early access members get first access and locked-in launch pricing. You can also <button className="linkish" onClick={onDemo}>try the live demo</button> right now.</p>
+        <p className="pricing-foot">Early access members get first access and locked-in launch pricing. You can also <button className="linkish" onClick={() => onPickPlan("watch")}>start free</button> right now, no card needed.</p>
       </section>
 
       <section className="waitlist" id="waitlist">
@@ -261,7 +260,7 @@ function Auth({ mode, plan, onBack }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const planName = { watch: "Watch (free)", trader: "Trader, $19/mo", desk: "Desk, $49/mo" }[plan] || "Watch (free)";
+  const planName = { watch: "Watch (free)", trader: "Trader, $19/mo", desk: "Pro, $49/mo" }[plan] || "Watch (free)";
 
   const ERR_MSG = {
     email_taken: "That email already has an account. Try signing in instead.",
@@ -279,13 +278,29 @@ function Auth({ mode, plan, onBack }) {
         const res = await fetch("/api/register", {
           method: "POST",
           headers: { "content-type": "application/json" },
-          body: JSON.stringify({ email, password: pw, plan: plan || "watch" }),
+          body: JSON.stringify({ email, password: pw }),
         });
         const json = await res.json();
         if (!res.ok) { setErr(ERR_MSG[json.error] || "Could not create the account. Try again."); setBusy(false); return; }
       }
       const result = await signIn("credentials", { email, password: pw, redirect: false });
       if (result?.error) { setErr(ERR_MSG[result.error] || "Wrong email or password."); setBusy(false); return; }
+
+      // A paid plan on signup means real Stripe checkout next, not instant
+      // access. Someone signing in to an existing account, or choosing the
+      // free Watch tier, just lands in the dashboard as usual.
+      if (mode !== "signin" && (plan === "trader" || plan === "desk")) {
+        const co = await fetch("/api/checkout", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ plan }),
+        });
+        const coJson = await co.json();
+        if (co.ok && coJson.url) { window.location.href = coJson.url; return; }
+        setErr("Account created, but checkout couldn't start. Try again from the dashboard.");
+        setBusy(false);
+        return;
+      }
       // useSession() in the App root picks up the new session automatically.
     } catch {
       setErr("Something went wrong. Try again.");
@@ -304,7 +319,7 @@ function Auth({ mode, plan, onBack }) {
         <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" autoComplete="email" /></label>
         <label className="fld"><span>Password</span><input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="••••••••" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>
         {mode !== "signin" && plan && plan !== "watch" && (
-          <div className="pay-note">Card checkout isn't wired up yet, your plan is saved but nothing is charged.</div>
+          <div className="pay-note">You'll go to Stripe's real checkout next to complete payment, this creates your account first, nothing is charged until you finish there.</div>
         )}
         {err && <div className="auth-err">{err}</div>}
         <button className="solid full lg" onClick={go} disabled={busy}>{busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account and continue"}</button>
@@ -317,7 +332,7 @@ function Auth({ mode, plan, onBack }) {
 /* =============================== DASHBOARD =============================== */
 // DEFAULT_TH now comes from lib/signals.js, imported above.
 
-function Dashboard({ account, onSignOut }) {
+function Dashboard({ account, onSignOut, justUpgraded }) {
   const [watchlist, setWatchlist] = useState(["BTC", "SOL", "XLM"]);
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
@@ -522,7 +537,8 @@ function Dashboard({ account, onSignOut }) {
           <div className="refresh">{loading ? <span className="dot-pulse" /> : <span className="dot-ok" />}<span className="refresh-t">{secsToRefresh != null ? `refresh ${secsToRefresh}s` : "…"}</span></div>
           <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
           <div className="acct">
-            <span className="plan-badge">{(account.plan || "watch").toUpperCase()}</span>
+            {account.isAdmin && <span className="admin-badge">ADMIN</span>}
+            <span className="plan-badge">{{ watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "WATCH"}</span>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
         </div>
@@ -573,6 +589,7 @@ function Dashboard({ account, onSignOut }) {
       </div>
 
       {globalError && <div className="banner">{globalError}</div>}
+      {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
 
       <div className="dash-body">
         <div className="opps">
@@ -760,18 +777,51 @@ function Dashboard({ account, onSignOut }) {
 
 /* ================================= ROOT ================================= */
 export default function App() {
-  const { data: session, status } = useSession(); // "loading" | "authenticated" | "unauthenticated"
+  const { data: session, status, update } = useSession(); // "loading" | "authenticated" | "unauthenticated"
   const [view, setView] = useState("landing"); // landing | auth
   const [authMode, setAuthMode] = useState("signup");
   const [plan, setPlan] = useState(null);
-  const [demo, setDemo] = useState(false); // "see live demo" bypasses real accounts entirely
+  const [justUpgraded, setJustUpgraded] = useState(false);
 
   const isAuthed = status === "authenticated";
-  const account = isAuthed ? { email: session.user.email, plan: session.user.plan } : demo ? { email: "demo@setpoint.app", plan: "trader" } : null;
+  const account = isAuthed ? { email: session.user.email, plan: session.user.plan, isAdmin: !!session.user.isAdmin } : null;
+
+  // Returning from a real Stripe checkout. A JWT session doesn't re-check
+  // the database on its own, that's what makes it fast, so it still shows
+  // whatever plan was true when the person originally signed in, until told
+  // to refresh. This is that: pull the URL flag Stripe's success_url sends
+  // back, force a real session refresh so the new plan actually shows up,
+  // then clean the URL so a page reload doesn't refresh it a second time.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const checkoutResult = params.get("checkout");
+    if (!checkoutResult) return;
+    if (checkoutResult === "success") {
+      // Stripe's webhook and this redirect land at roughly the same moment,
+      // not in a guaranteed order. If the webhook is a beat behind, one
+      // refresh could still show the old plan. Try a few times over a few
+      // seconds rather than accepting whichever one happens to land first.
+      let attempts = 0;
+      const tryRefresh = async () => {
+        attempts++;
+        const fresh = await update();
+        const stillOld = !fresh?.user?.plan || fresh.user.plan === "watch";
+        if (stillOld && attempts < 4) {
+          setTimeout(tryRefresh, 1500);
+        } else {
+          setJustUpgraded(true);
+          setTimeout(() => setJustUpgraded(false), 6000);
+        }
+      };
+      tryRefresh();
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete("checkout");
+    window.history.replaceState({}, "", url.toString());
+  }, [update]);
 
   const handleSignOut = () => {
-    setDemo(false);
-    if (isAuthed) signOut({ redirect: false });
+    signOut({ redirect: false });
     setView("landing");
   };
 
@@ -790,7 +840,6 @@ export default function App() {
       {!account && view === "landing" && (
         <Landing
           onPickPlan={(p) => { setAuthMode("signup"); setPlan(p); setView("auth"); }}
-          onDemo={() => setDemo(true)}
           onSignIn={() => { setAuthMode("signin"); setPlan(null); setView("auth"); }}
         />
       )}
@@ -798,7 +847,7 @@ export default function App() {
         <Auth mode={authMode} plan={plan} onBack={() => setView("landing")} />
       )}
       {account && (
-        <Dashboard account={account} onSignOut={handleSignOut} />
+        <Dashboard account={account} onSignOut={handleSignOut} justUpgraded={justUpgraded} />
       )}
     </div>
   );
@@ -934,6 +983,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .icon-btn:hover{color:var(--text);border-color:var(--green)}
 .acct{display:flex;align-items:center;gap:9px}
 .plan-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--green);background:var(--green-dim);border:1px solid var(--green);padding:4px 9px;border-radius:6px}
+.admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px}
 
 .ticker{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0}
 .tk{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-width:180px;flex:1}
@@ -962,6 +1012,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .add-go{background:var(--green);color:#03110B;font-weight:600;font-size:12.5px;border-radius:7px;padding:7px}
 
 .banner{background:var(--red-dim);border:1px solid rgba(255,92,108,.3);color:var(--red-soft);font-size:13px;padding:11px 14px;border-radius:10px;margin-bottom:14px}
+.banner.success{background:var(--green-dim);border-color:rgba(0,209,121,.3);color:var(--green)}
 
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
