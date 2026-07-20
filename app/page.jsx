@@ -142,7 +142,7 @@ function Landing({ onPickPlan, onSignIn }) {
         </div>
       </nav>
 
-      <div className="testing-band"><span className="tb-dot" />Private testing. Setpoint is not live yet. Join the early access list to get notified at launch.</div>
+      <div className="testing-band"><span className="tb-dot" />Signals are live. Pick a plan below to get started, no card needed on Watch.</div>
 
       <header className="hero">
         <div className="hero-l">
@@ -192,7 +192,7 @@ function Landing({ onPickPlan, onSignIn }) {
 
       <section className="pricing">
         <h2>Pricing at launch</h2>
-        <p className="pricing-sub">This is where plans will land when Setpoint opens. Cancel anytime. Setpoint only sends alerts. It never holds your funds or places a trade.</p>
+        <p className="pricing-sub">Cancel anytime. Setpoint only sends alerts. It never holds your funds or places a trade.</p>
         <div className="tiers">
           {tiers.map((t) => (
             <div className={`tier ${t.pop ? "pop" : ""}`} key={t.id}>
@@ -200,11 +200,11 @@ function Landing({ onPickPlan, onSignIn }) {
               <div className="tier-name">{t.name}</div>
               <div className="tier-price"><span className="tp-num">{t.price}</span><span className="tp-per">{t.per}</span></div>
               <ul className="tier-feats">{t.feats.map((f) => <li key={f}>{f}</li>)}</ul>
-              <button className={t.pop ? "solid full" : "ghost full"} onClick={onWaitlist}>Join early access</button>
+              <button className={t.pop ? "solid full" : "ghost full"} onClick={() => onPickPlan(t.id)}>{t.cta}</button>
             </div>
           ))}
         </div>
-        <p className="pricing-foot">Early access members get first access and locked-in launch pricing. You can also <button className="linkish" onClick={() => onPickPlan("watch")}>start free</button> right now, no card needed.</p>
+        <p className="pricing-foot">All plans include the entry, stop, and target on every alert. Upgrade or cancel any time from your dashboard.</p>
       </section>
 
       <section className="waitlist" id="waitlist">
