@@ -217,5 +217,8 @@ export async function GET(req) {
   ]);
 
   const risk = reversalRisk(bias, fng?.value);
-  return Response.json({ coins, fng, bias, risk, weekly200, tf, at: Date.now() });
+  return Response.json(
+    { coins, fng, bias, risk, weekly200, tf, at: Date.now() },
+    { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
+  );
 }

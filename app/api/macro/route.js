@@ -67,13 +67,15 @@ async function generateMacroRead(key) {
   }
 }
 
+const NO_CACHE = { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } };
+
 export async function GET() {
   const key = process.env.ANTHROPIC_API_KEY;
   const conn = process.env.DATABASE_URL;
 
   if (!conn) {
     const fresh = await generateMacroRead(key);
-    return Response.json(fresh);
+    return Response.json(fresh, NO_CACHE);
   }
 
   try {
@@ -88,20 +90,20 @@ export async function GET() {
     `;
     const rows = await sql`SELECT value, updated_at FROM macro_cache WHERE key = 'macro_read'`;
     const isFresh = rows.length && (Date.now() - new Date(rows[0].updated_at).getTime()) < CACHE_HOURS * 3600 * 1000;
-    if (isFresh) return Response.json(rows[0].value);
+    if (isFresh) return Response.json(rows[0].value, NO_CACHE);
 
     const fresh = await generateMacroRead(key);
     if (fresh.error) {
       // Generation failed, serve stale cache over nothing if we have it
-      return Response.json(rows.length ? rows[0].value : fresh);
+      return Response.json(rows.length ? rows[0].value : fresh, NO_CACHE);
     }
     await sql`
       INSERT INTO macro_cache (key, value, updated_at) VALUES ('macro_read', ${JSON.stringify(fresh)}::jsonb, now())
       ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(fresh)}::jsonb, updated_at = now()
     `;
-    return Response.json(fresh);
+    return Response.json(fresh, NO_CACHE);
   } catch (e) {
     const fresh = await generateMacroRead(key);
-    return Response.json(fresh);
+    return Response.json(fresh, NO_CACHE);
   }
 }

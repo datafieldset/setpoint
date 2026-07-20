@@ -427,5 +427,17 @@ export async function GET() {
   const consistency = await getConsistencyRanking();
 
   const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency });
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(html, {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      // force-dynamic stops Next.js itself from pre-rendering this route,
+      // but says nothing to anything downstream, Vercel's edge network, a
+      // proxy, a fetch tool. Without an explicit no-store here, a plain 200
+      // response can still get cached somewhere in between, which is
+      // exactly why three fetches in a row came back identical, timestamped
+      // to the same second, instead of three fresh replays.
+      "cache-control": "no-store, no-cache, must-revalidate, max-age=0",
+      "pragma": "no-cache",
+    },
+  });
 }

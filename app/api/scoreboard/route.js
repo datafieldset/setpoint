@@ -140,9 +140,10 @@ function renderHtml({ buckets, resolveInfo, totalTracked, totalOpen }) {
 }
 
 export async function GET() {
+  const noCache = { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" };
   const conn = process.env.DATABASE_URL;
   if (!conn) {
-    return new Response("DATABASE_URL not set, scoreboard needs Neon.", { status: 500, headers: { "content-type": "text/plain" } });
+    return new Response("DATABASE_URL not set, scoreboard needs Neon.", { status: 500, headers: { "content-type": "text/plain", ...noCache } });
   }
 
   try {
@@ -198,8 +199,8 @@ export async function GET() {
       totalTracked: totalTrackedRows[0]?.n || 0,
       totalOpen: totalOpenRows[0]?.n || 0,
     });
-    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+    return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", ...noCache } });
   } catch (e) {
-    return new Response(`Scoreboard error: ${String(e.message || e).slice(0, 300)}`, { status: 500, headers: { "content-type": "text/plain" } });
+    return new Response(`Scoreboard error: ${String(e.message || e).slice(0, 300)}`, { status: 500, headers: { "content-type": "text/plain", ...noCache } });
   }
 }

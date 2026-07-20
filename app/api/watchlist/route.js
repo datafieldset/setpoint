@@ -78,5 +78,7 @@ export async function GET() {
   const promising = ranked.filter((r) => r.avgRate >= TRUST_MIN_AVG && r.range > TRUST_MAX_SWING);
 
   const html = renderHtml({ liveNow, trustworthy, promising, reason: ranked.length ? null : reason });
-  return new Response(html, { headers: { "content-type": "text/html; charset=utf-8" } });
+  return new Response(html, {
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store, no-cache, must-revalidate, max-age=0" },
+  });
 }

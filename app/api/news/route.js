@@ -218,5 +218,8 @@ export async function GET(req) {
     recent: parsed.filter((w) => w.dir === "to_exchange" || w.dir === "from_exchange").slice(0, 4),
   } : null;
 
-  return Response.json({ coins, netFlow, at: Date.now() });
+  return Response.json(
+    { coins, netFlow, at: Date.now() },
+    { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
+  );
 }
