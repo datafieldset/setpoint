@@ -299,7 +299,7 @@ function pct(x) {
   return x == null ? "—" : (x * 100).toFixed(0) + "%";
 }
 
-function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency }) {
+function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, markdown }) {
   const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
   const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
   const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
@@ -363,7 +363,10 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     td.bull{color:#00D179;font-weight:600}
     td.bear{color:#FF5C6C;font-weight:600}
   </style></head><body>
-  <h1>Setpoint research backtest</h1>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
+    <h1>Setpoint research backtest</h1>
+    <button onclick="downloadMd()" style="background:#0F1712;border:1px solid #223029;color:#5EE9AE;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap">↓ Download .md</button>
+  </div>
   <div class="sub">Run at ${new Date(runAt).toUTCString()} · ${totalFired} signals evaluated across BTC, SOL, XLM · 5m/15m/30m/1h · this page and route are temporary</div>
 
   ${errors.length ? `<div class="err">${errors.join("<br>")}</div>` : ""}
@@ -398,7 +401,124 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     New this run: "Reversal watch" is a distinct signal, not a scoring tweak, that only fires when the market's lean looks visibly stretched, testing a specific idea, that fading a stretched extreme is a real, separate opportunity from fading in general. Compare its own "Reversal watch" rows below against the existing "Bias: against" row to see whether stretched-only fades actually beat fading whenever direction merely disagrees. One honest gap: there's no cheap historical Fear & Greed series to replay, so this backtest can only ever register the "elevated" stretch tier, never "high" (which live also requires a sentiment extreme), so the strongest version of this idea isn't fully testable here yet, only live.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
+  <script>
+    // JSON.stringify safely escapes quotes/backslashes/newlines for a JS
+    // string literal; the </script split guards against the (currently
+    // impossible, but cheap to guard anyway) case of that literal sequence
+    // ending up inside the report content and closing this tag early.
+    const REPORT_MD = ${JSON.stringify(markdown || "").replace(/<\/script/gi, "<\\/script")};
+    function downloadMd() {
+      const blob = new Blob([REPORT_MD], { type: "text/markdown;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "setpoint-backtest-${new Date(runAt).toISOString().replace(/[:.]/g, "-")}.md";
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+  </script>
   </body></html>`;
+}
+
+// Same report, same data, as a plain markdown string instead of HTML. Kept
+// as its own function rather than reusing renderHtml's strings, since HTML
+// table markup and markdown table syntax don't share much, easier to keep
+// them as two clean renderers off the same inputs than to try to convert
+// one into the other.
+function renderMarkdown({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency }) {
+  const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
+  const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
+  const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
+  const regimeBuckets = buckets.filter((b) => (b.key.includes(" · Trend:") || b.key.includes(" · Bias:")) && b.fired >= 5 && b.winRate != null);
+  const regimeSorted = regimeBuckets.slice().sort((a, b) => b.winRate - a.winRate);
+  const mainRows = buckets.filter((b) => !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
+  const sortedTurns = (turns || []).slice().sort((a, b) => b.time - a.time).slice(0, 40);
+
+  const delta = (b) => {
+    if (!dbInfo?.prevMap || !dbInfo.prevMap.has(b.key) || dbInfo.prevMap.get(b.key) == null || b.winRate == null) return "—";
+    const d = Math.round((b.winRate - dbInfo.prevMap.get(b.key)) * 100);
+    return `${d >= 0 ? "+" : ""}${d}pt`;
+  };
+  const calloutLine = (b) => `- ${b.key}: ${b.wins}W / ${b.losses}L (${pct(b.winRate)})${dbInfo?.prevMap?.has(b.key) ? ` (${delta(b)} vs last run)` : ""}`;
+
+  const lines = [];
+  lines.push(`# Setpoint research backtest`);
+  lines.push(``);
+  lines.push(`Run at ${new Date(runAt).toUTCString()} · ${totalFired} signals evaluated across BTC, SOL, XLM · 5m/15m/30m/1h · this page and route are temporary`);
+  lines.push(``);
+  if (errors.length) { lines.push(`**Errors:** ${errors.join("; ")}`); lines.push(``); }
+
+  lines.push(`## Most consistent, across the last ${CONSISTENCY_RUNS} runs`);
+  lines.push(``);
+  lines.push(`This is the trustworthy read, not one lucky run. Scored as average win rate minus how much it swung, a high number that bounces around loses to a steady one that doesn't move.`);
+  lines.push(``);
+  if (consistency?.ranked?.length) {
+    lines.push(`| Bucket | Runs | Avg win rate | Swing | Total fired |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const c of consistency.ranked) lines.push(`| ${c.bucket} | ${c.nRuns} | ${pct(c.avgRate)} | ${(c.range * 100).toFixed(0)}pt | ${c.totalFired} |`);
+  } else {
+    lines.push(consistency?.reason ? `Not available this run (${consistency.reason}).` : `Not enough saved runs yet, need at least ${CONSISTENCY_MIN_RUNS} to rank anything.`);
+  }
+  lines.push(``);
+
+  lines.push(`## Worth a look, underperforming`);
+  lines.push(``);
+  lines.push(worst.length ? worst.map(calloutLine).join("\n") : `Not enough fired signals yet to call out a weak spot.`);
+  lines.push(``);
+
+  lines.push(`## Worth a look, outperforming`);
+  lines.push(``);
+  lines.push(best.length ? best.map(calloutLine).join("\n") : `Not enough fired signals yet to call out a strong spot.`);
+  lines.push(``);
+
+  lines.push(`## By market condition`);
+  lines.push(``);
+  lines.push(`Same setups, split by what trend and bias actually looked like the moment each one fired, not blended into one average. An overall number near 50% can be hiding a real pattern underneath, this is where that shows up.`);
+  lines.push(``);
+  if (regimeSorted.length) {
+    lines.push(`| Setup · condition | Fired | Won | Lost | Win rate |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const b of regimeSorted) lines.push(`| ${b.key} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
+  } else {
+    lines.push(`Not enough fired signals with a clear trend or bias reading yet to split this out.`);
+  }
+  lines.push(``);
+
+  lines.push(`## Market turning points`);
+  lines.push(``);
+  lines.push(`Every point in this replay where the shared bias flipped from bullish to bearish or back, most recent first.`);
+  lines.push(``);
+  if (sortedTurns.length) {
+    lines.push(`| When | Timeframe | Flip | Weighted move | % of watchlist agreeing |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const t of sortedTurns) {
+      const flip = t.to === "bull" ? "→ bullish" : "→ bearish";
+      const agreePct = t.to === "bull" ? t.pctUp : (t.pctUp != null ? 1 - t.pctUp : null);
+      lines.push(`| ${new Date(t.time).toUTCString()} | ${TF[t.tf]?.label || t.tf} | ${flip} | ${t.avgPct != null ? t.avgPct.toFixed(2) + "%" : "—"} | ${agreePct != null ? Math.round(agreePct * 100) + "%" : "—"} |`);
+    }
+  } else {
+    lines.push(`No clean bullish/bearish flips in this replay window.`);
+  }
+  lines.push(``);
+
+  lines.push(`## Full breakdown`);
+  lines.push(``);
+  lines.push(`| Bucket | Fired | Won | Lost | Open | Win rate | Vs last run |`);
+  lines.push(`| --- | --- | --- | --- | --- | --- | --- |`);
+  for (const b of mainRows) {
+    lines.push(`| ${b.key}${b.fired < 5 ? " (low sample)" : ""} | ${b.fired} | ${b.wins} | ${b.losses} | ${b.open} | ${pct(b.winRate)} | ${delta(b)} |`);
+  }
+  lines.push(``);
+
+  lines.push(`## Methodology`);
+  lines.push(``);
+  lines.push(`Replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet.`);
+  lines.push(``);
+  lines.push(dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}).`);
+
+  return lines.join("\n");
 }
 
 export async function GET() {
@@ -425,8 +545,9 @@ export async function GET() {
   const buckets = summarize(allRows);
   const dbInfo = await saveToNeon(runAt, buckets);
   const consistency = await getConsistencyRanking();
+  const markdown = renderMarkdown({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency });
 
-  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency });
+  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, markdown });
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
