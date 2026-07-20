@@ -680,17 +680,25 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
         <aside className="onchain">
           <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
-          {bias && bias.dir && (
-            <div className={`bias-panel ${bias.dir}`}>
-              <div className="bias-row">
-                <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
-                <span className="bias-pct">{bias.pctUp != null ? Math.round(bias.pctUp * 100) : "—"}% of watchlist agrees</span>
+          {bias && bias.dir && (() => {
+            // pctUp is always "percent of the basket currently up," regardless
+            // of direction. That's correct for a bullish reading, backwards for
+            // a bearish one, since a falling pctUp during a real bearish move
+            // means MORE coins agree with the drop, not fewer. Show agreement
+            // with whichever direction is actually being displayed.
+            const agreePct = bias.dir === "bull" ? bias.pctUp : (bias.pctUp != null ? 1 - bias.pctUp : null);
+            return (
+              <div className={`bias-panel ${bias.dir}`}>
+                <div className="bias-row">
+                  <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
+                  <span className="bias-pct">{agreePct != null ? Math.round(agreePct * 100) : "—"}% of the market agrees</span>
+                </div>
+                {risk && risk.level !== "low" && (
+                  <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
+                )}
               </div>
-              {risk && risk.level !== "low" && (
-                <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
-              )}
-            </div>
-          )}
+            );
+          })()}
           {weekly200 && (() => {
             const btcPrice = data.BTC?.snap?.price;
             const distPct = btcPrice ? ((btcPrice - weekly200.sma) / weekly200.sma) * 100 : null;

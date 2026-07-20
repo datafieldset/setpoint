@@ -335,7 +335,11 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
   const sortedTurns = (turns || []).slice().sort((a, b) => b.time - a.time).slice(0, 40);
   const turnRows = sortedTurns.map((t) => {
     const flip = t.to === "bull" ? "→ bullish" : "→ bearish";
-    return `<tr><td>${new Date(t.time).toUTCString()}</td><td>${TF[t.tf]?.label || t.tf}</td><td class="${t.to}">${flip}</td><td>${t.avgPct != null ? t.avgPct.toFixed(2) + "%" : "—"}</td><td>${t.pctUp != null ? Math.round(t.pctUp * 100) + "%" : "—"}</td></tr>`;
+    // Same bug as the live dashboard had: pctUp is always "percent up,"
+    // correct for a bullish flip, backwards for a bearish one. Show
+    // agreement with whichever direction actually flipped.
+    const agreePct = t.to === "bull" ? t.pctUp : (t.pctUp != null ? 1 - t.pctUp : null);
+    return `<tr><td>${new Date(t.time).toUTCString()}</td><td>${TF[t.tf]?.label || t.tf}</td><td class="${t.to}">${flip}</td><td>${t.avgPct != null ? t.avgPct.toFixed(2) + "%" : "—"}</td><td>${agreePct != null ? Math.round(agreePct * 100) + "%" : "—"}</td></tr>`;
   }).join("");
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Setpoint research backtest</title>
