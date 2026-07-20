@@ -365,7 +365,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
   </style></head><body>
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
     <h1>Setpoint research backtest</h1>
-    <button onclick="downloadMd()" style="background:#0F1712;border:1px solid #223029;color:#5EE9AE;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap">↓ Download .md</button>
+    <button id="md-download-btn" style="background:#0F1712;border:1px solid #223029;color:#5EE9AE;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap">↓ Download .md</button>
   </div>
   <div class="sub">Run at ${new Date(runAt).toUTCString()} · ${totalFired} signals evaluated across BTC, SOL, XLM · 5m/15m/30m/1h · this page and route are temporary</div>
 
@@ -407,16 +407,25 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     // impossible, but cheap to guard anyway) case of that literal sequence
     // ending up inside the report content and closing this tag early.
     const REPORT_MD = ${JSON.stringify(markdown || "").replace(/<\/script/gi, "<\\/script")};
-    function downloadMd() {
-      const blob = new Blob([REPORT_MD], { type: "text/markdown;charset=utf-8" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "setpoint-backtest-${new Date(runAt).toISOString().replace(/[:.]/g, "-")}.md";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+    const btn = document.getElementById("md-download-btn");
+    if (btn) {
+      btn.addEventListener("click", function () {
+        try {
+          const blob = new Blob([REPORT_MD], { type: "text/markdown;charset=utf-8" });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = "setpoint-backtest-${new Date(runAt).toISOString().replace(/[:.]/g, "-")}.md";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          // If this ever fails again, fail loudly instead of silently,
+          // so it's obvious something's wrong instead of "nothing happens."
+          alert("Download failed: " + e.message);
+        }
+      });
     }
   </script>
   </body></html>`;
