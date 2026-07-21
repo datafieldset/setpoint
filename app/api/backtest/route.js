@@ -402,30 +402,55 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
   <script>
+    console.log("[Backtest] Script loaded");
+    
     // JSON.stringify safely escapes quotes/backslashes/newlines for a JS
     // string literal; the </script split guards against the (currently
     // impossible, but cheap to guard anyway) case of that literal sequence
     // ending up inside the report content and closing this tag early.
     const REPORT_MD = ${JSON.stringify(markdown || "").replace(/<\/script/gi, "<\\/script")};
+    console.log("[Backtest] Report markdown loaded, length:", REPORT_MD.length);
+    
     const btn = document.getElementById("md-download-btn");
+    const filename = "setpoint-backtest-${new Date(runAt).toISOString().replace(/[:.]/g, "-")}.md";
+    
+    console.log("[Backtest] Button found:", !!btn, "Filename:", filename);
+    
     if (btn) {
-      btn.addEventListener("click", function () {
+      btn.addEventListener("click", function (e) {
+        console.log("[Backtest] Button clicked");
+        e.preventDefault();
+        e.stopPropagation();
+        
         try {
+          console.log("[Backtest] Creating blob, size:", REPORT_MD.length);
           const blob = new Blob([REPORT_MD], { type: "text/markdown;charset=utf-8" });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement("a");
-          a.href = url;
-          a.download = "setpoint-backtest-${new Date(runAt).toISOString().replace(/[:.]/g, "-")}.md";
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+          console.log("[Backtest] Blob created, size:", blob.size);
+          
+          // Use a simple link approach: encode the content as a data URL
+          const content = encodeURIComponent(REPORT_MD);
+          const dataUrl = "data:text/markdown;charset=utf-8," + content;
+          
+          const link = document.createElement("a");
+          link.href = dataUrl;
+          link.download = filename;
+          link.style.display = "none";
+          
+          console.log("[Backtest] About to trigger download");
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          console.log("[Backtest] Download triggered");
+          
         } catch (e) {
-          // If this ever fails again, fail loudly instead of silently,
-          // so it's obvious something's wrong instead of "nothing happens."
-          alert("Download failed: " + e.message);
+          console.error("[Backtest] Error:", e);
+          alert("Download failed: " + e.message + "\\nCheck console for details.");
         }
       });
+      console.log("[Backtest] Event listener attached");
+    } else {
+      console.error("[Backtest] Button not found!");
+      alert("Download button not found on page");
     }
   </script>
   </body></html>`;
