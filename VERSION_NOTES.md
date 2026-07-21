@@ -1,38 +1,21 @@
-# Setpoint v2.8
+# Setpoint v2.9
 
-## What's Fixed
+## What Changed
 
-### Download Route Tier Tracking Bug
-The `/api/backtest/download` endpoint was using `s.proven` (undefined) instead of `s.tier` when recording signal data. This caused all signals to show as "Weak" in the backtest report, even:
-- Signals with tier: "proven" (which should show as "Proven")
-- Signals with tier: null (like Reversal watch, which should show as "Testing")
+### Backtest Download Report - Now shows market condition analysis
 
-**Fix:** Changed line 105 to properly record `tier: s.tier` instead of `proven: s.proven`.
+The download markdown now captures complete signal context and analyzes when signals actually work.
 
-### Risk Field Label
-The risk level from `reversalRisk()` was being mislabeled as "Bias" in the summary output. 
+**Data captured per signal:**
+- Signal context tags: biasTag (aligned/against market bias), trendTag (with/against trend), volTag (volume confirmation)
+- Market conditions: bias direction, how stretched the market was (biasStretch)
+- Full signal metadata: label, direction, tier, strength
 
-**Fix:** Changed to `risk: risk.level` and relabeled in summarize as "Rev risk" to clarify this is reversal risk, not market bias.
+**New report sections:**
+1. Signals that clear 58% - Only winners shown first
+2. How winners perform by market condition - Shows if signal works when aligned vs against market bias
+3. Volume confirmation on winners - Does volume matter for the winners?
+4. Trend condition on winners - Works better with or against trend?
+5. Below 58% reference - Candidates for future improvement
 
-### Tier Categorization in Output
-The summarize function now properly handles three tier states:
-- `tier === "proven"` → shows as "Proven"
-- `tier === "weak"` → shows as "Weak"  
-- `tier === null` or undefined → shows as "Testing" (for new/unproven signals like Reversal watch)
-
-## Result
-
-Now when you run a backtest and download the report:
-- Reversal watch signals will appear as their own type
-- All signals will show their correct tier (Proven/Weak/Testing)
-- Reversal risk (elevated/high) will be properly tagged in the output
-
-This allows analysis of whether Reversal watch is actually performing as hypothesized across multiple runs.
-
-## Next Steps
-
-Run a clean backtest and download to confirm Reversal watch signals now appear in the report with correct tier tracking. Then analyze:
-1. Do Reversal watch signals fire frequently enough to analyze?
-2. Win rate on Reversal watch vs. standard signals
-3. Whether reversal risk level (elevated vs high) correlates with outcome
-4. Regional breakdown by market condition (trend vs bias situation when fired)
+**Why this matters:** Now you can see the exact conditions each signal needs to hit 58%.
