@@ -1,32 +1,24 @@
-# Setpoint v3.0
+# Setpoint v3.1
 
 ## What Changed
 
-### 1. Signal tiers now carry a real win rate percentage
-Replaced the old binary PROVEN_COMBOS/WEAK_COMBOS lists in lib/signals.js with a single SIGNAL_RATES table that stores the actual backtested win rate per signal.
+### New: Whale flow price-impact tracker
+New route: `/api/whale-track`. Visit it in a browser like `/api/scoreboard`, any time.
 
-- 58%+ → tagged "proven", shows on the dashboard by default
-- Below 58% → tagged "tested", hidden behind the toggle, but now shows its real percentage instead of just "weak"
-- No clean sample yet → untagged, same as before
+**What it does:**
+1. Logs every large transfer Whale Alert posts (via the same free Telegram feed `/api/news` already reads), deduped by the transfer's Telegram link so revisiting doesn't double-count
+2. Checks BTC price at 15m, 30m, 1h, 4h, and 12h after each transfer fired, filling in whichever checkpoints have had enough time pass
+3. Reports whether price actually moved the "traditionally expected" direction (inflow onto exchange → down, outflow off exchange → up) — the same question Na raised about whether that assumption even holds
 
-Dashboard cards now show "PROVEN 67%" or "TESTED 22%" instead of a flat label.
+**Why BTC specifically, regardless of which asset the whale moved:** the question isn't "does an ETH whale move affect ETH price," it's whether large exchange flow in general is a useful market read. BTC is the cleanest bellwether for that, same logic the existing pooled net-flow panel in Market Context already uses.
 
-**Current table (from Jul 21 07:22 backtest, single run):**
-- EMA cross up 5m bull: 59% (PROVEN)
-- Volume spike 15m bull: 67% (PROVEN)
-- EMA cross down 1h bear: 19% (tested)
-- Volume spike 30m bull: 28% (tested)
-- Volume spike 5m bear: 30% (tested)
-- RSI overbought 15m bear: 22% (tested)
-- EMA cross down 30m bear: 0% (tested)
-- EMA cross up 30m bull: needs retest (no clean sample this run, old number retired)
-- RSI oversold 15m bull: needs retest (no clean sample this run, old number retired)
-- RSI overbought 30m bear: needs retest
+**New table:** `whale_track` in Neon, auto-created on first visit same as every other table in this app (no manual SQL needed). Columns: link (unique, for dedup), asset, usd_amount, direction, fired_at, btc_price_at_fire, price_15m/30m/1h/4h/12h, resolved_15m/30m/1h/4h/12h.
 
-### 2. Fixed a broken import
-app/api/watchlist/route.js was importing PROVEN_COMBOS/WEAK_COMBOS which no longer exist after the change above. Updated it to check SIGNAL_RATES with the same 58% threshold.
+**Resolution happens on visit, not on a schedule** — same pattern as `/api/scoreboard`, no cron job (Na doesn't want to pay for that Vercel tier yet).
 
-## Next Steps
-- Watch EMA cross up 5m bull and Volume spike 15m bull live for paper trading
-- Rebuild Reversal watch with RSI divergence, volume climax, momentum deceleration, consecutive-candle streak, plus keep Fear & Greed
-- Re-run backtest to build sample size and get clean numbers for EMA cross 30m / RSI oversold 15m again
+### Backtest download now includes whale flow data
+`/api/backtest/download` report now has a "Whale flow price impact" section: individual events with their checkpoint price changes, plus an aggregate table showing what % of the time price actually moved the traditionally-expected direction per checkpoint. Wrapped so a database hiccup can't break the rest of the backtest report.
+
+## Still open
+- Not enough data logged yet to say anything real about the inflow/outflow question — this just starts the clock. Revisit `/api/whale-track` periodically (or check the backtest download) to watch the sample build.
+- Reversal watch rebuild (RSI divergence, volume climax, momentum deceleration, consecutive-candle streak, Fear & Greed) still pending from before this.

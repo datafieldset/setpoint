@@ -241,6 +241,69 @@ function renderMarkdown({ buckets }) {
   return lines.join("\n");
 }
 
+async function fetchWhaleSection() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return "## Whale flow price impact\n\nDATABASE_URL not set, skipped.\n";
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn);
+    const rows = await sql`SELECT * FROM whale_track ORDER BY fired_at DESC LIMIT 200`;
+    if (!rows.length) {
+      return "## Whale flow price impact\n\nNo whale transfers logged yet. Visit /api/whale-track to start logging and resolving, this fills in over time.\n";
+    }
+
+    const pct = (fire, checkpoint) => checkpoint == null ? null : (checkpoint - fire) / fire;
+    const lines = [];
+    lines.push("## Whale flow price impact");
+    lines.push("");
+    lines.push("BTC price change at each checkpoint after a large transfer, regardless of which asset moved. `to_exchange` = onto an exchange (traditionally read as possible sell pressure), `from_exchange` = off an exchange (traditionally read as possible accumulation). Whether that read actually holds is the open question this table is meant to answer.");
+    lines.push("");
+
+    // Aggregate win rate per direction per checkpoint: does price move the
+    // "expected" way (down after inflow, up after outflow) more than half
+    // the time, using the same 58% bar as every other signal in this report.
+    const CPS = ["15m", "30m", "1h", "4h", "12h"];
+    const buckets = {};
+    for (const r of rows) {
+      for (const cp of CPS) {
+        const checkpointPrice = r[`price_${cp}`];
+        if (checkpointPrice == null) continue;
+        const change = pct(parseFloat(r.btc_price_at_fire), parseFloat(checkpointPrice));
+        const key = `${r.direction === "to_exchange" ? "Inflow" : "Outflow"} · ${cp}`;
+        if (!buckets[key]) buckets[key] = { fired: 0, matched: 0 };
+        buckets[key].fired++;
+        // "Matched" = moved the traditionally-expected direction: inflow+down, outflow+up
+        const expectedDown = r.direction === "to_exchange";
+        if ((expectedDown && change < 0) || (!expectedDown && change > 0)) buckets[key].matched++;
+      }
+    }
+    const bucketRows = Object.entries(buckets).filter(([, b]) => b.fired >= 5);
+    if (bucketRows.length) {
+      lines.push("**Does price move the traditionally-expected direction?** (inflow → down, outflow → up). 58%+ would support the current code's assumption, well under would suggest flipping it.");
+      lines.push("");
+      lines.push("| Direction · Checkpoint | Fired | Matched expectation | Rate |");
+      lines.push("| --- | --- | --- | --- |");
+      for (const [key, b] of bucketRows.sort((a, c) => (c[1].matched / c[1].fired) - (a[1].matched / a[1].fired))) {
+        lines.push(`| ${key} | ${b.fired} | ${b.matched} | ${Math.round((b.matched / b.fired) * 100)}% |`);
+      }
+      lines.push("");
+    } else {
+      lines.push("Not enough resolved checkpoints yet (need 5+ per bucket) to show a rate. Individual events below.");
+      lines.push("");
+    }
+
+    lines.push("| Fired | Asset | Amount | Direction | +15m | +30m | +1h | +4h | +12h |");
+    lines.push("| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+    for (const r of rows.slice(0, 40)) {
+      const fmt = (v) => v == null ? "—" : `${pct(parseFloat(r.btc_price_at_fire), parseFloat(v)) >= 0 ? "+" : ""}${(pct(parseFloat(r.btc_price_at_fire), parseFloat(v)) * 100).toFixed(2)}%`;
+      lines.push(`| ${new Date(r.fired_at).toISOString().slice(0, 16).replace("T", " ")} | ${r.asset} | $${Math.round(r.usd_amount).toLocaleString()} | ${r.direction === "to_exchange" ? "onto" : "off"} | ${fmt(r.price_15m)} | ${fmt(r.price_30m)} | ${fmt(r.price_1h)} | ${fmt(r.price_4h)} | ${fmt(r.price_12h)} |`);
+    }
+    return lines.join("\n") + "\n";
+  } catch (e) {
+    return `## Whale flow price impact\n\nCould not load: ${String(e.message || e).slice(0, 150)}\n`;
+  }
+}
+
 export async function GET() {
   try {
     const errors = [];
@@ -262,10 +325,12 @@ export async function GET() {
 
     const buckets = summarize(allRows);
     const markdown = renderMarkdown({ buckets });
+    const whaleSection = await fetchWhaleSection();
+    const fullMarkdown = markdown + "\n" + whaleSection;
 
     const filename = `setpoint-backtest-${new Date().toISOString().replace(/[:.]/g, "-")}.md`;
     
-    return new Response(markdown, {
+    return new Response(fullMarkdown, {
       headers: {
         "content-type": "text/markdown; charset=utf-8",
         "content-disposition": `attachment; filename="${filename}"`,
