@@ -102,7 +102,7 @@ function jointWalkForward(candlesByCoin, tfKey) {
         const bodyPct = (bodyTop - bodyBot) / (shapeHigh - shapeLow || 1);
         const shape = bodyPct < 0.2 ? "spike" : "normal";
 
-        out.push({ coin, tf: tfKey, type: s.type, outcome, shape, proven: s.proven, strength: s.strength, bias: bias.dir, risk: risk?.tier });
+        out.push({ coin, tf: tfKey, type: s.type, outcome, shape, tier: s.tier, strength: s.strength, bias: bias.dir, risk: risk.level });
       }
     }
   }
@@ -112,7 +112,8 @@ function jointWalkForward(candlesByCoin, tfKey) {
 function summarize(rows) {
   const buckets = {};
   for (const r of rows) {
-    const key = `${r.coin} · ${TF[r.tf]?.label || r.tf} · ${r.type}${r.proven ? " · Proven" : " · Weak"}${r.bias ? ` · Bias: ${r.bias === "bull" ? "with" : "against"}` : ""}${r.risk ? ` · Bias: ${r.risk}` : ""}`;
+    const tierLabel = r.tier === "proven" ? "Proven" : r.tier === "weak" ? "Weak" : "Testing";
+    const key = `${r.coin} · ${TF[r.tf]?.label || r.tf} · ${r.type} · ${tierLabel}${r.bias ? ` · Bias: ${r.bias === "bull" ? "with" : "against"}` : ""}${r.risk ? ` · Rev risk: ${r.risk}` : ""}`;
     if (!buckets[key]) buckets[key] = { fired: 0, wins: 0, losses: 0, open: 0, key };
     buckets[key].fired++;
     if (r.outcome === "win") buckets[key].wins++;
