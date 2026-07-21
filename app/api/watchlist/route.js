@@ -11,7 +11,7 @@
 // means it could just as easily read 44% or 96% next time.
 
 import { getConsistencyRanking, CONSISTENCY_RUNS } from "../backtest/route.js";
-import { PROVEN_COMBOS, WEAK_COMBOS } from "../../../lib/signals.js";
+import { SIGNAL_RATES } from "../../../lib/signals.js";
 
 export const dynamic = "force-dynamic";
 
@@ -71,7 +71,8 @@ export async function GET() {
     const parts = r.bucket.split(" · ");
     if (parts.length < 3) return false;
     const key = `${parts[0]}|${parts[1]}|${parts[2]}`;
-    return PROVEN_COMBOS.has(key);
+    const entry = SIGNAL_RATES[key];
+    return entry && entry.rate != null && entry.rate >= 0.58;
   });
 
   const trustworthy = ranked.filter((r) => r.avgRate >= TRUST_MIN_AVG && r.range <= TRUST_MAX_SWING);

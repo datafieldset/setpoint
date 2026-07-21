@@ -87,7 +87,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
           {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
           {s.biasTag && <span className={`bias-tag ${s.biasTag}`}>{s.biasTag === "with" ? "with market" : "against market"}</span>}
-          {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? "backtest-proven" : "backtest-weak"}</span>}
+          {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? `proven ${Math.round((s.tierRate || 0) * 100)}%` : `tested ${Math.round((s.tierRate || 0) * 100)}%`}</span>}
         </div>
         <DirBadge dir={s.dir} />
       </div>
@@ -1054,7 +1054,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .bias-tag.against{color:var(--red-soft);background:var(--red-dim)}
 .tier-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .tier-tag.proven{color:#03110B;background:var(--green)}
-.tier-tag.weak{color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.4)}
+.tier-tag.tested{color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.4)}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:6px}
 .badge.up{color:var(--green);background:var(--green-dim)}
 .badge.down{color:var(--red);background:var(--red-dim)}

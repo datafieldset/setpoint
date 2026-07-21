@@ -1,38 +1,35 @@
-# Setpoint v2.8
+# Setpoint v2.9
 
-## What's Fixed
+## What Changed
 
-### Download Route Tier Tracking Bug
-The `/api/backtest/download` endpoint was using `s.proven` (undefined) instead of `s.tier` when recording signal data. This caused all signals to show as "Weak" in the backtest report, even:
-- Signals with tier: "proven" (which should show as "Proven")
-- Signals with tier: null (like Reversal watch, which should show as "Testing")
+### 1. Backtest download report now shows market condition analysis
+The download markdown captures full signal context (bias/trend/volume tags) and breaks down winners by the conditions they need to hit 58%+.
 
-**Fix:** Changed line 105 to properly record `tier: s.tier` instead of `proven: s.proven`.
+### 2. Signal tiers now carry a real win rate percentage
+Replaced the old binary PROVEN_COMBOS/WEAK_COMBOS lists with a single SIGNAL_RATES table that stores the actual backtested win rate per signal.
 
-### Risk Field Label
-The risk level from `reversalRisk()` was being mislabeled as "Bias" in the summary output. 
+- 58%+ → tagged "proven", shows on the dashboard by default
+- Below 58% → tagged "tested", hidden behind the toggle, but now shows its real percentage instead of just "weak"
+- No clean sample yet → untagged, same as before
 
-**Fix:** Changed to `risk: risk.level` and relabeled in summarize as "Rev risk" to clarify this is reversal risk, not market bias.
+Dashboard cards now show "PROVEN 67%" or "TESTED 22%" instead of a flat label, so when you check hidden signals you know exactly where each one stands.
 
-### Tier Categorization in Output
-The summarize function now properly handles three tier states:
-- `tier === "proven"` → shows as "Proven"
-- `tier === "weak"` → shows as "Weak"  
-- `tier === null` or undefined → shows as "Testing" (for new/unproven signals like Reversal watch)
+**Current table (from Jul 21 07:22 backtest, single run):**
+- EMA cross up 5m bull: 59% (PROVEN)
+- Volume spike 15m bull: 67% (PROVEN)
+- EMA cross down 1h bear: 19% (tested)
+- Volume spike 30m bull: 28% (tested)
+- Volume spike 5m bear: 30% (tested)
+- RSI overbought 15m bear: 22% (tested)
+- EMA cross down 30m bear: 0% (tested)
+- EMA cross up 30m bull: needs retest (no clean sample this run, old number retired)
+- RSI oversold 15m bull: needs retest (no clean sample this run, old number retired)
+- RSI overbought 30m bear: needs retest
 
-## Result
-
-Now when you run a backtest and download the report:
-- Reversal watch signals will appear as their own type
-- All signals will show their correct tier (Proven/Weak/Testing)
-- Reversal risk (elevated/high) will be properly tagged in the output
-
-This allows analysis of whether Reversal watch is actually performing as hypothesized across multiple runs.
+### 3. Fixed a broken import
+app/api/watchlist/route.js was importing the old PROVEN_COMBOS/WEAK_COMBOS exports that no longer exist. Updated it to check the new SIGNAL_RATES table with the same 58% threshold.
 
 ## Next Steps
-
-Run a clean backtest and download to confirm Reversal watch signals now appear in the report with correct tier tracking. Then analyze:
-1. Do Reversal watch signals fire frequently enough to analyze?
-2. Win rate on Reversal watch vs. standard signals
-3. Whether reversal risk level (elevated vs high) correlates with outcome
-4. Regional breakdown by market condition (trend vs bias situation when fired)
+- Watch EMA cross up 5m bull and Volume spike 15m bull live for paper trading
+- Rebuild Reversal watch with RSI divergence, volume climax, momentum deceleration, consecutive-candle streak, plus keep Fear & Greed
+- Re-run backtest to build sample size on both winners and to get clean numbers for EMA cross 30m / RSI oversold 15m again

@@ -102,7 +102,12 @@ function jointWalkForward(candlesByCoin, tfKey) {
         const bodyPct = (bodyTop - bodyBot) / (shapeHigh - shapeLow || 1);
         const shape = bodyPct < 0.2 ? "spike" : "normal";
 
-        out.push({ coin, tf: tfKey, type: s.type, outcome, shape, tier: s.tier, strength: s.strength, bias: bias.dir, risk: risk.level });
+        out.push({ 
+          coin, tf: tfKey, type: s.type, outcome, shape, tier: s.tier, strength: s.strength, 
+          bias: bias.dir, biasStretch: bias.avgPct, risk: risk.level,
+          volTag: s.volTag, trendTag: s.trendTag, biasTag: s.biasTag,
+          label: s.label, dir: s.dir
+        });
       }
     }
   }
@@ -111,16 +116,37 @@ function jointWalkForward(candlesByCoin, tfKey) {
 
 function summarize(rows) {
   const buckets = {};
+  
   for (const r of rows) {
     const tierLabel = r.tier === "proven" ? "Proven" : r.tier === "weak" ? "Weak" : "Testing";
-    const key = `${r.coin} · ${TF[r.tf]?.label || r.tf} · ${r.type} · ${tierLabel}${r.bias ? ` · Bias: ${r.bias === "bull" ? "with" : "against"}` : ""}${r.risk ? ` · Rev risk: ${r.risk}` : ""}`;
-    if (!buckets[key]) buckets[key] = { fired: 0, wins: 0, losses: 0, open: 0, key };
-    buckets[key].fired++;
-    if (r.outcome === "win") buckets[key].wins++;
-    else if (r.outcome === "loss") buckets[key].losses++;
-    else buckets[key].open++;
+    
+    // Group 1: By signal type + timeframe + direction only (baseline)
+    const baselineKey = `${r.label} · ${TF[r.tf]?.label || r.tf} · ${r.dir === "bull" ? "Long" : "Short"}`;
+    
+    // Group 2: By signal + timeframe + direction + bias condition (aligned vs against market)
+    const biasCondition = r.biasTag === "with" ? "Aligned-w-bias" : r.biasTag === "against" ? "Against-bias" : "No-bias";
+    const biasKey = `${baselineKey} · ${biasCondition}`;
+    
+    // Group 3: By signal + timeframe + direction + volume confirmation
+    const volKey = `${baselineKey} · Vol:${r.volTag === "confirmed" ? "Confirmed" : r.volTag === "rising" ? "Rising" : r.volTag === "light" ? "Light" : "No-data"}`;
+    
+    // Group 4: By signal + timeframe + direction + trend condition
+    const trendKey = `${baselineKey} · Trend:${r.trendTag === "with" ? "With-trend" : r.trendTag === "against" ? "Against-trend" : "No-trend"}`;
+    
+    for (const key of [baselineKey, biasKey, volKey, trendKey]) {
+      if (!buckets[key]) buckets[key] = { fired: 0, wins: 0, losses: 0, open: 0, key };
+      buckets[key].fired++;
+      if (r.outcome === "win") buckets[key].wins++;
+      else if (r.outcome === "loss") buckets[key].losses++;
+      else buckets[key].open++;
+    }
   }
-  return Object.values(buckets).map((b) => ({ ...b, winRate: b.fired >= 5 ? b.wins / (b.wins + b.losses) : null }));
+  
+  return Object.values(buckets).map((b) => ({ 
+    ...b, 
+    winRate: b.fired >= 5 ? b.wins / (b.wins + b.losses) : null,
+    sampleOk: b.fired >= 5
+  }));
 }
 
 function pct(x) {
@@ -128,10 +154,13 @@ function pct(x) {
 }
 
 function renderMarkdown({ buckets }) {
-  const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
-  const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
-  const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
-  const mainRows = buckets.filter((b) => !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
+  const mainBuckets = buckets.filter((b) => !b.key.includes(" · Vol:") && !b.key.includes(" · Trend:") && !b.key.includes(" · Aligned") && !b.key.includes(" · Against"));
+  const winners = mainBuckets.filter((b) => b.sampleOk && b.winRate >= 0.58).sort((a, b) => b.winRate - a.winRate);
+  const losers = mainBuckets.filter((b) => b.sampleOk && b.winRate < 0.58).sort((a, b) => a.winRate - b.winRate);
+  
+  const biasAnalysis = buckets.filter((b) => (b.key.includes(" · Aligned") || b.key.includes(" · Against")) && b.sampleOk);
+  const volumeAnalysis = buckets.filter((b) => b.key.includes(" · Vol:") && b.sampleOk);
+  const trendAnalysis = buckets.filter((b) => b.key.includes(" · Trend:") && b.sampleOk);
 
   const lines = [];
   lines.push(`# Setpoint research backtest`);
@@ -139,22 +168,74 @@ function renderMarkdown({ buckets }) {
   lines.push(`Generated ${new Date().toUTCString()}`);
   lines.push(``);
 
-  lines.push(`## Worth a look, underperforming`);
+  // Winners only (58%+)
+  lines.push(`## Signals that clear 58%`);
   lines.push(``);
-  lines.push(worst.length ? worst.map((b) => `- ${b.key}: ${b.wins}W / ${b.losses}L (${pct(b.winRate)})`).join("\n") : `Not enough fired signals yet.`);
+  if (winners.length) {
+    lines.push(`These are the ones worth attention. Everything below is below threshold.`);
+    lines.push(``);
+    for (const b of winners) {
+      lines.push(`- **${b.key}**: ${b.wins}W / ${b.losses}L = ${pct(b.winRate)} (fired ${b.fired}x)`);
+    }
+  } else {
+    lines.push(`No signals hit 58%+ in this run.`);
+  }
   lines.push(``);
 
-  lines.push(`## Worth a look, outperforming`);
-  lines.push(``);
-  lines.push(best.length ? best.map((b) => `- ${b.key}: ${b.wins}W / ${b.losses}L (${pct(b.winRate)})`).join("\n") : `Not enough fired signals yet.`);
+  // Bias condition breakdown for winners
+  if (winners.length && biasAnalysis.length) {
+    lines.push(`## How winners perform by market condition`);
+    lines.push(``);
+    lines.push(`Comparing aligned vs against market bias. This shows whether the signal's real edge comes from riding the market lean or fading it.`);
+    lines.push(``);
+    lines.push(`| Setup · Condition | Fired | Won | Lost | Win rate |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    const relevantBias = biasAnalysis.filter((b) => winners.some((w) => b.key.includes(w.key.split(" · ")[0])));
+    for (const b of relevantBias.sort((a, c) => c.winRate - a.winRate)) {
+      lines.push(`| ${b.key} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
+    }
+  }
   lines.push(``);
 
-  lines.push(`## Full breakdown`);
+  // Volume condition breakdown for winners
+  if (winners.length && volumeAnalysis.length) {
+    lines.push(`## Volume confirmation on winners`);
+    lines.push(``);
+    lines.push(`Does volume back the signal? Whether it matters for the winners.`);
+    lines.push(``);
+    lines.push(`| Setup · Volume | Fired | Won | Lost | Win rate |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    const relevantVol = volumeAnalysis.filter((b) => winners.some((w) => b.key.includes(w.key.split(" · ")[0])));
+    for (const b of relevantVol.sort((a, c) => c.winRate - a.winRate)) {
+      lines.push(`| ${b.key} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
+    }
+  }
   lines.push(``);
-  lines.push(`| Bucket | Fired | Won | Lost | Open | Win rate |`);
-  lines.push(`| --- | --- | --- | --- | --- | --- |`);
-  for (const b of mainRows) {
-    lines.push(`| ${b.key}${b.fired < 5 ? " (low sample)" : ""} | ${b.fired} | ${b.wins} | ${b.losses} | ${b.open} | ${pct(b.winRate)} |`);
+
+  // Trend condition breakdown for winners
+  if (winners.length && trendAnalysis.length) {
+    lines.push(`## Trend condition on winners`);
+    lines.push(``);
+    lines.push(`Does the signal work better with or against the trend? Shows whether edge is contrarian or trend-following.`);
+    lines.push(``);
+    lines.push(`| Setup · Trend | Fired | Won | Lost | Win rate |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    const relevantTrend = trendAnalysis.filter((b) => winners.some((w) => b.key.includes(w.key.split(" · ")[0])));
+    for (const b of relevantTrend.sort((a, c) => c.winRate - a.winRate)) {
+      lines.push(`| ${b.key} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
+    }
+  }
+  lines.push(``);
+
+  // Everything else (below 58%) for reference
+  lines.push(`## Below 58% (reference only)`);
+  lines.push(``);
+  lines.push(`Not worth pursuing yet unless patterns show promise.`);
+  lines.push(``);
+  lines.push(`| Setup | Fired | Won | Lost | Win rate |`);
+  lines.push(`| --- | --- | --- | --- | --- |`);
+  for (const b of losers.slice(0, 15)) {
+    lines.push(`| ${b.key}${b.fired < 5 ? " (low sample)" : ""} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
   }
 
   return lines.join("\n");
