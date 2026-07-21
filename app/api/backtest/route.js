@@ -365,7 +365,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
   </style></head><body>
   <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px">
     <h1>Setpoint research backtest</h1>
-    <button id="md-download-btn" style="background:#0F1712;border:1px solid #223029;color:#5EE9AE;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap">↓ Download .md</button>
+    <a href="/api/backtest/download" style="background:#0F1712;border:1px solid #223029;color:#5EE9AE;font-size:12.5px;padding:8px 14px;border-radius:8px;cursor:pointer;white-space:nowrap;text-decoration:none;display:inline-block">↓ Download .md</a>
   </div>
   <div class="sub">Run at ${new Date(runAt).toUTCString()} · ${totalFired} signals evaluated across BTC, SOL, XLM · 5m/15m/30m/1h · this page and route are temporary</div>
 
@@ -401,58 +401,6 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     New this run: "Reversal watch" is a distinct signal, not a scoring tweak, that only fires when the market's lean looks visibly stretched, testing a specific idea, that fading a stretched extreme is a real, separate opportunity from fading in general. Compare its own "Reversal watch" rows below against the existing "Bias: against" row to see whether stretched-only fades actually beat fading whenever direction merely disagrees. One honest gap: there's no cheap historical Fear & Greed series to replay, so this backtest can only ever register the "elevated" stretch tier, never "high" (which live also requires a sentiment extreme), so the strongest version of this idea isn't fully testable here yet, only live.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results below are still accurate, just not persisted.`}
   </div>
-  <script>
-    console.log("[Backtest] Script loaded");
-    
-    // JSON.stringify safely escapes quotes/backslashes/newlines for a JS
-    // string literal; the </script split guards against the (currently
-    // impossible, but cheap to guard anyway) case of that literal sequence
-    // ending up inside the report content and closing this tag early.
-    const REPORT_MD = ${JSON.stringify(markdown || "").replace(/<\/script/gi, "<\\/script")};
-    console.log("[Backtest] Report markdown loaded, length:", REPORT_MD.length);
-    
-    const btn = document.getElementById("md-download-btn");
-    const filename = "setpoint-backtest-${new Date(runAt).toISOString().replace(/[:.]/g, "-")}.md";
-    
-    console.log("[Backtest] Button found:", !!btn, "Filename:", filename);
-    
-    if (btn) {
-      btn.addEventListener("click", function (e) {
-        console.log("[Backtest] Button clicked");
-        e.preventDefault();
-        e.stopPropagation();
-        
-        try {
-          console.log("[Backtest] Creating blob, size:", REPORT_MD.length);
-          const blob = new Blob([REPORT_MD], { type: "text/markdown;charset=utf-8" });
-          console.log("[Backtest] Blob created, size:", blob.size);
-          
-          // Use a simple link approach: encode the content as a data URL
-          const content = encodeURIComponent(REPORT_MD);
-          const dataUrl = "data:text/markdown;charset=utf-8," + content;
-          
-          const link = document.createElement("a");
-          link.href = dataUrl;
-          link.download = filename;
-          link.style.display = "none";
-          
-          console.log("[Backtest] About to trigger download");
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          console.log("[Backtest] Download triggered");
-          
-        } catch (e) {
-          console.error("[Backtest] Error:", e);
-          alert("Download failed: " + e.message + "\\nCheck console for details.");
-        }
-      });
-      console.log("[Backtest] Event listener attached");
-    } else {
-      console.error("[Backtest] Button not found!");
-      alert("Download button not found on page");
-    }
-  </script>
   </body></html>`;
 }
 
