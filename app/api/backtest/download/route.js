@@ -104,7 +104,7 @@ function jointWalkForward(candlesByCoin, tfKey) {
 
         out.push({ 
           coin, tf: tfKey, type: s.type, outcome, shape, tier: s.tier, strength: s.strength, 
-          bias: bias.dir, biasStretch: bias.avgPct, risk: risk.level,
+          bias: bias.dir, biasStretch: bias.avgPct, risk: risk.level, confirmTier: s.confirmTier || null,
           volTag: s.volTag, trendTag: s.trendTag, biasTag: s.biasTag,
           label: s.label, dir: s.dir
         });
@@ -133,7 +133,17 @@ function summarize(rows) {
     // Group 4: By signal + timeframe + direction + trend condition
     const trendKey = `${baselineKey} · Trend:${r.trendTag === "with" ? "With-trend" : r.trendTag === "against" ? "Against-trend" : "No-trend"}`;
     
-    for (const key of [baselineKey, biasKey, volKey, trendKey]) {
+    const keys = [baselineKey, biasKey, volKey, trendKey];
+    // Group 5: Reversal watch only, split by how many confirmations fired
+    // (elevated = 1 real confirmation, high = 2+, or Fear & Greed stacked
+    // on top of one). This is the group that actually tells us whether the
+    // confirmation-gated rebuild is working, not just whether the signal
+    // fires at all.
+    if (r.type === "reversal" && r.confirmTier) {
+      keys.push(`${baselineKey} · Confirm:${r.confirmTier === "high" ? "High" : "Elevated"}`);
+    }
+    
+    for (const key of keys) {
       if (!buckets[key]) buckets[key] = { fired: 0, wins: 0, losses: 0, open: 0, key };
       buckets[key].fired++;
       if (r.outcome === "win") buckets[key].wins++;
@@ -154,13 +164,14 @@ function pct(x) {
 }
 
 function renderMarkdown({ buckets }) {
-  const mainBuckets = buckets.filter((b) => !b.key.includes(" · Vol:") && !b.key.includes(" · Trend:") && !b.key.includes(" · Aligned") && !b.key.includes(" · Against"));
+  const mainBuckets = buckets.filter((b) => !b.key.includes(" · Vol:") && !b.key.includes(" · Trend:") && !b.key.includes(" · Aligned") && !b.key.includes(" · Against") && !b.key.includes(" · Confirm:"));
   const winners = mainBuckets.filter((b) => b.sampleOk && b.winRate >= 0.58).sort((a, b) => b.winRate - a.winRate);
   const losers = mainBuckets.filter((b) => b.sampleOk && b.winRate < 0.58).sort((a, b) => a.winRate - b.winRate);
   
   const biasAnalysis = buckets.filter((b) => (b.key.includes(" · Aligned") || b.key.includes(" · Against")) && b.sampleOk);
   const volumeAnalysis = buckets.filter((b) => b.key.includes(" · Vol:") && b.sampleOk);
   const trendAnalysis = buckets.filter((b) => b.key.includes(" · Trend:") && b.sampleOk);
+  const reversalConfirm = buckets.filter((b) => b.key.includes(" · Confirm:")).sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1));
 
   const lines = [];
   lines.push(`# Setpoint research backtest`);
@@ -179,6 +190,25 @@ function renderMarkdown({ buckets }) {
     }
   } else {
     lines.push(`No signals hit 58%+ in this run.`);
+  }
+  lines.push(``);
+
+  // Reversal watch: always shown regardless of whether it clears 58% yet,
+  // since this is the signal actively being rebuilt and tracked run to run.
+  if (reversalConfirm.length) {
+    lines.push(`## Reversal watch — confirmation tier breakdown`);
+    lines.push(``);
+    lines.push(`Rebuilt to require at least one real confirmation (volume climax, momentum deceleration, RSI divergence, or a candle streak) before firing, instead of stretch alone. Elevated = one confirmation, High = two or more. Shown regardless of whether it clears 58% yet, since this is what tells us if the rebuild is working.`);
+    lines.push(``);
+    lines.push(`| Setup · Tier | Fired | Won | Lost | Win rate |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const b of reversalConfirm) {
+      lines.push(`| ${b.key}${b.fired < 5 ? " (low sample)" : ""} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
+    }
+  } else {
+    lines.push(`## Reversal watch`);
+    lines.push(``);
+    lines.push(`Didn't fire this run — no stretched market condition with a real confirmation behind it.`);
   }
   lines.push(``);
 

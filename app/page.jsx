@@ -466,7 +466,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null };
           return;
         }
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk });
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value });
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];

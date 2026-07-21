@@ -1,24 +1,29 @@
-# Setpoint v3.1
+# Setpoint v3.2
 
-## What Changed
+## Reversal watch — rebuilt
 
-### New: Whale flow price-impact tracker
-New route: `/api/whale-track`. Visit it in a browser like `/api/scoreboard`, any time.
+The old version fired on nothing but a stretched market lean and backtested weak (13-20% win rate across hundreds of fires). This version requires real confirmation before it fires at all.
 
-**What it does:**
-1. Logs every large transfer Whale Alert posts (via the same free Telegram feed `/api/news` already reads), deduped by the transfer's Telegram link so revisiting doesn't double-count
-2. Checks BTC price at 15m, 30m, 1h, 4h, and 12h after each transfer fired, filling in whichever checkpoints have had enough time pass
-3. Reports whether price actually moved the "traditionally expected" direction (inflow onto exchange → down, outflow off exchange → up) — the same question Na raised about whether that assumption even holds
+**How it's weighted, based on actual research, not just intuition:**
 
-**Why BTC specifically, regardless of which asset the whale moved:** the question isn't "does an ETH whale move affect ETH price," it's whether large exchange flow in general is a useful market read. BTC is the cleanest bellwether for that, same logic the existing pooled net-flow panel in Market Context already uses.
+- **Volume climax** (a real spike that's now fading) and **momentum deceleration** (each push getting smaller) — full weight on every timeframe. Both are real-time order-flow reads, nothing in the research ties their reliability to timeframe.
+- **RSI divergence** and **consecutive candle streaks** — full weight on 30m/1h, half weight on 5m/15m. Every source on both flags them as noisy below an hour; divergence gets "faded by algorithmic market-makers within minutes" on short timeframes, streak tools are described as "optimized for Daily, Weekly, Monthly" charts.
+- **Fear & Greed** — never counts on its own. It only updates once every 24 hours, so it can't time an entry, only support one that's already got a real confirmation behind it. Adds weight, but only after something else has already fired.
 
-**New table:** `whale_track` in Neon, auto-created on first visit same as every other table in this app (no manual SQL needed). Columns: link (unique, for dedup), asset, usd_amount, direction, fired_at, btc_price_at_fire, price_15m/30m/1h/4h/12h, resolved_15m/30m/1h/4h/12h.
+**Tiering:** stretched market (same baseline as before) + confirmation score ≥1.5 = Elevated, ≥2.5 = High. Below 1.5, it doesn't fire at all, a real change from before.
 
-**Resolution happens on visit, not on a schedule** — same pattern as `/api/scoreboard`, no cron job (Na doesn't want to pay for that Vercel tier yet).
+**Retired:** the old hardcoded -0.20 penalty on 1h bull bets (the specific weak slice from the prior version). The new confirmation gate should re-earn its own track record instead of carrying forward a patch built for the old, blunter logic.
 
-### Backtest download now includes whale flow data
-`/api/backtest/download` report now has a "Whale flow price impact" section: individual events with their checkpoint price changes, plus an aggregate table showing what % of the time price actually moved the traditionally-expected direction per checkpoint. Wrapped so a database hiccup can't break the rest of the backtest report.
+**Tracking:** the backtest download report now has a dedicated "Reversal watch — confirmation tier breakdown" section, shown every run regardless of whether it clears 58% yet, since this is what tells us whether the rebuild is actually working.
 
-## Still open
-- Not enough data logged yet to say anything real about the inflow/outflow question — this just starts the clock. Revisit `/api/whale-track` periodically (or check the backtest download) to watch the sample build.
-- Reversal watch rebuild (RSI divergence, volume climax, momentum deceleration, consecutive-candle streak, Fear & Greed) still pending from before this.
+**Scope note:** this uses the market's short/medium-term lean (the existing bias reading) as regime context, not the 200-week MA cycle position. The 200-week line moves far too slowly to matter on a per-candle basis, that stays a manual, macro-level read for now rather than a live input into this signal.
+
+## Also in this version
+- Backtest download report shows market condition analysis (bias/trend/volume breakdowns for winners)
+- Signal tiers carry a real win rate percentage (SIGNAL_RATES table, 58% threshold)
+- Fixed app/api/watchlist/route.js import that broke after the tier table rebuild
+
+## Next steps
+- Run a fresh backtest, check the Reversal watch confirmation-tier section
+- Compare Elevated vs High tier performance once sample size builds
+- Keep watching RSI oversold 1h Long and Volume spike 15m Long for paper trading
