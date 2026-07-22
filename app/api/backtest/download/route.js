@@ -1,11 +1,25 @@
 // app/api/backtest/download/route.js
 // Serves the backtest report as a downloadable .md file
 // Regenerates the report each time (same logic as /api/backtest but returns file instead of HTML)
+// Password-protected same as /api/backtest, this exposes the same data as a file.
 
 import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../../lib/signals.js";
 import { TF, barMs } from "../../../../lib/timeframes.js";
 
 export const dynamic = "force-dynamic";
+
+function checkAuth(req) {
+  const auth = req.headers.get("authorization");
+  const expected = "Basic " + Buffer.from("setpoint:honolulu26").toString("base64");
+  if (auth !== expected) {
+    return new Response("Authentication required.", {
+      status: 401,
+      headers: { "WWW-Authenticate": 'Basic realm="Setpoint research"' },
+    });
+  }
+  return null;
+}
+
 
 const COINS = ["BTC", "SOL", "XLM"];
 const FOLLOW_BARS = 40;
@@ -271,6 +285,93 @@ function renderMarkdown({ buckets }) {
   return lines.join("\n");
 }
 
+// Live scoreboard: real signals that fired on the live dashboard, checked
+// against real price since. Ported here so the download carries both real
+// and replayed data in one file, same distinction the /api/backtest page
+// itself now makes.
+const ROLLING_N = 20;
+async function getLiveScoreboard() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return { buckets: [], totalTracked: 0, totalOpen: 0, resolveInfo: { checked: 0, resolved: 0, errors: [] } };
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn);
+    await sql`
+      CREATE TABLE IF NOT EXISTS signal_track (
+        id SERIAL PRIMARY KEY, coin TEXT NOT NULL, tf TEXT NOT NULL, label TEXT NOT NULL, dir TEXT NOT NULL,
+        fired_at TIMESTAMPTZ NOT NULL, entry NUMERIC NOT NULL, stop NUMERIC NOT NULL, target NUMERIC NOT NULL,
+        outcome TEXT NOT NULL DEFAULT 'open', resolved_at TIMESTAMPTZ
+      )
+    `;
+    const open = await sql`SELECT id, coin, tf, dir, fired_at, entry, stop, target FROM signal_track WHERE outcome = 'open'`;
+    const resolveInfo = { checked: open.length, resolved: 0, errors: [] };
+    const groups = new Map();
+    for (const row of open) {
+      const key = `${row.coin}:${row.tf}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(row);
+    }
+    for (const [key, rows] of groups) {
+      const [coin, tf] = key.split(":");
+      let candles;
+      try { candles = await fetchCoinbaseCandles(coin, tf); } catch (e) { resolveInfo.errors.push(`${key}: ${String(e.message || e).slice(0, 100)}`); continue; }
+      for (const row of rows) {
+        const firedMs = new Date(row.fired_at).getTime();
+        const startIdx = candles.findIndex((c) => c.time >= firedMs);
+        if (startIdx === -1) continue;
+        let outcome = null;
+        for (let j = startIdx; j < candles.length; j++) {
+          const c = candles[j];
+          const entry = parseFloat(row.entry), stop = parseFloat(row.stop), target = parseFloat(row.target);
+          const hitTarget = row.dir === "bull" ? c.high >= target : c.low <= target;
+          const hitStop = row.dir === "bull" ? c.low <= stop : c.high >= stop;
+          if (hitTarget && hitStop) { outcome = "loss"; break; }
+          if (hitTarget) { outcome = "win"; break; }
+          if (hitStop) { outcome = "loss"; break; }
+        }
+        if (outcome) { await sql`UPDATE signal_track SET outcome = ${outcome}, resolved_at = now() WHERE id = ${row.id}`; resolveInfo.resolved++; }
+      }
+    }
+    const totalTrackedRows = await sql`SELECT COUNT(*)::int AS n FROM signal_track`;
+    const totalOpenRows = await sql`SELECT COUNT(*)::int AS n FROM signal_track WHERE outcome = 'open'`;
+    const resolvedRows = await sql`
+      SELECT label, tf, dir, outcome FROM (
+        SELECT label, tf, dir, outcome, ROW_NUMBER() OVER (PARTITION BY label, tf, dir ORDER BY resolved_at DESC) AS rn
+        FROM signal_track WHERE outcome IN ('win', 'loss')
+      ) t WHERE rn <= ${ROLLING_N}
+    `;
+    const bucketMap = new Map();
+    for (const r of resolvedRows) {
+      const key = `${r.label} · ${TF[r.tf]?.label || r.tf} · ${r.dir}`;
+      const b = bucketMap.get(key) || { key, n: 0, wins: 0, losses: 0 };
+      b.n++;
+      if (r.outcome === "win") b.wins++; else b.losses++;
+      bucketMap.set(key, b);
+    }
+    const buckets = [...bucketMap.values()].map((b) => ({ ...b, winRate: b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : null })).sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1));
+    return { buckets, totalTracked: totalTrackedRows[0]?.n || 0, totalOpen: totalOpenRows[0]?.n || 0, resolveInfo };
+  } catch (e) {
+    return { buckets: [], totalTracked: 0, totalOpen: 0, resolveInfo: { checked: 0, resolved: 0, errors: [String(e.message || e).slice(0, 200)] } };
+  }
+}
+
+function renderLiveSection(live) {
+  const lines = [];
+  lines.push(`## Live scoreboard`);
+  lines.push(``);
+  lines.push(`Real signals that fired on the live dashboard, checked against real price since. Not a replay, this is what actually happened. ${live.totalTracked} signals logged total, ${live.totalOpen} still open, resolved ${live.resolveInfo.resolved} of ${live.resolveInfo.checked} pending on this visit. Rolling window of the most recent ${ROLLING_N} outcomes per bucket.`);
+  lines.push(``);
+  const withSample = live.buckets.filter((b) => b.n >= 5);
+  if (withSample.length) {
+    lines.push(`| Setup | Last N | Won | Lost | Win rate |`);
+    lines.push(`| --- | --- | --- | --- | --- |`);
+    for (const b of withSample) lines.push(`| ${b.key} | ${b.n} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
+  } else {
+    lines.push(`No live setup has 5+ resolved outcomes yet.`);
+  }
+  return lines.join("\n") + "\n";
+}
+
 async function fetchWhaleSection() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return "## Whale flow price impact\n\nDATABASE_URL not set, skipped.\n";
@@ -334,7 +435,10 @@ async function fetchWhaleSection() {
   }
 }
 
-export async function GET() {
+export async function GET(req) {
+  const authFail = checkAuth(req);
+  if (authFail) return authFail;
+
   try {
     const errors = [];
     const allRows = [];
@@ -355,8 +459,10 @@ export async function GET() {
 
     const buckets = summarize(allRows);
     const markdown = renderMarkdown({ buckets });
+    const live = await getLiveScoreboard();
+    const liveSection = renderLiveSection(live);
     const whaleSection = await fetchWhaleSection();
-    const fullMarkdown = markdown + "\n" + whaleSection;
+    const fullMarkdown = markdown + "\n" + liveSection + "\n" + whaleSection;
 
     const filename = `setpoint-backtest-${new Date().toISOString().replace(/[:.]/g, "-")}.md`;
     

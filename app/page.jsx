@@ -474,7 +474,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           if (isNew) fired.current[key] = { firstFired: t, lastSeen: t };
           else fired.current[key] = { firstFired: rec.firstFired, lastSeen: t };
           if (isNew) {
-            // Log to the rolling scoreboard (/api/scoreboard). Fire-and-forget,
+            // Log to the rolling scoreboard (now part of /api/backtest, the standalone /api/scoreboard page is retired). Fire-and-forget,
             // a logging hiccup should never block the dashboard from working.
             fetch("/api/track", {
               method: "POST",
