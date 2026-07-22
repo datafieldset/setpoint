@@ -99,7 +99,7 @@ async function fetchBtc15m() {
     .filter((c) => c.close > 0);
 }
 
-async function logNewEvents(sql) {
+export async function logNewEvents(sql) {
   const parsed = (await getWhaleTransfers()).filter((w) => w.usd != null && (w.dir === "to_exchange" || w.dir === "from_exchange"));
   if (!parsed.length) return { found: 0, inserted: 0 };
 
@@ -125,7 +125,7 @@ async function logNewEvents(sql) {
   return { found: parsed.length, inserted };
 }
 
-async function resolveCheckpoints(sql) {
+export async function resolveCheckpoints(sql) {
   const pending = await sql`
     SELECT id, fired_at FROM whale_track
     WHERE resolved_12h = FALSE

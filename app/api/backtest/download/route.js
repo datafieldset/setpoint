@@ -5,6 +5,7 @@
 
 import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../../lib/signals.js";
 import { TF, barMs } from "../../../../lib/timeframes.js";
+import { logNewEvents, resolveCheckpoints } from "../../whale-track/route.js";
 
 export const dynamic = "force-dynamic";
 
@@ -378,9 +379,42 @@ async function fetchWhaleSection() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn);
+    // The table and its logging/resolving logic previously only ran when
+    // someone visited /api/whale-track directly, which nobody had, so the
+    // table was never created and this section always failed. Running the
+    // same setup here means the download alone is enough to get it working,
+    // no separate page to remember to visit.
+    await sql`
+      CREATE TABLE IF NOT EXISTS whale_track (
+        id SERIAL PRIMARY KEY,
+        link TEXT UNIQUE NOT NULL,
+        asset TEXT NOT NULL,
+        usd_amount NUMERIC NOT NULL,
+        direction TEXT NOT NULL,
+        fired_at TIMESTAMPTZ NOT NULL,
+        btc_price_at_fire NUMERIC NOT NULL,
+        price_15m NUMERIC,
+        price_30m NUMERIC,
+        price_1h NUMERIC,
+        price_4h NUMERIC,
+        price_12h NUMERIC,
+        resolved_15m BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_30m BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_1h BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_4h BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_12h BOOLEAN NOT NULL DEFAULT FALSE
+      )
+    `;
+    try {
+      await logNewEvents(sql);
+      await resolveCheckpoints(sql);
+    } catch (e) {
+      // Logging/resolving failing shouldn't block showing whatever's
+      // already in the table, fall through to the query below either way.
+    }
     const rows = await sql`SELECT * FROM whale_track ORDER BY fired_at DESC LIMIT 200`;
     if (!rows.length) {
-      return "## Whale flow price impact\n\nNo whale transfers logged yet. Visit /api/whale-track to start logging and resolving, this fills in over time.\n";
+      return "## Whale flow price impact\n\nTable is set up now, but no whale transfers logged yet. This fills in as this file gets downloaded over time (each download also logs and resolves, same as visiting /api/whale-track directly).\n";
     }
 
     const pct = (fire, checkpoint) => checkpoint == null ? null : (checkpoint - fire) / fire;
