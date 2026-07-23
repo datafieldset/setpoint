@@ -180,6 +180,34 @@ function pct(x) {
   return x == null ? "—" : (x >= 0 ? "+" : "") + (x * 100).toFixed(2) + "%";
 }
 
+// Aggregates whale_track by direction: does exchange inflow/outflow actually
+// predict which way BTC moves next, checked at each real checkpoint. This is
+// the actual test of Na's real observation (offboard → bearish, onboard →
+// bullish), which runs opposite to the standard on-chain convention, real
+// data settles it either way instead of going by memory of a couple events.
+export function aggregateWhaleDirection(rows) {
+  const dirs = { to_exchange: { label: "Onto exchange (inflow)", cps: {} }, from_exchange: { label: "Off exchange (outflow)", cps: {} } };
+  const CP_KEYS = ["15m", "30m", "1h", "4h", "12h"];
+  for (const d of Object.values(dirs)) for (const k of CP_KEYS) d.cps[k] = { n: 0, up: 0, down: 0, flat: 0 };
+
+  for (const r of rows) {
+    const bucket = dirs[r.direction];
+    if (!bucket) continue;
+    for (const k of CP_KEYS) {
+      const priceKey = `price_${k}`;
+      const cp = r[priceKey];
+      if (cp == null) continue;
+      const change = (cp - r.btc_price_at_fire) / r.btc_price_at_fire;
+      bucket.cps[k].n++;
+      if (change > 0.001) bucket.cps[k].up++;
+      else if (change < -0.001) bucket.cps[k].down++;
+      else bucket.cps[k].flat++;
+    }
+  }
+  return dirs;
+}
+
+
 function renderHtml({ rows, logInfo, resolveInfo, totalLogged }) {
   const tableRows = rows.map((r) => {
     const change = (checkpointPrice) => checkpointPrice == null ? null : (checkpointPrice - r.btc_price_at_fire) / r.btc_price_at_fire;

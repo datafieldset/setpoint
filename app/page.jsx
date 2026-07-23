@@ -731,7 +731,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   <span className="netflow-dir">{netDir === "in" ? "▲ net onto exchanges" : "▼ net off exchanges"}</span>
                   <span className="netflow-amt mono">{fmtVol(Math.abs(netFlow.net))} ({netPct}%)</span>
                 </div>
-                <div className="netflow-note">{netDir === "in" ? "Two real observations here leaned bullish, likely capital moving in to deploy, not to sell." : "Two real observations here leaned bearish, likely a real exit, not accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
+                {netFlow.recent && netFlow.recent[0]?.when && (
+                  <div className="netflow-ts">Most recent: {new Date(netFlow.recent[0].when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+                )}
+                <div className="netflow-note">{netDir === "in" ? "Real observations so far have leaned bullish after inflow, likely capital moving in to deploy, not to sell." : "Real observations so far have leaned bearish after outflow, likely a real exit, not accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
               </div>
             );
           })()}
@@ -1190,16 +1193,17 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .coin-note{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--hair)}
 .cn-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:9px}
 .netflow-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
-.netflow-panel.in{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
-.netflow-panel.out{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.netflow-panel.in{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.netflow-panel.out{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
 .netflow-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
 .netflow-tag{text-transform:none;letter-spacing:0;font-style:italic;font-weight:400}
 .netflow-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .netflow-dir{font-size:12px;font-weight:700}
-.netflow-panel.in .netflow-dir{color:var(--red-soft)}
-.netflow-panel.out .netflow-dir{color:var(--green)}
+.netflow-panel.in .netflow-dir{color:var(--green)}
+.netflow-panel.out .netflow-dir{color:var(--red-soft)}
 .netflow-amt{font-size:13px;font-weight:700}
 .netflow-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
+.netflow-ts{color:var(--dim);font-size:10px;margin-top:4px;font-family:monospace}
 
 .dash-disc{color:var(--dim);font-size:11px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid var(--hair)}
 

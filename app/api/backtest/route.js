@@ -58,6 +58,7 @@ function checkAuth(req) {
 
 import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
+import { logNewEvents, resolveCheckpoints, aggregateWhaleDirection } from "../whale-track/route.js";
 
 export const dynamic = "force-dynamic";
 
@@ -314,6 +315,24 @@ function pct(x) {
   return x == null ? "—" : (x * 100).toFixed(0) + "%";
 }
 
+// Same whale_track data /api/whale-track logs and resolves, aggregated by
+// direction here so the actual question, does inflow/outflow predict BTC's
+// next move, gets a real answer instead of going by memory of a couple
+// events. Logging/resolving is triggered from the download route (and from
+// visiting /api/whale-track directly), this just reads what's there.
+async function getWhaleDirectionStats() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return { dirs: null, totalLogged: 0 };
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn);
+    const rows = await sql`SELECT * FROM whale_track ORDER BY fired_at DESC LIMIT 300`;
+    return { dirs: aggregateWhaleDirection(rows), totalLogged: rows.length, lastAt: rows[0]?.fired_at || null };
+  } catch (e) {
+    return { dirs: null, totalLogged: 0, error: String(e.message || e).slice(0, 150) };
+  }
+}
+
 // Ported from the old standalone /api/scoreboard page, which is retired as
 // of this version. Two things happen on every visit here now, same as that
 // page used to do on its own: resolve any signal still marked "open"
@@ -416,7 +435,7 @@ async function getLiveScoreboard() {
   }
 }
 
-function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, markdown, live }) {
+function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, markdown, live, whale }) {
   const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
   const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
   const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
@@ -453,13 +472,25 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     return `<tr><td>${new Date(t.time).toUTCString()}</td><td>${TF[t.tf]?.label || t.tf}</td><td class="${t.to}">${flip}</td><td>${t.avgPct != null ? t.avgPct.toFixed(2) + "%" : "—"}</td><td>${agreePct != null ? Math.round(agreePct * 100) + "%" : "—"}</td></tr>`;
   }).join("");
 
-  // Live scoreboard: real trades, real outcomes, not a replay. Ported from
-  // the old standalone /api/scoreboard page, which is retired as of this
-  // version, this page now does both jobs.
   const liveBuckets5 = (live?.buckets || []).filter((b) => b.n >= 5);
   const liveBucketsSmall = (live?.buckets || []).filter((b) => b.n < 5);
   const liveRows = (bs) => bs.map((b) => `<tr><td>${b.key}</td><td>${b.n}</td><td>${b.wins}</td><td>${b.losses}</td><td>${pct(b.winRate)}</td></tr>`).join("");
   const liveWinner = liveBuckets5.slice().sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1))[0];
+
+  // Whale direction: does exchange inflow/outflow predict BTC's next move?
+  // Real transfers, real checkpoints, testing the actual open question
+  // rather than trusting either the textbook convention or a couple of
+  // remembered events.
+  const CP_ORDER = ["15m", "30m", "1h", "4h", "12h"];
+  const whaleRows = whale?.dirs ? Object.values(whale.dirs).map((d) => {
+    const cells = CP_ORDER.map((k) => {
+      const c = d.cps[k];
+      if (c.n < 3) return `<td class="low">n=${c.n}</td>`;
+      const upRate = Math.round((c.up / c.n) * 100);
+      return `<td>${upRate}% up <span class="low">(n=${c.n})</span></td>`;
+    }).join("");
+    return `<tr><td>${d.label}</td>${cells}</tr>`;
+  }).join("") : "";
 
   return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="robots" content="noindex"><title>Setpoint research</title>
   <style>
@@ -472,23 +503,34 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     h1{font-size:22px;margin:0;letter-spacing:-.01em}
     h2{font-size:14px;margin:0 0 4px;color:var(--text);text-transform:uppercase;letter-spacing:.06em;font-weight:700}
     .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:6px;flex-wrap:wrap}
-    .sub{color:var(--muted);font-size:12.5px;margin-bottom:26px}
+    .sub{color:var(--muted);font-size:12.5px;margin-bottom:22px}
     .dl{background:var(--card);border:1px solid var(--border);color:var(--green-soft);font-size:12.5px;padding:9px 16px;border-radius:9px;white-space:nowrap;text-decoration:none;display:inline-flex;align-items:center;gap:6px}
 
-    /* Signature: a live pulse dot marks anything sourced from real trades,
-       never used anywhere near replayed/simulated data, so the two can
-       never be mistaken for each other at a glance. */
     .pulse{width:7px;height:7px;border-radius:50%;background:var(--green);display:inline-block;box-shadow:0 0 0 0 rgba(0,209,121,.6);animation:pulse 2s infinite}
     @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(0,209,121,.5)}70%{box-shadow:0 0 0 6px rgba(0,209,121,0)}100%{box-shadow:0 0 0 0 rgba(0,209,121,0)}}
     .tag{font-size:9.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:5px;display:inline-flex;align-items:center;gap:5px}
     .tag.live{color:var(--green-soft);background:rgba(0,209,121,.12);border:1px solid rgba(0,209,121,.3)}
     .tag.replay{color:var(--dim);background:rgba(94,113,104,.12);border:1px solid var(--border)}
 
-    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:28px}
+    .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
     .stat{background:var(--card);border:1px solid var(--border);border-radius:11px;padding:14px 16px}
     .stat .v{font-family:monospace;font-size:22px;font-weight:600}
     .stat .l{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;margin-top:2px}
     @media (max-width:600px){.stats{grid-template-columns:repeat(2,1fr)}}
+
+    /* Tabs: plain radio-button CSS, no JS needed. Inputs are hidden, labels
+       act as clickable tab buttons, each content block only shows when its
+       matching radio is checked. */
+    .tabs input{display:none}
+    .tabbar{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:18px;overflow-x:auto}
+    .tabbar label{padding:10px 16px;font-size:12.5px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;user-select:none}
+    .tab-content{display:none}
+    #tab-live:checked ~ .tabbar label[for="tab-live"],
+    #tab-signals:checked ~ .tabbar label[for="tab-signals"],
+    #tab-market:checked ~ .tabbar label[for="tab-market"]{color:var(--green-soft);border-bottom-color:var(--green)}
+    #tab-live:checked ~ #content-live,
+    #tab-signals:checked ~ #content-signals,
+    #tab-market:checked ~ #content-market{display:block}
 
     .panel{background:var(--card-2);border:1px solid var(--border);border-radius:12px;padding:18px 18px 16px;margin-bottom:16px}
     .panel.live-edge{border-left:3px solid var(--green)}
@@ -511,7 +553,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     td.bull{color:var(--green);font-weight:600}
     td.bear{color:var(--red);font-weight:600}
     .empty{color:var(--dim);font-size:12.5px}
-  </style></head><body>
+  </style></head><body class="tabs">
   <div class="top">
     <h1>Setpoint research</h1>
     <a class="dl" href="/api/backtest/download">↓ Download .md</a>
@@ -527,56 +569,79 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     <div class="stat"><div class="v" style="color:${liveWinner ? 'var(--green)' : 'var(--dim)'}">${liveWinner ? pct(liveWinner.winRate) : "—"}</div><div class="l">${liveWinner ? liveWinner.key.split(" · ")[0] : "Top live signal"}</div></div>
   </div>
 
-  <div class="panel live-edge">
-    <div class="panel-head"><h2>Live scoreboard</h2><span class="tag live"><span class="pulse"></span>Real trades</span></div>
-    <div class="desc">Signals that actually fired on the live dashboard, checked against real price action since. Not a replay, this is what really happened. Resolved on every visit to this page: ${live?.resolveInfo?.resolved || 0} of ${live?.resolveInfo?.checked || 0} pending outcomes resolved just now. Rolling window of the most recent ${ROLLING_N} outcomes per bucket.</div>
-    ${live?.resolveInfo?.errors?.length ? `<div class="err">${live.resolveInfo.errors.join("<br>")}</div>` : ""}
-    ${liveBuckets5.length
-      ? `<table><thead><tr><th>Setup</th><th>Last N</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${liveRows(liveBuckets5)}</tbody></table>`
-      : `<div class="empty">No live setup has 5+ resolved outcomes yet. This fills in as signals fire and resolve over real time.</div>`}
-    ${liveBucketsSmall.length ? `<details style="margin-top:10px"><summary style="color:var(--dim);font-size:11.5px;cursor:pointer">${liveBucketsSmall.length} more with under 5 resolved outcomes (low sample)</summary><table style="margin-top:8px"><thead><tr><th>Setup</th><th>Last N</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${liveRows(liveBucketsSmall)}</tbody></table></details>` : ""}
+  <input type="radio" name="t" id="tab-live" checked>
+  <input type="radio" name="t" id="tab-signals">
+  <input type="radio" name="t" id="tab-market">
+  <div class="tabbar">
+    <label for="tab-live">Live</label>
+    <label for="tab-signals">Signals</label>
+    <label for="tab-market">Market</label>
   </div>
 
-  <div class="panel replay-edge">
-    <div class="panel-head"><h2>Most consistent</h2><span class="tag replay">Replay · last ${CONSISTENCY_RUNS} runs</span></div>
-    <div class="desc">The trustworthy read, not one lucky run. Scored as average win rate minus how much it swung, a high number that bounces around loses to a steady one that doesn't move.</div>
-    ${consistencyRows ? `<table><thead><tr><th>Bucket</th><th>Runs</th><th>Avg win rate</th><th>Swing</th><th>Total fired</th></tr></thead><tbody>${consistencyRows}</tbody></table>`
-      : `<div class="empty">${consistency?.reason ? `Not available this run (${consistency.reason}).` : `Not enough saved runs yet, need at least ${CONSISTENCY_MIN_RUNS} to rank anything.`}</div>`}
+  <div class="tab-content" id="content-live">
+    <div class="panel live-edge">
+      <div class="panel-head"><h2>Live scoreboard</h2><span class="tag live"><span class="pulse"></span>Real trades</span></div>
+      <div class="desc">Signals that actually fired on the live dashboard, checked against real price action since. Not a replay, this is what really happened. Resolved on every visit to this page: ${live?.resolveInfo?.resolved || 0} of ${live?.resolveInfo?.checked || 0} pending outcomes resolved just now. Rolling window of the most recent ${ROLLING_N} outcomes per bucket.</div>
+      ${live?.resolveInfo?.errors?.length ? `<div class="err">${live.resolveInfo.errors.join("<br>")}</div>` : ""}
+      ${liveBuckets5.length
+        ? `<table><thead><tr><th>Setup</th><th>Last N</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${liveRows(liveBuckets5)}</tbody></table>`
+        : `<div class="empty">No live setup has 5+ resolved outcomes yet. This fills in as signals fire and resolve over real time.</div>`}
+      ${liveBucketsSmall.length ? `<details style="margin-top:10px"><summary style="color:var(--dim);font-size:11.5px;cursor:pointer">${liveBucketsSmall.length} more with under 5 resolved outcomes (low sample)</summary><table style="margin-top:8px"><thead><tr><th>Setup</th><th>Last N</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${liveRows(liveBucketsSmall)}</tbody></table></details>` : ""}
+    </div>
+
+    <div class="panel live-edge">
+      <div class="panel-head"><h2>Whale flow direction</h2><span class="tag live"><span class="pulse"></span>Real transfers</span></div>
+      <div class="desc">Does exchange inflow or outflow actually predict BTC's next move? ${whale?.totalLogged || 0} transfers logged${whale?.lastAt ? `, most recent ${new Date(whale.lastAt).toUTCString()}` : ""}. "% up" is the share of resolved checkpoints where BTC was higher than it was the moment the transfer fired, not the traditional-convention test, the raw direction, so you can read it either way.</div>
+      ${whale?.error ? `<div class="err">${whale.error}</div>` : ""}
+      ${whaleRows
+        ? `<table><thead><tr><th>Direction</th><th>+15m</th><th>+30m</th><th>+1h</th><th>+4h</th><th>+12h</th></tr></thead><tbody>${whaleRows}</tbody></table>`
+        : `<div class="empty">Not enough logged transfers yet. Fills in as Whale Alert posts large transfers and this page (or the download) gets visited.</div>`}
+    </div>
   </div>
 
-  <div class="panel replay-edge">
-    <div class="panel-head"><h2>Worth a look, underperforming</h2><span class="tag replay">Replay</span></div>
-    ${worst.length ? worst.map((b) => callout(b, "bad")).join("") : "<div class='empty'>Not enough fired signals yet to call out a weak spot.</div>"}
+  <div class="tab-content" id="content-signals">
+    <div class="panel replay-edge">
+      <div class="panel-head"><h2>Most consistent</h2><span class="tag replay">Replay · last ${CONSISTENCY_RUNS} runs</span></div>
+      <div class="desc">The trustworthy read, not one lucky run. Scored as average win rate minus how much it swung, a high number that bounces around loses to a steady one that doesn't move.</div>
+      ${consistencyRows ? `<table><thead><tr><th>Bucket</th><th>Runs</th><th>Avg win rate</th><th>Swing</th><th>Total fired</th></tr></thead><tbody>${consistencyRows}</tbody></table>`
+        : `<div class="empty">${consistency?.reason ? `Not available this run (${consistency.reason}).` : `Not enough saved runs yet, need at least ${CONSISTENCY_MIN_RUNS} to rank anything.`}</div>`}
+    </div>
+
+    <div class="panel replay-edge">
+      <div class="panel-head"><h2>Worth a look, underperforming</h2><span class="tag replay">Replay</span></div>
+      ${worst.length ? worst.map((b) => callout(b, "bad")).join("") : "<div class='empty'>Not enough fired signals yet to call out a weak spot.</div>"}
+    </div>
+
+    <div class="panel replay-edge">
+      <div class="panel-head"><h2>Worth a look, outperforming</h2><span class="tag replay">Replay</span></div>
+      ${best.length ? best.map((b) => callout(b, "good")).join("") : "<div class='empty'>Not enough fired signals yet to call out a strong spot.</div>"}
+    </div>
+
+    <div class="panel replay-edge">
+      <div class="panel-head"><h2>Full breakdown</h2><span class="tag replay">Replay</span></div>
+      <table><thead><tr><th>Bucket</th><th>Fired</th><th>Won</th><th>Lost</th><th>Open</th><th>Win rate</th><th>Vs last run</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>
   </div>
 
-  <div class="panel replay-edge">
-    <div class="panel-head"><h2>Worth a look, outperforming</h2><span class="tag replay">Replay</span></div>
-    ${best.length ? best.map((b) => callout(b, "good")).join("") : "<div class='empty'>Not enough fired signals yet to call out a strong spot.</div>"}
-  </div>
+  <div class="tab-content" id="content-market">
+    <div class="panel replay-edge">
+      <div class="panel-head"><h2>By market condition</h2><span class="tag replay">Replay</span></div>
+      <div class="desc">Same setups, split by what trend and bias actually looked like the moment each one fired, not blended into one average. An overall number near 50% can be hiding a real pattern underneath, this is where that shows up.</div>
+      ${regimeRows ? `<table><thead><tr><th>Setup · condition</th><th>Fired</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${regimeRows}</tbody></table>`
+        : `<div class="empty">Not enough fired signals with a clear trend or bias reading yet to split this out.</div>`}
+    </div>
 
-  <div class="panel replay-edge">
-    <div class="panel-head"><h2>By market condition</h2><span class="tag replay">Replay</span></div>
-    <div class="desc">Same setups, split by what trend and bias actually looked like the moment each one fired, not blended into one average. An overall number near 50% can be hiding a real pattern underneath, this is where that shows up.</div>
-    ${regimeRows ? `<table><thead><tr><th>Setup · condition</th><th>Fired</th><th>Won</th><th>Lost</th><th>Win rate</th></tr></thead><tbody>${regimeRows}</tbody></table>`
-      : `<div class="empty">Not enough fired signals with a clear trend or bias reading yet to split this out.</div>`}
-  </div>
-
-  <div class="panel replay-edge">
-    <div class="panel-head"><h2>Market turning points</h2><span class="tag replay">Replay</span></div>
-    <div class="desc">Every point in this replay where the shared bias flipped from bullish to bearish or back, most recent first.</div>
-    ${turnRows ? `<table><thead><tr><th>When</th><th>Timeframe</th><th>Flip</th><th>Weighted move</th><th>% of watchlist agreeing</th></tr></thead><tbody>${turnRows}</tbody></table>` : `<div class="empty">No clean bullish/bearish flips in this replay window.</div>`}
-  </div>
-
-  <div class="panel replay-edge">
-    <div class="panel-head"><h2>Full breakdown</h2><span class="tag replay">Replay</span></div>
-    <table><thead><tr><th>Bucket</th><th>Fired</th><th>Won</th><th>Lost</th><th>Open</th><th>Win rate</th><th>Vs last run</th></tr></thead>
-    <tbody>${rows}</tbody></table>
+    <div class="panel replay-edge">
+      <div class="panel-head"><h2>Market turning points</h2><span class="tag replay">Replay</span></div>
+      <div class="desc">Every point in this replay where the shared bias flipped from bullish to bearish or back, most recent first.</div>
+      ${turnRows ? `<table><thead><tr><th>When</th><th>Timeframe</th><th>Flip</th><th>Weighted move</th><th>% of watchlist agreeing</th></tr></thead><tbody>${turnRows}</tbody></table>` : `<div class="empty">No clean bullish/bearish flips in this replay window.</div>`}
+    </div>
   </div>
 
   <div class="note">
-    Methodology: the Live scoreboard above tracks signals that actually fired on the live dashboard, checked against real Coinbase price action since. Everything below it replays historical candles bar by bar through the live signal engine (lib/signals.js), simulating what would have fired, only ever using data available up to that point. A replayed signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first. The early-pace volume signal ("Volume building early") is excluded from the replay for the same reason it needs a live forming candle that closed history can't simulate, its real track record lives in the Live scoreboard above instead. If target and stop were both touched in the same replayed bar, that's scored as a loss, the conservative read. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
-    Also reports on: a "Backtest tier" breakdown (validates the proven/weak combination table against fresh data), a "Strength" breakdown, a "Candle shape" breakdown (measurement only), and a "Bias" breakdown testing the market-wide bias layer.
-    "Reversal watch" only fires when the market's lean looks visibly stretched and at least one real confirmation (volume climax, momentum deceleration, RSI divergence, or a candle streak) backs it up, rebuilt after the original stretch-alone version backtested weak. There's no cheap historical Fear & Greed series to replay, so the replay above can't fully exercise every path this signal can take live.
+    Methodology: the Live tab tracks signals and whale transfers that actually happened, checked against real Coinbase price action since. Signals and Market tabs replay historical candles bar by bar through the live signal engine (lib/signals.js), simulating what would have fired, only ever using data available up to that point. A replayed signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first. The early-pace volume signal ("Volume building early") is excluded from the replay for the same reason it needs a live forming candle that closed history can't simulate, its real track record lives in the Live tab instead. If target and stop were both touched in the same replayed bar, that's scored as a loss, the conservative read. Coinbase returns up to 300 bars per call, so 1h has less history than 5m or 15m in wall-clock terms.
+    "Reversal watch" only fires when the market's lean looks visibly stretched and at least one real confirmation (volume climax, momentum deceleration, RSI divergence, or a candle streak) backs it up. There's no cheap historical Fear & Greed series to replay, so the replay can't fully exercise every path this signal can take live.
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results above are still accurate, just not persisted.`}
   </div>
   </body></html>`;
@@ -709,9 +774,10 @@ export async function GET(req) {
   const dbInfo = await saveToNeon(runAt, buckets);
   const consistency = await getConsistencyRanking();
   const live = await getLiveScoreboard();
+  const whale = await getWhaleDirectionStats();
   const markdown = renderMarkdown({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, live });
 
-  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, markdown, live });
+  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, markdown, live, whale });
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",

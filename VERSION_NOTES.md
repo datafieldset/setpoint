@@ -1,34 +1,23 @@
-# Setpoint v3.5
+# Setpoint v3.8
 
-## Scoreboard merged into the research page, redesigned as a dashboard
+## Whale flow: confirmed direction, timestamp added, real color bug fixed
 
-The standalone /api/scoreboard page is retired. Everything it did (resolving open live signals against real price, reporting a rolling win rate) now lives inside /api/backtest, one page instead of two.
+Restored the flipped labels (inflow → bullish, outflow → bearish) from v3.7, now backed by two consistent confirming observations, not a misread contradiction.
 
-**What changed:**
+Added a timestamp: the panel now shows when the most recent whale transfer actually happened, not just the aggregate number.
 
-- Visiting /api/backtest now does double duty: runs the historical replay like before, AND resolves any still-open live signals and reports their real win rate, same as the old scoreboard page used to.
-- The .md download now carries both datasets in one file: the historical replay sections, then a Live scoreboard section, then the whale flow section. One file to paste in here instead of two.
-- Full visual redesign: summary stat cards up top (signals replayed, live signals logged, still open, top live performer), then organized panels instead of one long page. Every panel is marked either **LIVE** (a pulsing dot, real trades) or **REPLAY** (simulated history), so the two can never get confused with each other.
+Found and fixed a real bug while in there: the panel's background and text colors were never updated when the text got flipped. Inflow (now the bullish read) was still colored red, outflow (now bearish) was still colored green, backwards from the words sitting right next to them.
 
-**Also found, not fixed yet:** the whale_track table error from earlier isn't actually missing code, /api/whale-track/route.js already has the table-creation logic, it's just never been visited to run it. Visiting that URL once should fix the whale flow section on the next backtest download.
+## Whale direction: real tracking surfaced on the backtest page
 
-## Also in this release
-- Live scoreboard data folded into SIGNAL_RATES (from v3.4): real trade win rates now shown alongside backtest numbers on dashboard cards
-- Volume building early and Quiet accumulation wired into the tier system for the first time (were never checking the table at all before)
+The transfer-level tracking system already existed (whale_track, checking real BTC price at 15m/30m/1h/4h/12h after each transfer), it just wasn't aggregated by direction anywhere visible. Now shown on the backtest page's Live tab: for each direction, what share of resolved checkpoints saw BTC actually higher, at every timeframe. This is the real test of the question, not a guess off memory of a couple events.
 
-## Next up
-Visit /api/whale-track once to get the whale flow section working again.
+## Backtest page: reorganized into tabs
 
-## v3.5.1 — Password Protection
+Three tabs instead of one long scroll: **Live** (Live scoreboard, Whale flow direction), **Signals** (Most consistent, over/underperforming, full breakdown), **Market** (by condition, turning points). Plain CSS, no JavaScript, so it can't break independent of anything else on the page.
 
-/api/backtest and /api/backtest/download now require a password. Visiting either prompts the browser's native login popup: any username, password `honolulu26`. Both routes share the same realm, so authenticating once on the main page carries over to the download link automatically, no second prompt.
+## % coverage on alert cards: honest accounting
 
-## v3.6 — Whale Flow Fixed, Reversal Watch Cleanup Instructions
+Checked every signal type that calls into the tier table. One genuine gap found: **"Momentum" has zero entries, ever.** Every other signal type has at least partial coverage. Rather than invent a number, it stays untagged until we have real backtest or live data for it.
 
-**Whale flow:** the table and its logging/resolving logic only ran when someone visited /api/whale-track directly, which nobody had, so the table never got created and this section always failed. The download route now creates the table and runs logging/resolving itself, same as visiting that page would, so downloading alone is enough to get it started. Will show "no transfers logged yet" on the very next download after this deploys, then start filling in as more downloads happen over time.
-
-**Reversal watch live data contamination:** signal_track has no code-version marker, only a fired timestamp, and there's no timestamp trustworthy enough to filter by after today's back-and-forth pushes/reverts. Real fix is a one-time manual cleanup, not code: run `DELETE FROM signal_track WHERE label = 'Reversal watch';` once in Neon's SQL Editor. Clears every pre-rebuild fire, only new confirmation-gated fires remain from that point on.
-
-## v3.7 — Whale Flow Interpretation Flipped
-
-Two real, consistent observations now: inflow onto exchanges preceded a bullish move, outflow off exchanges preceded a bearish move, both the opposite of the original "inflow = sell pressure, outflow = accumulation" assumption. Flipped the read to match. Display-only change, this never fed into any signal scoring, so nothing else is affected.
+Beyond that: the table currently covers 23 of roughly 44 realistic combos (4 timeframes × applicable directions across all signal types, Reversal watch excluded on purpose). The rest genuinely don't have 5+ real samples yet. Not tagging them isn't a bug, it's the system correctly refusing to claim a win rate it doesn't have. Coverage grows as more backtest runs and live fires accumulate.
