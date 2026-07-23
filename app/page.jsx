@@ -731,7 +731,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   <span className="netflow-dir">{netDir === "in" ? "▲ net onto exchanges" : "▼ net off exchanges"}</span>
                   <span className="netflow-amt mono">{fmtVol(Math.abs(netFlow.net))} ({netPct}%)</span>
                 </div>
-                <div className="netflow-note">{netDir === "in" ? "Can lean toward sell pressure." : "Can lean toward accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
+                <div className="netflow-note">{netDir === "in" ? "Two real observations here leaned bullish, likely capital moving in to deploy, not to sell." : "Two real observations here leaned bearish, likely a real exit, not accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
               </div>
             );
           })()}

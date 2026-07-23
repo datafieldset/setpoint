@@ -28,3 +28,7 @@ Visit /api/whale-track once to get the whale flow section working again.
 **Whale flow:** the table and its logging/resolving logic only ran when someone visited /api/whale-track directly, which nobody had, so the table never got created and this section always failed. The download route now creates the table and runs logging/resolving itself, same as visiting that page would, so downloading alone is enough to get it started. Will show "no transfers logged yet" on the very next download after this deploys, then start filling in as more downloads happen over time.
 
 **Reversal watch live data contamination:** signal_track has no code-version marker, only a fired timestamp, and there's no timestamp trustworthy enough to filter by after today's back-and-forth pushes/reverts. Real fix is a one-time manual cleanup, not code: run `DELETE FROM signal_track WHERE label = 'Reversal watch';` once in Neon's SQL Editor. Clears every pre-rebuild fire, only new confirmation-gated fires remain from that point on.
+
+## v3.7 — Whale Flow Interpretation Flipped
+
+Two real, consistent observations now: inflow onto exchanges preceded a bullish move, outflow off exchanges preceded a bearish move, both the opposite of the original "inflow = sell pressure, outflow = accumulation" assumption. Flipped the read to match. Display-only change, this never fed into any signal scoring, so nothing else is affected.
