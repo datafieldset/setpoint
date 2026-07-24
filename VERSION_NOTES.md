@@ -1,5 +1,9 @@
-# Setpoint v4.1
+# Setpoint v4.2
 
-## Whale flow direction panel actually creates its own table now
+## Open Positions was never resolving on its own
 
-The download route already had table-creation + logging/resolving built in, but the main /api/backtest page's own whale panel never got the same fix, it just queried whale_track directly and failed with "relation does not exist" whenever the download hadn't been visited first. Now visiting the main page alone is enough, same setup as the download route.
+Real bug: the Open Positions panel only ever read the database, it never checked real price itself. Resolution only ran when someone visited the password-protected backtest research page. That meant a position could blow straight through its stop and just sit there marked "open" for hours or days until someone happened to visit that internal page, exactly what showed up: an XLM long sitting open with live price already well below its stop.
+
+Fixed by giving this route its own resolve step, run before every response, same logic used elsewhere (real price, real target/stop check, real 1-minute drill-down for the rare ambiguous case). The page paying members are actually watching now keeps itself current on every poll, no longer depends on an internal page getting visited.
+
+Verified the fix with a synthetic scenario (price sitting safely between stop and target in older history, breaking down past stop in recent candles) before shipping, resolves correctly to a loss.
