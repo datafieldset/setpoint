@@ -101,6 +101,44 @@ async function fetchCoinbaseCandles(sym, tfKey) {
   return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
 }
 
+// Cache so multiple signals landing on the exact same ambiguous historical
+// bar don't each trigger their own duplicate fetch, the fetch only depends
+// on coin + time window, not on any one signal's own target/stop.
+async function fetchMinuteCandles(coin, barStartMs, barEndMs, cache) {
+  const key = `${coin}:${barStartMs}`;
+  if (cache.has(key)) return cache.get(key);
+  let result = null;
+  try {
+    const url = `https://api.exchange.coinbase.com/products/${coin}-USD/candles?granularity=60&start=${new Date(barStartMs).toISOString()}&end=${new Date(barEndMs).toISOString()}`;
+    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
+    if (r.ok) {
+      const raw = await r.json();
+      if (Array.isArray(raw) && raw.length) {
+        result = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2] }));
+      }
+    }
+  } catch { /* result stays null, caller falls back */ }
+  cache.set(key, result);
+  return result;
+}
+
+function resolveFromMinuteCandles(minuteCandles, dir, target, stop) {
+  if (!minuteCandles) return null;
+  for (const c of minuteCandles) {
+    const hitTarget = dir === "bull" ? c.high >= target : c.low <= target;
+    const hitStop = dir === "bull" ? c.low <= stop : c.high >= stop;
+    if (hitTarget && hitStop) continue; // still ambiguous even at 1-minute, exceedingly rare, keep scanning
+    if (hitTarget) return "win";
+    if (hitStop) return "loss";
+  }
+  return null;
+}
+
+async function resolveAmbiguousBar(coin, dir, target, stop, barStartMs, barEndMs, cache) {
+  const minuteCandles = await fetchMinuteCandles(coin, barStartMs, barEndMs, cache);
+  return resolveFromMinuteCandles(minuteCandles, dir, target, stop);
+}
+
 // Bias needs to know what the WHOLE watchlist was doing at the same
 // historical instant, not just one coin in isolation, so this replays all
 // coins for a timeframe together, one shared step at a time, rather than
@@ -111,10 +149,11 @@ async function fetchCoinbaseCandles(sym, tfKey) {
 // Assumes candle arrays across coins are index-aligned in time, true in
 // practice since all three are fetched with the same granularity from the
 // same exchange at the same moment, both long-established Coinbase pairs.
-function jointWalkForward(candlesByCoin, tfKey) {
+async function jointWalkForward(candlesByCoin, tfKey) {
   const out = [];
   const turns = []; // exact moments bias.dir flipped, the thing we couldn't see before
   const bar = barMs(tfKey);
+  const minuteCache = new Map();
   const coins = Object.keys(candlesByCoin).filter((c) => candlesByCoin[c] && candlesByCoin[c].length > WARMUP + 5);
   if (!coins.length) return { rows: out, turns };
   const minLen = Math.min(...coins.map((c) => candlesByCoin[c].length));
@@ -162,7 +201,14 @@ function jointWalkForward(candlesByCoin, tfKey) {
           const c = candles[j];
           const hitTarget = s.dir === "bull" ? c.high >= s.target : c.low <= s.target;
           const hitStop = s.dir === "bull" ? c.low <= s.stop : c.high >= s.stop;
-          if (hitTarget && hitStop) { outcome = "loss"; break; } // ambiguous same-bar case: assume the worse outcome
+          if (hitTarget && hitStop) {
+            // Real ambiguous case: drill into 1-minute candles for this
+            // exact bar to see which level was actually touched first,
+            // instead of assuming the worse outcome.
+            const resolved = await resolveAmbiguousBar(coin, s.dir, s.target, s.stop, c.time, c.time + bar, minuteCache);
+            outcome = resolved || "loss"; // only falls back to loss if even 1-minute data couldn't settle it
+            break;
+          }
           if (hitTarget) { outcome = "win"; break; }
           if (hitStop) { outcome = "loss"; break; }
         }
@@ -348,6 +394,7 @@ const ROLLING_N = 20;
 async function getLiveScoreboard() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return { buckets: [], totalTracked: 0, totalOpen: 0, resolveInfo: { checked: 0, resolved: 0, errors: [] } };
+  const minuteCache = new Map();
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn);
@@ -394,7 +441,11 @@ async function getLiveScoreboard() {
           const entry = parseFloat(row.entry), stop = parseFloat(row.stop), target = parseFloat(row.target);
           const hitTarget = row.dir === "bull" ? c.high >= target : c.low <= target;
           const hitStop = row.dir === "bull" ? c.low <= stop : c.high >= stop;
-          if (hitTarget && hitStop) { outcome = "loss"; break; }
+          if (hitTarget && hitStop) {
+            const resolved = await resolveAmbiguousBar(row.coin, row.dir, target, stop, c.time, c.time + barMs(tf), minuteCache);
+            outcome = resolved || "loss";
+            break;
+          }
           if (hitTarget) { outcome = "win"; break; }
           if (hitStop) { outcome = "loss"; break; }
         }
@@ -765,7 +816,7 @@ export async function GET(req) {
         errors.push(`${coin} ${tfKey}: ${String(e.message || e).slice(0, 120)}`);
       }
     }
-    const { rows, turns } = jointWalkForward(candlesByCoin, tfKey);
+    const { rows, turns } = await jointWalkForward(candlesByCoin, tfKey);
     allRows.push(...rows);
     allTurns.push(...turns);
   }

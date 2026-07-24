@@ -77,13 +77,14 @@ function Ladder({ entry, stop, target, price, dir }) {
   );
 }
 
-function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess }) {
+function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess, isOpenPosition }) {
   return (
     <div className={`sig-card ${s.dir}`}>
       <div className="sig-top">
         <div className="sig-id">
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.label}</span>
+          {isOpenPosition && <span className="open-pos-tag">still in motion</span>}
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
           {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
           {s.biasTag && <span className={`bias-tag ${s.biasTag}`}>{s.biasTag === "with" ? "with market" : "against market"}</span>}
@@ -99,9 +100,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
       <Ladder entry={s.entry} stop={s.stop} target={s.target} price={price} dir={s.dir} />
       <div className="sig-foot">
         <span className="tf-pill">{s.tf}</span>
-        <span className="fired">{demo ? "triggered 3m ago" : "triggered " + timeAgo(firedAt, now)}</span>
+        <span className="fired">{demo ? "triggered 3m ago" : isOpenPosition ? "fired " + timeAgo(firedAt, now) + " · still open" : "triggered " + timeAgo(firedAt, now)}</span>
       </div>
-      {!demo && (
+      {!demo && !isOpenPosition && (
         <div className="ai-take">
           {read && read.error ? (
             <div className="ai-err">{read.error === "no_key" ? "Add ANTHROPIC_API_KEY in Vercel to enable AI reads." : "AI read unavailable right now."}</div>
@@ -351,6 +352,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [macroRead, setMacroRead] = useState(null);
   const [news, setNews] = useState({});         // sym -> [items]
   const [netFlow, setNetFlow] = useState(null);     // aggregate whale flow, not per-coin
+  const [openPositions, setOpenPositions] = useState([]); // signals fired and still unresolved, from signal_track
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -369,6 +371,21 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       setNetFlow(json.netFlow || null);
     } catch { /* non-fatal */ }
   }, [watchlist]);
+
+  // Open positions: signals that fired and haven't hit target or stop yet.
+  // The Opportunities feed below only shows conditions that are true right
+  // now, so a fired signal disappears from it the moment that condition
+  // changes, even though the trade itself is still open. This keeps it
+  // visible until it actually resolves, same source of truth as the
+  // scoreboard.
+  const loadOpenPositions = useCallback(async () => {
+    try {
+      const res = await fetch("/api/open-positions", { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      setOpenPositions(json.positions || []);
+    } catch { /* non-fatal */ }
+  }, []);
 
   // The macro read is slow-moving on purpose, cached server-side for hours,
   // so it rides the same slow cadence as news rather than the fast 60s
@@ -500,6 +517,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadNews(); }, [loadNews]);
+  useEffect(() => { loadOpenPositions(); }, [loadOpenPositions]);
+  useEffect(() => { const id = setInterval(loadOpenPositions, 60000); return () => clearInterval(id); }, [loadOpenPositions]);
   useEffect(() => { loadMacro(); }, [loadMacro]);
   useEffect(() => { const id = setInterval(loadNews, 300000); return () => clearInterval(id); }, [loadNews]);
   useEffect(() => { const id = setInterval(loadMacro, 300000); return () => clearInterval(id); }, [loadMacro]);
@@ -592,6 +611,27 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
 
       <div className="dash-body">
+        {openPositions.length > 0 && (
+          <div className="opps open-positions-block">
+            <div className="section-head">
+              <h2>Open positions</h2>
+              <span className="sh-sub">{openPositions.length} still in motion, not resolved yet</span>
+            </div>
+            <div className="cards-grid">
+              {openPositions.map((p) => (
+                <SignalCard
+                  key={`open:${p.coin}:${p.tf}:${p.label}:${p.dir}:${p.firedAt}`}
+                  s={{ dir: p.dir, label: p.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: p.entry, stop: p.stop, target: p.target, tf: p.tf }}
+                  sym={p.coin}
+                  price={data[p.coin]?.snap?.price}
+                  firedAt={p.firedAt}
+                  now={now}
+                  isOpenPosition
+                />
+              ))}
+            </div>
+          </div>
+        )}
         <div className="opps">
           <div className="section-head">
             <h2>Opportunities</h2>
@@ -1055,6 +1095,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .bias-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .bias-tag.with{color:var(--green-soft);background:var(--green-dim)}
 .bias-tag.against{color:var(--red-soft);background:var(--red-dim)}
+.open-pos-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;color:var(--amber);background:var(--amber-dim);border:1px solid rgba(245,184,81,.35)}
 .tier-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
 .tier-tag.proven{color:#03110B;background:var(--green)}
 .tier-tag.tested{color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.4)}
