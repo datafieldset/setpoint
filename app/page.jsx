@@ -353,6 +353,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [news, setNews] = useState({});         // sym -> [items]
   const [netFlow, setNetFlow] = useState(null);     // aggregate whale flow, not per-coin
   const [openPositions, setOpenPositions] = useState([]); // signals fired and still unresolved, from signal_track
+  const [dashTab, setDashTab] = useState("opps"); // "opps" | "open" — which panel shows in the main column
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -611,50 +612,67 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
 
       <div className="dash-body">
-        {openPositions.length > 0 && (
-          <div className="opps open-positions-block">
-            <div className="section-head">
-              <h2>Open positions</h2>
-              <span className="sh-sub">{openPositions.length} still in motion, not resolved yet</span>
-            </div>
-            <div className="cards-grid">
-              {openPositions.map((p) => (
-                <SignalCard
-                  key={`open:${p.coin}:${p.tf}:${p.label}:${p.dir}:${p.firedAt}`}
-                  s={{ dir: p.dir, label: p.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: p.entry, stop: p.stop, target: p.target, tf: p.tf }}
-                  sym={p.coin}
-                  price={data[p.coin]?.snap?.price}
-                  firedAt={p.firedAt}
-                  now={now}
-                  isOpenPosition
-                />
-              ))}
-            </div>
-          </div>
-        )}
         <div className="opps">
-          <div className="section-head">
-            <h2>Opportunities</h2>
-            <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
-            {hiddenCount > 0 && (
-              <button className="weak-toggle" onClick={() => setShowWeak((v) => !v)}>
-                {showWeak ? `hide ${hiddenCount} not yet proven` : `${hiddenCount} not yet proven hidden, show anyway`}
-              </button>
-            )}
+          <div className="dash-tabs">
+            <button className={`dash-tab ${dashTab === "opps" ? "active" : ""}`} onClick={() => setDashTab("opps")}>
+              Opportunities <span className="dash-tab-n">{visibleSignals.length}</span>
+            </button>
+            <button className={`dash-tab ${dashTab === "open" ? "active" : ""}`} onClick={() => setDashTab("open")}>
+              Open positions {openPositions.length > 0 && <span className="dash-tab-n">{openPositions.length}</span>}
+            </button>
           </div>
-          {visibleSignals.length === 0 ? (
-            <div className="empty">
-              <div className="empty-h">{allSignals.length > 0 ? "Nothing proven right now." : "Nothing firing right now."}</div>
-              <div className="empty-d">
-                {allSignals.length > 0
-                  ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's backtested well twice yet. That's the point, not a bug, only proven setups show by default. Use the toggle above to see the rest.`
-                  : `This is normal. Setpoint only shows setups proven by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
+
+          {dashTab === "opps" ? (
+            <>
+              <div className="section-head">
+                <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
+                {hiddenCount > 0 && (
+                  <button className="weak-toggle" onClick={() => setShowWeak((v) => !v)}>
+                    {showWeak ? `hide ${hiddenCount} not yet proven` : `${hiddenCount} not yet proven hidden, show anyway`}
+                  </button>
+                )}
               </div>
-            </div>
+              {visibleSignals.length === 0 ? (
+                <div className="empty">
+                  <div className="empty-h">{allSignals.length > 0 ? "Nothing proven right now." : "Nothing firing right now."}</div>
+                  <div className="empty-d">
+                    {allSignals.length > 0
+                      ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's backtested well twice yet. That's the point, not a bug, only proven setups show by default. Use the toggle above to see the rest.`
+                      : `This is normal. Setpoint only shows setups proven by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
+                  </div>
+                </div>
+              ) : (
+                <div className="cards-grid">
+                  {visibleSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
+                </div>
+              )}
+            </>
           ) : (
-            <div className="cards-grid">
-              {visibleSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
-            </div>
+            <>
+              <div className="section-head">
+                <span className="sh-sub">{openPositions.length} still in motion, not resolved yet</span>
+              </div>
+              {openPositions.length === 0 ? (
+                <div className="empty">
+                  <div className="empty-h">Nothing open right now.</div>
+                  <div className="empty-d">Fires here stay visible until they actually hit target or stop, this fills in the moment something's live.</div>
+                </div>
+              ) : (
+                <div className="cards-grid">
+                  {openPositions.map((p) => (
+                    <SignalCard
+                      key={`open:${p.coin}:${p.tf}:${p.label}:${p.dir}:${p.firedAt}`}
+                      s={{ dir: p.dir, label: p.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: p.entry, stop: p.stop, target: p.target, tf: p.tf, tier: p.tier, tierRate: p.tierRate }}
+                      sym={p.coin}
+                      price={data[p.coin]?.snap?.price}
+                      firedAt={p.firedAt}
+                      now={now}
+                      isOpenPosition
+                    />
+                  ))}
+                </div>
+              )}
+            </>
           )}
 
           <div className="signals-panel">
@@ -1068,6 +1086,11 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
 .weak-toggle{margin-left:auto;font-size:11px;color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.3);padding:4px 10px;border-radius:20px;white-space:nowrap}
+.dash-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px}
+.dash-tab{background:none;border:none;padding:9px 4px;margin-right:22px;font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
+.dash-tab.active{color:var(--text);border-bottom-color:var(--green)}
+.dash-tab-n{color:var(--dim);font-weight:500;font-size:12px;margin-left:3px}
+.dash-tab.active .dash-tab-n{color:var(--green-soft)}
 .weak-toggle:hover{filter:brightness(1.1)}
 .section-head h2{font-size:20px;font-weight:700}
 .sh-sub{color:var(--dim);font-size:12.5px}

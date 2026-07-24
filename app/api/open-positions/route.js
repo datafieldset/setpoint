@@ -8,6 +8,15 @@
 // Paying members watching a paper trade need to see it stay visible until
 // it actually resolves, that's what this route and the Open positions
 // panel on the dashboard are for.
+//
+// signal_track never stored tier/win-rate at fire time, only the raw
+// trade (coin, tf, label, dir, entry, stop, target). That's fine, tier is
+// a pure lookup by label+timeframe+direction against the current
+// SIGNAL_RATES table, so it's looked up fresh here instead, which also
+// means it reflects the latest table data, not a stale snapshot from
+// whenever the alert originally fired.
+import { provenContext } from "../../../lib/signals.js";
+
 export const dynamic = "force-dynamic";
 
 export async function GET() {
@@ -26,16 +35,21 @@ export async function GET() {
       ORDER BY fired_at DESC
       LIMIT 100
     `;
-    const positions = rows.map((r) => ({
-      coin: r.coin,
-      tf: r.tf,
-      label: r.label,
-      dir: r.dir,
-      firedAt: new Date(r.fired_at).getTime(),
-      entry: parseFloat(r.entry),
-      stop: parseFloat(r.stop),
-      target: parseFloat(r.target),
-    }));
+    const positions = rows.map((r) => {
+      const pc = provenContext(r.label, r.tf, r.dir);
+      return {
+        coin: r.coin,
+        tf: r.tf,
+        label: r.label,
+        dir: r.dir,
+        firedAt: new Date(r.fired_at).getTime(),
+        entry: parseFloat(r.entry),
+        stop: parseFloat(r.stop),
+        target: parseFloat(r.target),
+        tier: pc.tag,
+        tierRate: pc.rate,
+      };
+    });
     return Response.json({ positions }, { headers: noCache });
   } catch (e) {
     return Response.json({ positions: [], error: String(e.message || e).slice(0, 150) }, { headers: noCache });
