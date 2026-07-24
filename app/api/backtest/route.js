@@ -372,6 +372,37 @@ async function getWhaleDirectionStats() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn);
+    // This table and its logging/resolving previously only ran from the
+    // download route, so visiting this page directly hit a table that was
+    // never created. Same setup here now, so either path alone is enough.
+    await sql`
+      CREATE TABLE IF NOT EXISTS whale_track (
+        id SERIAL PRIMARY KEY,
+        link TEXT UNIQUE NOT NULL,
+        asset TEXT NOT NULL,
+        usd_amount NUMERIC NOT NULL,
+        direction TEXT NOT NULL,
+        fired_at TIMESTAMPTZ NOT NULL,
+        btc_price_at_fire NUMERIC NOT NULL,
+        price_15m NUMERIC,
+        price_30m NUMERIC,
+        price_1h NUMERIC,
+        price_4h NUMERIC,
+        price_12h NUMERIC,
+        resolved_15m BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_30m BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_1h BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_4h BOOLEAN NOT NULL DEFAULT FALSE,
+        resolved_12h BOOLEAN NOT NULL DEFAULT FALSE
+      )
+    `;
+    try {
+      await logNewEvents(sql);
+      await resolveCheckpoints(sql);
+    } catch (e) {
+      // Logging/resolving failing shouldn't block showing whatever's
+      // already in the table.
+    }
     const rows = await sql`SELECT * FROM whale_track ORDER BY fired_at DESC LIMIT 300`;
     return { dirs: aggregateWhaleDirection(rows), totalLogged: rows.length, lastAt: rows[0]?.fired_at || null };
   } catch (e) {
