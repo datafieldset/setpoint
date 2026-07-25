@@ -9,11 +9,15 @@
 // it actually resolves, that's what this route and the Open positions
 // panel on the dashboard are for.
 //
+// Requires ?key=<the shared password>, called only by this app's own
+// client-side fetch, see lib/access.js.
+//
 // This route only reads. Resolving trades against real price is a
 // separate concern, handled by /api/close-alert, called on its own
-// schedule from the main dashboard refresh. Keeping this route to just a
-// read means it stays fast regardless of how many open positions exist
-// or how many Coinbase calls resolving them would take.
+// schedule from the main dashboard refresh and a GitHub Actions cron.
+// Keeping this route to just a read means it stays fast regardless of
+// how many open positions exist or how many Coinbase calls resolving
+// them would take.
 //
 // signal_track never stored tier/win-rate at fire time, only the raw
 // trade (coin, tf, label, dir, entry, stop, target). That's fine, tier is
@@ -22,11 +26,15 @@
 // means it reflects the latest table data, not a stale snapshot from
 // whenever the alert originally fired.
 import { provenContext } from "../../../lib/signals.js";
+import { checkKey } from "../../../lib/access.js";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(req) {
   const noCache = { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" };
+  const authFail = checkKey(req);
+  if (authFail) return authFail;
+
   const conn = process.env.DATABASE_URL;
   if (!conn) {
     return Response.json({ positions: [] }, { headers: noCache });

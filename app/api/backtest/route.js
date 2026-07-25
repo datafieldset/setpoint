@@ -3,18 +3,8 @@
 // TEMPORARY RESEARCH TOOL — not a Setpoint product feature.
 // Password-protected: this page shows win rates, live trade history, and
 // signal internals not meant for public eyes. Browser will prompt for a
-// username (anything) and password on first visit.
-function checkAuth(req) {
-  const auth = req.headers.get("authorization");
-  const expected = "Basic " + Buffer.from("setpoint:honolulu26").toString("base64");
-  if (auth !== expected) {
-    return new Response("Authentication required.", {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Setpoint research"' },
-    });
-  }
-  return null;
-}
+// username (anything) and password on first visit, or pass ?key=... the
+// same way the machine-facing routes do. See lib/access.js.
 
 // Delete this file (and the @neondatabase/serverless dependency, if unused
 // elsewhere) once the research is done. Visit it in a browser, read the
@@ -59,86 +49,14 @@ function checkAuth(req) {
 import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
 import { logNewEvents, resolveCheckpoints, aggregateWhaleDirection } from "../whale-track/route.js";
+import { fetchCoinbaseCandles, fetchMinuteCandles, resolveFromMinuteCandles, walkForwardOutcome } from "../../../lib/resolve.js";
+import { checkAuth } from "../../../lib/access.js";
 
 export const dynamic = "force-dynamic";
 
 const COINS = ["BTC", "SOL", "XLM"];
 const FOLLOW_BARS = 40; // how many bars forward to look for a target/stop hit
 const WARMUP = 30;      // matches computeSignals' own minimum history requirement
-const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
-
-function aggregate(candles, gran, factor) {
-  if (factor <= 1) return candles;
-  const bucketMs = gran * factor * 1000;
-  const map = new Map();
-  for (const c of candles) {
-    const b = Math.floor(c.time / bucketMs) * bucketMs;
-    const cur = map.get(b);
-    if (!cur) map.set(b, { time: b, open: c.open, high: c.high, low: c.low, close: c.close, volumeto: c.volumeto });
-    else {
-      cur.high = Math.max(cur.high, c.high);
-      cur.low = Math.min(cur.low, c.low);
-      cur.close = c.close; // candles are ascending, so last write is the latest close
-      cur.volumeto += c.volumeto;
-    }
-  }
-  return [...map.values()].sort((a, b) => a.time - b.time);
-}
-
-async function fetchCoinbaseCandles(sym, tfKey) {
-  const meta = TF[tfKey] || TF["15m"];
-  const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
-  const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-  if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
-  const raw = await r.json();
-  if (!Array.isArray(raw) || raw.length === 0) throw new Error("no data");
-  // Coinbase rows: [time, low, high, open, close, volume], newest first
-  const candles = raw
-    .slice()
-    .reverse()
-    .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
-    .filter((c) => c.close > 0);
-  return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
-}
-
-// Cache so multiple signals landing on the exact same ambiguous historical
-// bar don't each trigger their own duplicate fetch, the fetch only depends
-// on coin + time window, not on any one signal's own target/stop.
-async function fetchMinuteCandles(coin, barStartMs, barEndMs, cache) {
-  const key = `${coin}:${barStartMs}`;
-  if (cache.has(key)) return cache.get(key);
-  let result = null;
-  try {
-    const url = `https://api.exchange.coinbase.com/products/${coin}-USD/candles?granularity=60&start=${new Date(barStartMs).toISOString()}&end=${new Date(barEndMs).toISOString()}`;
-    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-    if (r.ok) {
-      const raw = await r.json();
-      if (Array.isArray(raw) && raw.length) {
-        result = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2] }));
-      }
-    }
-  } catch { /* result stays null, caller falls back */ }
-  cache.set(key, result);
-  return result;
-}
-
-function resolveFromMinuteCandles(minuteCandles, dir, target, stop) {
-  if (!minuteCandles) return null;
-  for (const c of minuteCandles) {
-    const hitTarget = dir === "bull" ? c.high >= target : c.low <= target;
-    const hitStop = dir === "bull" ? c.low <= stop : c.high >= stop;
-    if (hitTarget && hitStop) continue; // still ambiguous even at 1-minute, exceedingly rare, keep scanning
-    if (hitTarget) return "win";
-    if (hitStop) return "loss";
-  }
-  return null;
-}
-
-async function resolveAmbiguousBar(coin, dir, target, stop, barStartMs, barEndMs, cache) {
-  const minuteCandles = await fetchMinuteCandles(coin, barStartMs, barEndMs, cache);
-  return resolveFromMinuteCandles(minuteCandles, dir, target, stop);
-}
-
 // Bias needs to know what the WHOLE watchlist was doing at the same
 // historical instant, not just one coin in isolation, so this replays all
 // coins for a timeframe together, one shared step at a time, rather than
@@ -205,8 +123,8 @@ async function jointWalkForward(candlesByCoin, tfKey) {
             // Real ambiguous case: drill into 1-minute candles for this
             // exact bar to see which level was actually touched first,
             // instead of assuming the worse outcome.
-            const resolved = await resolveAmbiguousBar(coin, s.dir, s.target, s.stop, c.time, c.time + bar, minuteCache);
-            outcome = resolved || "loss"; // only falls back to loss if even 1-minute data couldn't settle it
+            const minuteCandles = await fetchMinuteCandles(coin, c.time, c.time + bar, minuteCache);
+            outcome = resolveFromMinuteCandles(minuteCandles, s.dir, s.target, s.stop) || "loss"; // only falls back to loss if even 1-minute data couldn't settle it
             break;
           }
           if (hitTarget) { outcome = "win"; break; }
@@ -464,22 +382,8 @@ async function getLiveScoreboard() {
       }
       for (const row of rows) {
         const firedMs = new Date(row.fired_at).getTime();
-        const startIdx = candles.findIndex((c) => c.time >= firedMs);
-        if (startIdx === -1) continue;
-        let outcome = null;
-        for (let j = startIdx; j < candles.length; j++) {
-          const c = candles[j];
-          const entry = parseFloat(row.entry), stop = parseFloat(row.stop), target = parseFloat(row.target);
-          const hitTarget = row.dir === "bull" ? c.high >= target : c.low <= target;
-          const hitStop = row.dir === "bull" ? c.low <= stop : c.high >= stop;
-          if (hitTarget && hitStop) {
-            const resolved = await resolveAmbiguousBar(row.coin, row.dir, target, stop, c.time, c.time + barMs(tf), minuteCache);
-            outcome = resolved || "loss";
-            break;
-          }
-          if (hitTarget) { outcome = "win"; break; }
-          if (hitStop) { outcome = "loss"; break; }
-        }
+        const target = parseFloat(row.target), stop = parseFloat(row.stop);
+        const outcome = await walkForwardOutcome(candles, firedMs, row.dir, target, stop, row.coin, tf, minuteCache);
         if (outcome) {
           await sql`UPDATE signal_track SET outcome = ${outcome}, resolved_at = now() WHERE id = ${row.id}`;
           resolveInfo.resolved++;

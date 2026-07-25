@@ -1,9 +1,13 @@
-# Setpoint v4.8
+# Setpoint v4.9
 
-## Self-built, free, no third-party scheduler
+## Full audit: consolidated duplicated code, locked down exposed URLs
 
-Added .github/workflows/close-alert-cron.yml. This is a feature of GitHub itself, the same place already hosting this repo, not a new service or account. It runs every 5 minutes on GitHub's own servers, hits /api/close-alert directly, and does this forever, completely independent of whether anyone's dashboard is open anywhere.
+**Consolidation:** the resolve logic (fetchCoinbaseCandles, aggregate, the 1-minute ambiguous-bar drill-down) was copy-pasted across backtest/route.js, backtest/download/route.js, and close-alert/route.js, exactly why the ambiguous-bar fix earlier needed four separate edits in one day. Pulled all of it into lib/resolve.js, one shared source of truth. Also consolidated the password check into lib/access.js. Combined line count across the three main files dropped from 1555 to 1310, while adding consistent access control everywhere.
 
-This is the real fix for "just close it when it hits target or stop, I don't care how." Once this file is in the repo and pushed, it starts running on its own schedule automatically, nothing else to set up, no signup, no external account.
+**Removed:** /api/resolved-positions entirely. It was a diagnostic tool built for one specific verification today, nothing in the live app depends on it.
 
-Can also be triggered manually anytime from the repo's Actions tab on GitHub.com, useful for testing it fired correctly without waiting for the next 5-minute mark.
+**Access control, consistent everywhere now:** same shared key (honolulu26) used two ways depending on who's calling:
+- Browser visitors to the backtest pages still get the familiar login popup (Basic Auth), or can pass ?key=honolulu26 directly
+- Machine callers (this app's own client-side checks, GitHub's cron) use ?key=honolulu26 in the URL
+
+Previously open-positions and close-alert had no protection at all, anyone with the link could hit them. Now all four remaining semi-internal routes (both backtest pages, open-positions, close-alert) require the same credential, one password to remember, consistent everywhere.

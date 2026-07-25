@@ -6,101 +6,14 @@
 import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../../lib/signals.js";
 import { TF, barMs } from "../../../../lib/timeframes.js";
 import { logNewEvents, resolveCheckpoints } from "../../whale-track/route.js";
+import { fetchCoinbaseCandles, fetchMinuteCandles, resolveFromMinuteCandles, walkForwardOutcome } from "../../../../lib/resolve.js";
+import { checkAuth } from "../../../../lib/access.js";
 
 export const dynamic = "force-dynamic";
-
-function checkAuth(req) {
-  const auth = req.headers.get("authorization");
-  const expected = "Basic " + Buffer.from("setpoint:honolulu26").toString("base64");
-  if (auth !== expected) {
-    return new Response("Authentication required.", {
-      status: 401,
-      headers: { "WWW-Authenticate": 'Basic realm="Setpoint research"' },
-    });
-  }
-  return null;
-}
-
 
 const COINS = ["BTC", "SOL", "XLM"];
 const FOLLOW_BARS = 40;
 const WARMUP = 30;
-const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
-
-function aggregate(candles, gran, factor) {
-  if (factor <= 1) return candles;
-  const bucketMs = gran * factor * 1000;
-  const map = new Map();
-  for (const c of candles) {
-    const b = Math.floor(c.time / bucketMs) * bucketMs;
-    const cur = map.get(b);
-    if (!cur) map.set(b, { time: b, open: c.open, high: c.high, low: c.low, close: c.close, volumeto: c.volumeto });
-    else {
-      cur.high = Math.max(cur.high, c.high);
-      cur.low = Math.min(cur.low, c.low);
-      cur.close = c.close;
-      cur.volumeto += c.volumeto;
-    }
-  }
-  return [...map.values()].sort((a, b) => a.time - b.time);
-}
-
-async function fetchCoinbaseCandles(sym, tfKey) {
-  const meta = TF[tfKey] || TF["15m"];
-  const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
-  const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-  if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
-  const raw = await r.json();
-  if (!Array.isArray(raw) || raw.length === 0) throw new Error("no data");
-  const candles = raw
-    .slice()
-    .reverse()
-    .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
-    .filter((c) => c.close > 0);
-  return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
-}
-
-// When a candle's high and low both touch target and stop, the OHLC data
-// alone can't say which happened first. This fetches real 1-minute candles
-// covering just that one bar's window and checks them in actual order, a
-// real answer instead of assuming the worse outcome. Works the same
-// regardless of the alert's own timeframe, 1-minute is finer than all of
-// them, a 1h bar breaks into 60 of these, a 5m bar into 5. Cached per run
-// so multiple signals landing on the same ambiguous bar share one fetch.
-async function fetchMinuteCandles(coin, barStartMs, barEndMs, cache) {
-  const key = `${coin}:${barStartMs}`;
-  if (cache.has(key)) return cache.get(key);
-  let result = null;
-  try {
-    const url = `https://api.exchange.coinbase.com/products/${coin}-USD/candles?granularity=60&start=${new Date(barStartMs).toISOString()}&end=${new Date(barEndMs).toISOString()}`;
-    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-    if (r.ok) {
-      const raw = await r.json();
-      if (Array.isArray(raw) && raw.length) {
-        result = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2] }));
-      }
-    }
-  } catch { /* result stays null, caller falls back */ }
-  cache.set(key, result);
-  return result;
-}
-
-function resolveFromMinuteCandles(minuteCandles, dir, target, stop) {
-  if (!minuteCandles) return null;
-  for (const c of minuteCandles) {
-    const hitTarget = dir === "bull" ? c.high >= target : c.low <= target;
-    const hitStop = dir === "bull" ? c.low <= stop : c.high >= stop;
-    if (hitTarget && hitStop) continue;
-    if (hitTarget) return "win";
-    if (hitStop) return "loss";
-  }
-  return null;
-}
-
-async function resolveAmbiguousBar(coin, dir, target, stop, barStartMs, barEndMs, cache) {
-  const minuteCandles = await fetchMinuteCandles(coin, barStartMs, barEndMs, cache);
-  return resolveFromMinuteCandles(minuteCandles, dir, target, stop);
-}
 
 async function jointWalkForward(candlesByCoin, tfKey) {
   const out = [];
@@ -147,8 +60,8 @@ async function jointWalkForward(candlesByCoin, tfKey) {
           const hitTarget = s.dir === "bull" ? c.high >= s.target : c.low <= s.target;
           const hitStop = s.dir === "bull" ? c.low <= s.stop : c.high >= s.stop;
           if (hitTarget && hitStop) {
-            const resolved = await resolveAmbiguousBar(coin, s.dir, s.target, s.stop, c.time, c.time + bar, minuteCache);
-            outcome = resolved || "loss";
+            const minuteCandles = await fetchMinuteCandles(coin, c.time, c.time + bar, minuteCache);
+            outcome = resolveFromMinuteCandles(minuteCandles, s.dir, s.target, s.stop) || "loss";
             break;
           }
           if (hitTarget) { outcome = "win"; break; }
@@ -366,22 +279,8 @@ async function getLiveScoreboard() {
       try { candles = await fetchCoinbaseCandles(coin, tf); } catch (e) { resolveInfo.errors.push(`${key}: ${String(e.message || e).slice(0, 100)}`); continue; }
       for (const row of rows) {
         const firedMs = new Date(row.fired_at).getTime();
-        const startIdx = candles.findIndex((c) => c.time >= firedMs);
-        if (startIdx === -1) continue;
-        let outcome = null;
-        for (let j = startIdx; j < candles.length; j++) {
-          const c = candles[j];
-          const entry = parseFloat(row.entry), stop = parseFloat(row.stop), target = parseFloat(row.target);
-          const hitTarget = row.dir === "bull" ? c.high >= target : c.low <= target;
-          const hitStop = row.dir === "bull" ? c.low <= stop : c.high >= stop;
-          if (hitTarget && hitStop) {
-            const resolved = await resolveAmbiguousBar(coin, row.dir, target, stop, c.time, c.time + barMs(tf), minuteCache);
-            outcome = resolved || "loss";
-            break;
-          }
-          if (hitTarget) { outcome = "win"; break; }
-          if (hitStop) { outcome = "loss"; break; }
-        }
+        const target = parseFloat(row.target), stop = parseFloat(row.stop);
+        const outcome = await walkForwardOutcome(candles, firedMs, row.dir, target, stop, coin, tf, minuteCache);
         if (outcome) { await sql`UPDATE signal_track SET outcome = ${outcome}, resolved_at = now() WHERE id = ${row.id}`; resolveInfo.resolved++; }
       }
     }
