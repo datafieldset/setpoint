@@ -81,14 +81,21 @@ async function resolveOpenPositions(sql) {
     groups.get(key).push(row);
   }
   const minuteCache = new Map();
+  const debug = { groups: [], errors: [] };
   for (const [key, rows] of groups) {
     const [coin, tf] = key.split(":");
     let candles;
-    try { candles = await fetchCoinbaseCandles(coin, tf); } catch { continue; }
+    try {
+      candles = await fetchCoinbaseCandles(coin, tf);
+    } catch (e) {
+      debug.errors.push(`${key}: fetch failed — ${String(e.message || e).slice(0, 150)}`);
+      continue;
+    }
+    const groupInfo = { key, rowCount: rows.length, candleCount: candles.length, oldestCandle: candles[0]?.time, newestCandle: candles[candles.length - 1]?.time, resolved: 0, skippedNoStart: 0 };
     for (const row of rows) {
       const firedMs = new Date(row.fired_at).getTime();
       const startIdx = candles.findIndex((c) => c.time >= firedMs);
-      if (startIdx === -1) continue;
+      if (startIdx === -1) { groupInfo.skippedNoStart++; continue; }
       let outcome = null;
       for (let j = startIdx; j < candles.length; j++) {
         const c = candles[j];
@@ -103,9 +110,14 @@ async function resolveOpenPositions(sql) {
         if (hitTarget) { outcome = "win"; break; }
         if (hitStop) { outcome = "loss"; break; }
       }
-      if (outcome) await sql`UPDATE signal_track SET outcome = ${outcome}, resolved_at = now() WHERE id = ${row.id}`;
+      if (outcome) {
+        await sql`UPDATE signal_track SET outcome = ${outcome}, resolved_at = now() WHERE id = ${row.id}`;
+        groupInfo.resolved++;
+      }
     }
+    debug.groups.push(groupInfo);
   }
+  return debug;
 }
 
 export async function GET() {
@@ -117,7 +129,7 @@ export async function GET() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn);
-    await resolveOpenPositions(sql);
+    const resolveDebug = await resolveOpenPositions(sql);
     const rows = await sql`
       SELECT coin, tf, label, dir, fired_at, entry, stop, target
       FROM signal_track
@@ -140,7 +152,7 @@ export async function GET() {
         tierRate: pc.rate,
       };
     });
-    return Response.json({ positions }, { headers: noCache });
+    return Response.json({ positions, resolveDebug }, { headers: noCache });
   } catch (e) {
     return Response.json({ positions: [], error: String(e.message || e).slice(0, 150) }, { headers: noCache });
   }

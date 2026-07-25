@@ -1,9 +1,9 @@
-# Setpoint v4.2
+# Setpoint v4.3
 
-## Open Positions was never resolving on its own
+## Open positions still not resolving — this version finds out why, doesn't guess
 
-Real bug: the Open Positions panel only ever read the database, it never checked real price itself. Resolution only ran when someone visited the password-protected backtest research page. That meant a position could blow straight through its stop and just sit there marked "open" for hours or days until someone happened to visit that internal page, exactly what showed up: an XLM long sitting open with live price already well below its stop.
+v4.2's resolve step had a real silent failure mode: if the Coinbase fetch failed for any reason (rate limiting, network hiccup, anything), the code just skipped that entire group of positions with no error logged anywhere. That could fully explain why positions are still sitting open with price clearly already past stop.
 
-Fixed by giving this route its own resolve step, run before every response, same logic used elsewhere (real price, real target/stop check, real 1-minute drill-down for the rare ambiguous case). The page paying members are actually watching now keeps itself current on every poll, no longer depends on an internal page getting visited.
+Rather than guess a fix, this version makes the resolve step report exactly what it's doing every time it runs: which coin/timeframe groups it checked, how many candles it got back, how many positions it resolved, how many it had to skip and why, and any fetch errors it hit. All of this now comes back in the /api/open-positions response itself under "resolveDebug", visible by just visiting that URL directly in a browser.
 
-Verified the fix with a synthetic scenario (price sitting safely between stop and target in older history, breaking down past stop in recent candles) before shipping, resolves correctly to a loss.
+Once we see real debug output, we'll know for certain whether this is Coinbase rate-limiting, a timing gap, or something else, and can fix the actual cause instead of the third guess in a row.
