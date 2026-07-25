@@ -545,12 +545,42 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const hiddenCount = useMemo(() => allSignals.filter((s) => s.tier !== "proven").length, [allSignals]);
   const visibleSignals = useMemo(() => (showWeak ? allSignals : allSignals.filter((s) => s.tier === "proven")), [allSignals, showWeak]);
 
+  const saveWatchlist = useCallback((list) => {
+    fetch("/api/my-watchlist", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ watchlist: list }),
+    }).catch(() => {}); // fire-and-forget, a failed save just means it falls back to defaults on next visit, not worth blocking the UI over
+  }, []);
+
   const addCoin = (raw) => {
     const sym = (raw || "").trim().toUpperCase();
     if (!sym || watchlist.includes(sym) || watchlist.length >= MAX_COINS) return;
-    setWatchlist([...watchlist, sym]); setAddText(""); setShowAdd(false);
+    const next = [...watchlist, sym];
+    setWatchlist(next); setAddText(""); setShowAdd(false);
+    saveWatchlist(next);
   };
-  const removeCoin = (sym) => { if (watchlist.length > 1) setWatchlist(watchlist.filter((s) => s !== sym)); };
+  const removeCoin = (sym) => {
+    if (watchlist.length <= 1) return;
+    const next = watchlist.filter((s) => s !== sym);
+    setWatchlist(next);
+    saveWatchlist(next);
+  };
+
+  // Load whatever this account last saved, once, on sign-in. Falls back to
+  // the BTC/SOL/XLM default already in useState above if nothing's saved
+  // yet (new account, or saving previously failed).
+  useEffect(() => {
+    fetch("/api/my-watchlist", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (json?.watchlist && Array.isArray(json.watchlist) && json.watchlist.length > 0) {
+          setWatchlist(json.watchlist);
+        }
+      })
+      .catch(() => {}); // no saved watchlist yet, or a fetch hiccup, either way the default stands
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="dash">

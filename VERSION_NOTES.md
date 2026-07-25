@@ -1,11 +1,9 @@
-# Setpoint v4.5
+# Setpoint v4.6
 
-## Dedicated close-alert endpoint, no cron needed
+## Watchlist now saves to your account
 
-Open positions were only resolving as a side effect of visiting a specific panel, meaning a trade could sit stale for 12+ hours (confirmed in v4.4's resolved-positions lookup) until someone happened to load it.
+Adding or removing a coin used to only ever live in browser memory, nothing saved it anywhere, so the moment the page refreshed or you came back later, it reset straight back to the hardcoded BTC/SOL/XLM default. Everything looked like it worked because the UI updated instantly, it just had nowhere to persist to.
 
-Pulled resolution out into its own endpoint, /api/close-alert. It's now called on every cycle of the main dashboard's existing 60-second refresh, the one that already runs continuously whenever the dashboard is open, regardless of how often new alerts happen to fire. No Vercel cron job needed, this rides on traffic the app already generates.
+Fixed properly, tied to your account rather than just the browser: a new `watchlist` column on the existing `users` table (same safe pattern already used for is_admin, added automatically, no migration needed), and a new /api/my-watchlist endpoint that saves on every add/remove and loads on sign-in.
 
-/api/open-positions goes back to being a simple, fast read, resolving is no longer its job. Single responsibility: close-alert checks and closes, open-positions just shows what's still open.
-
-This shrinks the worst-case staleness from "however long until someone visits a specific page" down to "up to 60 seconds, as long as the dashboard tab is open somewhere."
+This means your watchlist now follows you across devices and browsers, same as your plan already does, instead of resetting on every fresh page load.
