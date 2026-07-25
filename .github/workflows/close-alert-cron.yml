@@ -1,0 +1,27 @@
+name: Close alert cron
+
+# Runs on GitHub's own servers, on a real schedule, completely independent
+# of whether anyone has the dashboard open. This is part of GitHub itself,
+# not a third-party service, no new signup, no new account, just a file
+# living in this same repo.
+#
+# GitHub's scheduled workflows have a 5-minute minimum interval, and during
+# high-load periods GitHub can delay a run by a few extra minutes, it's not
+# a hard real-time guarantee. But it runs on its own, forever, with zero
+# dependency on a browser tab being open somewhere.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {} # lets you also trigger it manually from GitHub's Actions tab, for testing
+
+jobs:
+  close-alert:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit close-alert endpoint
+        run: |
+          curl -sS -f "https://setpointalerts.com/api/close-alert" \
+            -o response.json \
+            -w "\nHTTP status: %{http_code}\n"
+          cat response.json

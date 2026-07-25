@@ -1,9 +1,9 @@
-# Setpoint v4.6
+# Setpoint v4.8
 
-## Watchlist now saves to your account
+## Self-built, free, no third-party scheduler
 
-Adding or removing a coin used to only ever live in browser memory, nothing saved it anywhere, so the moment the page refreshed or you came back later, it reset straight back to the hardcoded BTC/SOL/XLM default. Everything looked like it worked because the UI updated instantly, it just had nowhere to persist to.
+Added .github/workflows/close-alert-cron.yml. This is a feature of GitHub itself, the same place already hosting this repo, not a new service or account. It runs every 5 minutes on GitHub's own servers, hits /api/close-alert directly, and does this forever, completely independent of whether anyone's dashboard is open anywhere.
 
-Fixed properly, tied to your account rather than just the browser: a new `watchlist` column on the existing `users` table (same safe pattern already used for is_admin, added automatically, no migration needed), and a new /api/my-watchlist endpoint that saves on every add/remove and loads on sign-in.
+This is the real fix for "just close it when it hits target or stop, I don't care how." Once this file is in the repo and pushed, it starts running on its own schedule automatically, nothing else to set up, no signup, no external account.
 
-This means your watchlist now follows you across devices and browsers, same as your plan already does, instead of resetting on every fresh page load.
+Can also be triggered manually anytime from the repo's Actions tab on GitHub.com, useful for testing it fired correctly without waiting for the next 5-minute mark.
