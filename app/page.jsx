@@ -461,6 +461,12 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const load = useCallback(async () => {
     setLoading(true);
     setGlobalError(null);
+    // Fire-and-forget: check open positions against real price on the same
+    // always-on cycle as this refresh, not tied to how often new alerts
+    // happen to fire. Doesn't block or slow this function, and doesn't
+    // need its own success/failure handling here, it's allowed to just
+    // quietly retry next cycle if it fails.
+    fetch("/api/close-alert", { cache: "no-store" }).catch(() => {});
     try {
       const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=${tfKey}`, { cache: "no-store" });
       if (!res.ok) throw new Error("api " + res.status);
