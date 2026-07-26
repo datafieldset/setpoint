@@ -13,7 +13,7 @@ async function getSql() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return null;
   const { neon } = await import("@neondatabase/serverless");
-  const sql = neon(conn);
+  const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
   // Same safe pattern used for is_admin: this column may not exist yet on
   // an already-live users table, IF NOT EXISTS makes adding it a no-op
   // once it's there.

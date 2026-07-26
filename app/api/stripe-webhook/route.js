@@ -44,7 +44,7 @@ export async function POST(req) {
     return Response.json({ error: "bad_signature" }, { status: 400 });
   }
 
-  const sql = neon(conn);
+  const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
   await ensureColumns(sql);
 
   try {

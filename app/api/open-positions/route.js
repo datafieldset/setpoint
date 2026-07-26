@@ -41,7 +41,7 @@ export async function GET(req) {
   }
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     const rows = await sql`
       SELECT coin, tf, label, dir, fired_at, entry, stop, target
       FROM signal_track

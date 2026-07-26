@@ -257,7 +257,7 @@ export async function GET() {
 
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS whale_track (
         id SERIAL PRIMARY KEY,

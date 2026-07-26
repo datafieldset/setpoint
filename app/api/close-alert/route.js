@@ -28,7 +28,7 @@ export async function GET(req) {
   if (!conn) return Response.json({ checked: 0, resolved: 0 }, { headers: noCache });
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     const open = await sql`SELECT id, coin, tf, dir, fired_at, entry, stop, target FROM signal_track WHERE outcome = 'open'`;
     const groups = new Map();
     for (const row of open) {

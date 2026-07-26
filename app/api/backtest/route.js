@@ -203,7 +203,7 @@ export async function getConsistencyRanking() {
   if (!conn) return { ranked: [], reason: "DATABASE_URL not set" };
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     const rows = await sql`
       WITH recent_runs AS (
         SELECT DISTINCT run_at FROM backtest_results ORDER BY run_at DESC LIMIT ${CONSISTENCY_RUNS}
@@ -238,7 +238,7 @@ async function saveToNeon(runAt, buckets) {
   if (!conn) return { saved: false, reason: "DATABASE_URL not set" };
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS backtest_results (
         id SERIAL PRIMARY KEY,
@@ -289,7 +289,7 @@ async function getWhaleDirectionStats() {
   if (!conn) return { dirs: null, totalLogged: 0 };
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     // This table and its logging/resolving previously only ran from the
     // download route, so visiting this page directly hit a table that was
     // never created. Same setup here now, so either path alone is enough.
@@ -346,7 +346,7 @@ async function getLiveScoreboard() {
   const minuteCache = new Map();
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS signal_track (
         id SERIAL PRIMARY KEY,

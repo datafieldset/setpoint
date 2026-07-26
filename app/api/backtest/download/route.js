@@ -257,7 +257,7 @@ async function getLiveScoreboard() {
   const minuteCache = new Map();
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS signal_track (
         id SERIAL PRIMARY KEY, coin TEXT NOT NULL, tf TEXT NOT NULL, label TEXT NOT NULL, dir TEXT NOT NULL,
@@ -329,7 +329,7 @@ async function fetchWhaleSection() {
   if (!conn) return "## Whale flow price impact\n\nDATABASE_URL not set, skipped.\n";
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     // The table and its logging/resolving logic previously only ran when
     // someone visited /api/whale-track directly, which nobody had, so the
     // table was never created and this section always failed. Running the

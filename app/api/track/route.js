@@ -30,7 +30,7 @@ export async function POST(req) {
   }
 
   try {
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS signal_track (
         id SERIAL PRIMARY KEY,

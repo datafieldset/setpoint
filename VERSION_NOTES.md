@@ -1,13 +1,11 @@
-# Setpoint v5.2
+# Setpoint v5.3
 
-## One-line diagnostic: proves definitively whether this is caching or something deeper
+## Found it: Next.js was caching the internal database call itself
 
-Everything else has checked out today: the database itself is clean (24 real open positions, zero duplicates, confirmed via direct SQL), the deployed commit matches the latest push, and the actual file content on GitHub is byte-for-byte correct. The one thing never actually confirmed is whether the live response is a fresh read each time or a frozen, cached copy.
+The diagnostic in v5.2 proved it conclusively: `generatedAt` changed on every request (the code was genuinely re-running), but `dbRowCount` stayed frozen at 84, even though a direct SQL query confirmed the real, live database had 24 rows. Code running fresh, data frozen, that's a very specific signature.
 
-This adds two fields to the /api/open-positions response: `generatedAt` (the exact moment the server built this response) and `dbRowCount` (literally rows.length, straight from the query result, before any transformation).
+Next.js caches `fetch()` calls made from server code by default, not just the response sent back to the browser, any internal network request the server code itself makes. The Neon database driver talks to Neon's servers over exactly this kind of internal fetch call, and since the query text never changes, it looked perfectly cacheable to Next.js. The `dynamic = "force-dynamic"` export only controls the outer route's own caching, it doesn't automatically reach into a third-party library's internal fetch calls.
 
-**The test:** visit /api/open-positions?key=honolulu26 twice, a few seconds apart.
+Fixed by passing `{ fetchOptions: { cache: "no-store" } }` directly to every `neon()` call in the app, forcing that specific internal request to never cache, at the source, not just the outer response. Applied consistently across all 12 files that use this pattern, not just the one we were debugging, matching the same audit standard from earlier today.
 
-- If `generatedAt` is identical both times: proven caching, somewhere between the server and the browser, not a database or code issue at all.
-- If `generatedAt` changes each time but `dbRowCount` still says 84 with the same duplicates: proven the code is genuinely re-running, but reading from something other than the real, clean database we already confirmed has 24 rows, pointing to a connection or environment mismatch we haven't found yet.
-- If `dbRowCount` says 24, matching the real database: everything's actually fine, and whatever was seen before was a caching artifact that's now cleared, no code issue at all.
+This was likely quietly affecting other things too, not just open positions. Worth watching whether anything else that seemed inconsistent today starts behaving differently now.

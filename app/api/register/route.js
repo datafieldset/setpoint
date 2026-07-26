@@ -30,7 +30,7 @@ export async function POST(req) {
   if (password.length < 8) return Response.json({ error: "weak_password" }, { status: 400 });
 
   try {
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS users (
         id SERIAL PRIMARY KEY,

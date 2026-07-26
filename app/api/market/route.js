@@ -101,7 +101,7 @@ async function getWeekly200MA() {
   }
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await sql`
       CREATE TABLE IF NOT EXISTS macro_cache (
         key TEXT PRIMARY KEY,
