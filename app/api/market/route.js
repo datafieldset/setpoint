@@ -8,26 +8,9 @@ export const revalidate = 0;
 
 import { TF, isValidTf } from "../../../lib/timeframes.js";
 import { marketBias, reversalRisk } from "../../../lib/signals.js";
+import { aggregate } from "../../../lib/resolve.js";
 
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
-
-function aggregate(candles, gran, factor) {
-  if (factor <= 1) return candles;
-  const bucketMs = gran * factor * 1000;
-  const map = new Map();
-  for (const c of candles) {
-    const b = Math.floor(c.time / bucketMs) * bucketMs;
-    const cur = map.get(b);
-    if (!cur) map.set(b, { time: b, open: c.open, high: c.high, low: c.low, close: c.close, volumeto: c.volumeto });
-    else {
-      cur.high = Math.max(cur.high, c.high);
-      cur.low = Math.min(cur.low, c.low);
-      cur.close = c.close; // candles are ascending, so last write is the latest close
-      cur.volumeto += c.volumeto;
-    }
-  }
-  return [...map.values()].sort((a, b) => a.time - b.time);
-}
 
 async function fetchCandles(sym, tf) {
   const meta = TF[tf] || TF["15m"];
