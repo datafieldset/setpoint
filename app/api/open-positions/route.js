@@ -64,7 +64,7 @@ export async function GET(req) {
         tierRate: pc.rate,
       };
     });
-    return Response.json({ positions }, { headers: noCache });
+    return Response.json({ positions, generatedAt: new Date().toISOString(), dbRowCount: rows.length }, { headers: noCache });
   } catch (e) {
     return Response.json({ positions: [], error: String(e.message || e).slice(0, 150) }, { headers: noCache });
   }
