@@ -1,11 +1,15 @@
-# Setpoint v5.3
+# Setpoint v5.4
 
-## Found it: Next.js was caching the internal database call itself
+## RSI oversold: regime-aware, gated by trend
 
-The diagnostic in v5.2 proved it conclusively: `generatedAt` changed on every request (the code was genuinely re-running), but `dbRowCount` stayed frozen at 84, even though a direct SQL query confirmed the real, live database had 24 rows. Code running fresh, data frozen, that's a very specific signature.
+Jul 28's backtest showed RSI oversold collapsing uniformly against-trend across every timeframe (10-33%, all weak). Added a gate: it no longer fires when it would be fighting an established downtrend, only when neutral or aligned. Tested directly: confirmed it correctly suppresses in a real, strong downtrend scenario. Same detection logic underneath, unchanged, just no longer fires straight into the exact condition that just broke it.
 
-Next.js caches `fetch()` calls made from server code by default, not just the response sent back to the browser, any internal network request the server code itself makes. The Neon database driver talks to Neon's servers over exactly this kind of internal fetch call, and since the query text never changes, it looked perfectly cacheable to Next.js. The `dynamic = "force-dynamic"` export only controls the outer route's own caching, it doesn't automatically reach into a third-party library's internal fetch calls.
+## Four confirmed weak signals removed from live firing entirely
 
-Fixed by passing `{ fetchOptions: { cache: "no-store" } }` directly to every `neon()` call in the app, forcing that specific internal request to never cache, at the source, not just the outer response. Applied consistently across all 12 files that use this pattern, not just the one we were debugging, matching the same audit standard from earlier today.
+Each backed by repeated data across multiple runs, not one bad stretch:
+- EMA cross down 30m bear (0%, consistent across runs)
+- Volume building early, bear side on 5m and 15m (0% repeatedly)
+- RSI overbought 5m bear (0%, confirmed multiple times)
+- Quiet accumulation 1h bull (11% backtest, 20% live on a real 20-fire sample)
 
-This was likely quietly affecting other things too, not just open positions. Worth watching whether anything else that seemed inconsistent today starts behaving differently now.
+These will no longer fire on the live dashboard or show up in future backtests. Historical data on all of them stays in the SIGNAL_RATES table and memory for reference, nothing about the past record is erased, they just stop generating new noise going forward.
