@@ -630,14 +630,20 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 ) : <span className="tk-warm">warming…</span>}
                 {watchlist.length > 1 && <button className="tk-x" onClick={(e) => { e.stopPropagation(); removeCoin(sym); }} title="remove">×</button>}
               </div>
-              {meter && (
-                <div className="tk-meter" title="Volatility read: not a trade signal, a continuous top/bottom lean">
-                  <div className="tk-meter-track">
-                    <div className="tk-meter-fill" style={{ width: `${meter.score}%` }} />
-                    <div className="tk-meter-dot" style={{ left: `${meter.score}%` }} />
+              {meter && (() => {
+                const signed = meter.score - 50; // -50 (full bottom) to +50 (full top), 0 = neutral
+                return (
+                  <div className="tk-meter" title="Volatility read: not a trade signal, a continuous top/bottom lean">
+                    <div className="tk-meter-track">
+                      <div className="tk-meter-dot" style={{ left: `${meter.score}%` }} />
+                    </div>
+                    <div className="tk-meter-ticks">
+                      <span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span>
+                    </div>
+                    <span className="tk-meter-label">{meter.label} <span className="tk-meter-value mono">{signed > 0 ? "+" : ""}{signed}</span></span>
                   </div>
-                  <span className="tk-meter-label">{meter.label}</span>
-                </div>
+                );
+              })()}
               )}
             </div>
           );
@@ -1110,11 +1116,12 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .tk-trend.up{color:var(--green);background:var(--green-dim)}
 .tk-trend.down{color:var(--red);background:var(--red-dim)}
 .tk-trend.range{color:var(--muted);background:var(--panel3)}
-.tk-meter{display:flex;align-items:center;gap:7px;margin-top:1px}
-.tk-meter-track{position:relative;flex:1;height:4px;border-radius:3px;background:linear-gradient(90deg,var(--green) 0%,var(--muted) 50%,var(--red) 100%);opacity:.55}
-.tk-meter-fill{display:none}
+.tk-meter{display:flex;flex-direction:column;gap:2px;margin-top:2px}
+.tk-meter-track{position:relative;height:4px;border-radius:3px;background:linear-gradient(90deg,var(--red) 0%,var(--muted) 50%,var(--green) 100%);opacity:.55}
 .tk-meter-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--text);border:2px solid var(--panel);transform:translate(-50%,-50%);box-shadow:0 0 0 1px var(--border)}
-.tk-meter-label{font-size:10px;color:var(--muted);white-space:nowrap}
+.tk-meter-ticks{display:flex;justify-content:space-between;font-size:8.5px;color:var(--dim);line-height:1}
+.tk-meter-label{font-size:10px;color:var(--muted);white-space:nowrap;display:flex;justify-content:space-between;align-items:baseline}
+.tk-meter-value{color:var(--text)}
 .tk-r{display:flex;align-items:center;gap:10px}
 .tk-price{font-size:15px;font-weight:600}
 .tk-pct{font-size:12.5px;font-weight:600}

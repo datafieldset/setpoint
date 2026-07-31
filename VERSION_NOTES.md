@@ -1,14 +1,9 @@
-# Setpoint v5.6
+# Setpoint v5.8
 
-## New: a continuous top/bottom volatility meter per coin
+## Volatility meter: real numbers, not just a dot
 
-Not a fired alert, a constantly-updating visual read that sits right on each coin's chip, translating a genuinely useful idea from a GainzAlgo TradingView indicator Na's been using. The concept, not the code, Pine Script can't run in this app, this is a fresh JavaScript implementation of the same underlying logic.
+Added a signed scale under the meter track, -50 to +50, 0 in the middle, matching what Na asked for. The current lean now also shows as an actual number next to the label, "Leaning low -18" instead of just a dot position with no way to gauge how far it's actually leaning.
 
-**How the score works, 0-100, 50 is neutral:**
-- **Compression** (tight, coiled, low volatility relative to its own recent history) → stays near 50, no lean
-- **Expansion** (a real directional move actively building) → leans toward the direction it's moving, 60-75 depending on strength
-- **Exhaustion** (was recently in a strong expanding move, and that volatility is now visibly declining) → pushes hardest toward the extreme, 90 near a top, 10 near a bottom. This is the actual "catch the turn" signature, the move that built the trend running out of steam.
+Re-verified the direction/color pairing is genuinely correct after v5.7's fix: a low score sits on the left, the left side is now red, confirmed with a direct math check, not just re-reading the code. If it still looks backwards once this is live, that's a real, different issue worth digging into properly, not the same one again.
 
-Tested with four synthetic scenarios before shipping: neutral compression, building expansion, and exhaustion at both the top and bottom, all confirmed reading correctly.
-
-This is purely informational for now, nothing here logs to the database or fires a trackable alert. If it proves useful over time, the plan is to build a real, backtestable alert around it next, likely improving Reversal watch with this same volatility-exhaustion signature rather than starting a new signal from scratch.
+Also cleaned up a leftover dead CSS class (.tk-meter-fill) found while making this change, unused since the meter was first built.
