@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter } from "../lib/signals.js";
 
 /* =========================================================================
    SETPOINT ALERTS — crypto alert terminal
@@ -487,10 +487,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       const t = Date.now();
       coins.forEach((c) => {
         if (c.error || !c.candles || !c.candles.length) {
-          next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null };
+          next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null };
           return;
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value });
+        const meter = volatilityMeter(c.candles);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -508,7 +509,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           }
           return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key };
         });
-        next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null };
+        next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null, meter };
         anyOk = true;
       });
       setData(next);
@@ -608,6 +609,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         </div>
         {watchlist.map((sym) => {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
+          const meter = data[sym]?.meter;
           const up = snap && snap.pct >= 0;
           const tr = snap?.trend;
           const trendState = !tr || tr.adx < 20 ? { label: "RANGE", cls: "range" } : tr.plusDI > tr.minusDI ? { label: "UP", cls: "up" } : { label: "DOWN", cls: "down" };
@@ -628,6 +630,15 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 ) : <span className="tk-warm">warming…</span>}
                 {watchlist.length > 1 && <button className="tk-x" onClick={(e) => { e.stopPropagation(); removeCoin(sym); }} title="remove">×</button>}
               </div>
+              {meter && (
+                <div className="tk-meter" title="Volatility read: not a trade signal, a continuous top/bottom lean">
+                  <div className="tk-meter-track">
+                    <div className="tk-meter-fill" style={{ width: `${meter.score}%` }} />
+                    <div className="tk-meter-dot" style={{ left: `${meter.score}%` }} />
+                  </div>
+                  <span className="tk-meter-label">{meter.label}</span>
+                </div>
+              )}
             </div>
           );
         })}
@@ -1099,6 +1110,11 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .tk-trend.up{color:var(--green);background:var(--green-dim)}
 .tk-trend.down{color:var(--red);background:var(--red-dim)}
 .tk-trend.range{color:var(--muted);background:var(--panel3)}
+.tk-meter{display:flex;align-items:center;gap:7px;margin-top:1px}
+.tk-meter-track{position:relative;flex:1;height:4px;border-radius:3px;background:linear-gradient(90deg,var(--green) 0%,var(--muted) 50%,var(--red) 100%);opacity:.55}
+.tk-meter-fill{display:none}
+.tk-meter-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--text);border:2px solid var(--panel);transform:translate(-50%,-50%);box-shadow:0 0 0 1px var(--border)}
+.tk-meter-label{font-size:10px;color:var(--muted);white-space:nowrap}
 .tk-r{display:flex;align-items:center;gap:10px}
 .tk-price{font-size:15px;font-weight:600}
 .tk-pct{font-size:12.5px;font-weight:600}

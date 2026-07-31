@@ -141,7 +141,11 @@ function pct(x) {
 function renderMarkdown({ buckets }) {
   const mainBuckets = buckets.filter((b) => !b.key.includes(" · Vol:") && !b.key.includes(" · Trend:") && !b.key.includes(" · Aligned") && !b.key.includes(" · Against") && !b.key.includes(" · Confirm:"));
   const winners = mainBuckets.filter((b) => b.sampleOk && b.winRate >= 0.58).sort((a, b) => b.winRate - a.winRate);
-  const losers = mainBuckets.filter((b) => b.sampleOk && b.winRate < 0.58).sort((a, b) => a.winRate - b.winRate);
+  // 48-57%: consistently close but not quite proven. This is where the
+  // next real improvement usually comes from, not from what's already
+  // failing outright (RSI oversold's trend gate started right here).
+  const watch = mainBuckets.filter((b) => b.sampleOk && b.winRate >= 0.48 && b.winRate < 0.58).sort((a, b) => b.winRate - a.winRate);
+  const losers = mainBuckets.filter((b) => b.sampleOk && b.winRate < 0.48).sort((a, b) => a.winRate - b.winRate);
   
   const biasAnalysis = buckets.filter((b) => (b.key.includes(" · Aligned") || b.key.includes(" · Against")) && b.sampleOk);
   const volumeAnalysis = buckets.filter((b) => b.key.includes(" · Vol:") && b.sampleOk);
@@ -165,6 +169,20 @@ function renderMarkdown({ buckets }) {
     }
   } else {
     lines.push(`No signals hit 58%+ in this run.`);
+  }
+  lines.push(``);
+
+  // Worth improving (48-57%)
+  lines.push(`## Worth improving — 48-57%`);
+  lines.push(``);
+  if (watch.length) {
+    lines.push(`Consistently close but not quite proven, this is where the next real improvement is most likely hiding.`);
+    lines.push(``);
+    for (const b of watch) {
+      lines.push(`- **${b.key}**: ${b.wins}W / ${b.losses}L = ${pct(b.winRate)} (fired ${b.fired}x)`);
+    }
+  } else {
+    lines.push(`Nothing sitting in the 48-57% range this run.`);
   }
   lines.push(``);
 
@@ -233,13 +251,13 @@ function renderMarkdown({ buckets }) {
   lines.push(``);
 
   // Everything else (below 58%) for reference
-  lines.push(`## Below 58% (reference only)`);
+  lines.push(`## Below 48% (reference only)`);
   lines.push(``);
   lines.push(`Not worth pursuing yet unless patterns show promise.`);
   lines.push(``);
   lines.push(`| Setup | Fired | Won | Lost | Win rate |`);
   lines.push(`| --- | --- | --- | --- | --- |`);
-  for (const b of losers.slice(0, 15)) {
+  for (const b of losers) {
     lines.push(`| ${b.key}${b.fired < 5 ? " (low sample)" : ""} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
   }
 

@@ -421,10 +421,17 @@ async function getLiveScoreboard() {
   }
 }
 
-function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, markdown, live, whale }) {
+function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, live, whale }) {
   const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
-  const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
-  const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
+  // Three tiers, not just winners/losers: 58%+ is the real proven bar.
+  // 48-57% is a real middle zone worth attention, consistently close but
+  // not quite there is exactly where an improvement (like the RSI
+  // oversold trend gate) comes from, not from the ones already failing
+  // outright. Under 48% collapses by default, it's not where the next
+  // improvement is likely hiding.
+  const proven = withSample.filter((b) => b.winRate >= 0.58).sort((a, b) => b.winRate - a.winRate);
+  const watch = withSample.filter((b) => b.winRate >= 0.48 && b.winRate < 0.58).sort((a, b) => b.winRate - a.winRate);
+  const collapsed = withSample.filter((b) => b.winRate < 0.48).sort((a, b) => b.winRate - a.winRate);
 
   const consistencyRows = (consistency?.ranked || []).map((c) => {
     return `<tr><td>${c.bucket}</td><td>${c.nRuns}</td><td>${pct(c.avgRate)}</td><td>${(c.range * 100).toFixed(0)}pt</td><td>${c.totalFired}</td></tr>`;
@@ -527,6 +534,13 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     .callout{display:flex;justify-content:space-between;gap:12px;padding:11px 14px;border-radius:9px;margin-bottom:8px;font-size:13.5px}
     .callout.bad{background:rgba(255,92,108,.1);border:1px solid rgba(255,92,108,.3)}
     .callout.good{background:rgba(0,209,121,.1);border:1px solid rgba(0,209,121,.3)}
+    .callout.watch{background:rgba(245,184,81,.1);border:1px solid rgba(245,184,81,.3)}
+    .callout.watch .cb{color:var(--amber)}
+    details.collapse-panel{margin-top:4px}
+    details.collapse-panel summary{cursor:pointer;color:var(--dim);font-size:12.5px;padding:6px 0;list-style:none}
+    details.collapse-panel summary::-webkit-details-marker{display:none}
+    details.collapse-panel summary::before{content:"▸ ";color:var(--dim)}
+    details.collapse-panel[open] summary::before{content:"▾ "}
     .cn{font-family:monospace;color:var(--muted);white-space:nowrap}
     table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:6px}
     th{text-align:left;color:var(--dim);font-weight:600;padding:8px 10px;border-bottom:1px solid var(--border);text-transform:uppercase;font-size:10px;letter-spacing:.04em}
@@ -559,7 +573,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
   <input type="radio" name="t" id="tab-signals">
   <input type="radio" name="t" id="tab-market">
   <div class="tabbar">
-    <label for="tab-live">Live</label>
+    <label for="tab-live">Scoreboard</label>
     <label for="tab-signals">Signals</label>
     <label for="tab-market">Market</label>
   </div>
@@ -594,19 +608,24 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     </div>
 
     <div class="panel replay-edge">
-      <div class="panel-head"><h2>Worth a look, underperforming</h2><span class="tag replay">Replay</span></div>
-      ${worst.length ? worst.map((b) => callout(b, "bad")).join("") : "<div class='empty'>Not enough fired signals yet to call out a weak spot.</div>"}
+      <div class="panel-head"><h2>Proven — 58%+</h2><span class="tag replay">Replay</span></div>
+      ${proven.length ? proven.map((b) => callout(b, "good")).join("") : "<div class='empty'>Nothing clearing 58% this run.</div>"}
     </div>
 
     <div class="panel replay-edge">
-      <div class="panel-head"><h2>Worth a look, outperforming</h2><span class="tag replay">Replay</span></div>
-      ${best.length ? best.map((b) => callout(b, "good")).join("") : "<div class='empty'>Not enough fired signals yet to call out a strong spot.</div>"}
+      <div class="panel-head"><h2>Worth improving — 48-57%</h2><span class="tag replay">Replay</span></div>
+      <div class="desc">Consistently close but not quite proven, this is where the next real improvement usually comes from, not from what's already failing outright. RSI oversold's trend gate started exactly here.</div>
+      ${watch.length ? watch.map((b) => callout(b, "watch")).join("") : "<div class='empty'>Nothing sitting in the 48-57% range this run.</div>"}
     </div>
 
     <div class="panel replay-edge">
-      <div class="panel-head"><h2>Full breakdown</h2><span class="tag replay">Replay</span></div>
-      <table><thead><tr><th>Bucket</th><th>Fired</th><th>Won</th><th>Lost</th><th>Open</th><th>Win rate</th><th>Vs last run</th></tr></thead>
-      <tbody>${rows}</tbody></table>
+      <div class="panel-head"><h2>Everything else</h2><span class="tag replay">Replay</span></div>
+      <div class="desc">Under 48%, or too small a sample to score, collapsed by default so it doesn't crowd out what actually matters at a glance. Still all here for reference, or in the full download.</div>
+      <details class="collapse-panel">
+        <summary>Show full breakdown (${rows.split("</tr>").length - 1} buckets)</summary>
+        <table><thead><tr><th>Bucket</th><th>Fired</th><th>Won</th><th>Lost</th><th>Open</th><th>Win rate</th><th>Vs last run</th></tr></thead>
+        <tbody>${rows}</tbody></table>
+      </details>
     </div>
   </div>
 
@@ -631,105 +650,6 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     ${dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}), results above are still accurate, just not persisted.`}
   </div>
   </body></html>`;
-}
-
-// Same report, same data, as a plain markdown string instead of HTML. Kept
-// as its own function rather than reusing renderHtml's strings, since HTML
-// table markup and markdown table syntax don't share much, easier to keep
-// them as two clean renderers off the same inputs than to try to convert
-// one into the other.
-function renderMarkdown({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency }) {
-  const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
-  const worst = withSample.slice().sort((a, b) => a.winRate - b.winRate).slice(0, 4);
-  const best = withSample.slice().sort((a, b) => b.winRate - a.winRate).slice(0, 4);
-  const regimeBuckets = buckets.filter((b) => (b.key.includes(" · Trend:") || b.key.includes(" · Bias:")) && b.fired >= 5 && b.winRate != null);
-  const regimeSorted = regimeBuckets.slice().sort((a, b) => b.winRate - a.winRate);
-  const mainRows = buckets.filter((b) => !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
-  const sortedTurns = (turns || []).slice().sort((a, b) => b.time - a.time).slice(0, 40);
-
-  const delta = (b) => {
-    if (!dbInfo?.prevMap || !dbInfo.prevMap.has(b.key) || dbInfo.prevMap.get(b.key) == null || b.winRate == null) return "—";
-    const d = Math.round((b.winRate - dbInfo.prevMap.get(b.key)) * 100);
-    return `${d >= 0 ? "+" : ""}${d}pt`;
-  };
-  const calloutLine = (b) => `- ${b.key}: ${b.wins}W / ${b.losses}L (${pct(b.winRate)})${dbInfo?.prevMap?.has(b.key) ? ` (${delta(b)} vs last run)` : ""}`;
-
-  const lines = [];
-  lines.push(`# Setpoint research backtest`);
-  lines.push(``);
-  lines.push(`Run at ${new Date(runAt).toUTCString()} · ${totalFired} signals evaluated across BTC, SOL, XLM · 5m/15m/30m/1h · this page and route are temporary`);
-  lines.push(``);
-  if (errors.length) { lines.push(`**Errors:** ${errors.join("; ")}`); lines.push(``); }
-
-  lines.push(`## Most consistent, across the last ${CONSISTENCY_RUNS} runs`);
-  lines.push(``);
-  lines.push(`This is the trustworthy read, not one lucky run. Scored as average win rate minus how much it swung, a high number that bounces around loses to a steady one that doesn't move.`);
-  lines.push(``);
-  if (consistency?.ranked?.length) {
-    lines.push(`| Bucket | Runs | Avg win rate | Swing | Total fired |`);
-    lines.push(`| --- | --- | --- | --- | --- |`);
-    for (const c of consistency.ranked) lines.push(`| ${c.bucket} | ${c.nRuns} | ${pct(c.avgRate)} | ${(c.range * 100).toFixed(0)}pt | ${c.totalFired} |`);
-  } else {
-    lines.push(consistency?.reason ? `Not available this run (${consistency.reason}).` : `Not enough saved runs yet, need at least ${CONSISTENCY_MIN_RUNS} to rank anything.`);
-  }
-  lines.push(``);
-
-  lines.push(`## Worth a look, underperforming`);
-  lines.push(``);
-  lines.push(worst.length ? worst.map(calloutLine).join("\n") : `Not enough fired signals yet to call out a weak spot.`);
-  lines.push(``);
-
-  lines.push(`## Worth a look, outperforming`);
-  lines.push(``);
-  lines.push(best.length ? best.map(calloutLine).join("\n") : `Not enough fired signals yet to call out a strong spot.`);
-  lines.push(``);
-
-  lines.push(`## By market condition`);
-  lines.push(``);
-  lines.push(`Same setups, split by what trend and bias actually looked like the moment each one fired, not blended into one average. An overall number near 50% can be hiding a real pattern underneath, this is where that shows up.`);
-  lines.push(``);
-  if (regimeSorted.length) {
-    lines.push(`| Setup · condition | Fired | Won | Lost | Win rate |`);
-    lines.push(`| --- | --- | --- | --- | --- |`);
-    for (const b of regimeSorted) lines.push(`| ${b.key} | ${b.fired} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
-  } else {
-    lines.push(`Not enough fired signals with a clear trend or bias reading yet to split this out.`);
-  }
-  lines.push(``);
-
-  lines.push(`## Market turning points`);
-  lines.push(``);
-  lines.push(`Every point in this replay where the shared bias flipped from bullish to bearish or back, most recent first.`);
-  lines.push(``);
-  if (sortedTurns.length) {
-    lines.push(`| When | Timeframe | Flip | Weighted move | % of watchlist agreeing |`);
-    lines.push(`| --- | --- | --- | --- | --- |`);
-    for (const t of sortedTurns) {
-      const flip = t.to === "bull" ? "→ bullish" : "→ bearish";
-      const agreePct = t.to === "bull" ? t.pctUp : (t.pctUp != null ? 1 - t.pctUp : null);
-      lines.push(`| ${new Date(t.time).toUTCString()} | ${TF[t.tf]?.label || t.tf} | ${flip} | ${t.avgPct != null ? t.avgPct.toFixed(2) + "%" : "—"} | ${agreePct != null ? Math.round(agreePct * 100) + "%" : "—"} |`);
-    }
-  } else {
-    lines.push(`No clean bullish/bearish flips in this replay window.`);
-  }
-  lines.push(``);
-
-  lines.push(`## Full breakdown`);
-  lines.push(``);
-  lines.push(`| Bucket | Fired | Won | Lost | Open | Win rate | Vs last run |`);
-  lines.push(`| --- | --- | --- | --- | --- | --- | --- |`);
-  for (const b of mainRows) {
-    lines.push(`| ${b.key}${b.fired < 5 ? " (low sample)" : ""} | ${b.fired} | ${b.wins} | ${b.losses} | ${b.open} | ${pct(b.winRate)} | ${delta(b)} |`);
-  }
-  lines.push(``);
-
-  lines.push(`## Methodology`);
-  lines.push(``);
-  lines.push(`Replays real Coinbase historical candles bar by bar through the live signal engine (lib/signals.js), the same source and 30m aggregation the live dashboard uses, only ever using data available up to that point. A signal "wins" if price reaches its target before its stop within the next ${FOLLOW_BARS} bars, "loses" if stop comes first, "open" if neither happened yet.`);
-  lines.push(``);
-  lines.push(dbInfo?.saved ? `Summary saved to Neon for comparison on the next run.` : `Not saved to Neon this run (${dbInfo?.reason || "unknown reason"}).`);
-
-  return lines.join("\n");
 }
 
 export async function GET(req) {
@@ -761,9 +681,8 @@ export async function GET(req) {
   const consistency = await getConsistencyRanking();
   const live = await getLiveScoreboard();
   const whale = await getWhaleDirectionStats();
-  const markdown = renderMarkdown({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, live });
 
-  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, markdown, live, whale });
+  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, live, whale });
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
