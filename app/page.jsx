@@ -635,7 +635,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 return (
                   <div className="tk-meter" title="Volatility read: not a trade signal, a continuous top/bottom lean">
                     <div className="tk-meter-track">
-                      <div className="tk-meter-dot" style={{ left: `${meter.score}%` }} />
+                      <div className="tk-meter-dot" style={{ left: `${meter.score}%`, "--dot-glow": signed < -5 ? "rgba(255,92,108,.55)" : signed > 5 ? "rgba(0,209,121,.55)" : "transparent" }} />
                     </div>
                     <div className="tk-meter-ticks">
                       <span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span>
@@ -1116,8 +1116,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .tk-trend.down{color:var(--red);background:var(--red-dim)}
 .tk-trend.range{color:var(--muted);background:var(--panel3)}
 .tk-meter{display:flex;flex-direction:column;gap:2px;margin-top:2px}
-.tk-meter-track{position:relative;height:4px;border-radius:3px;background:linear-gradient(90deg,var(--red) 0%,var(--muted) 50%,var(--green) 100%);opacity:.55}
-.tk-meter-dot{position:absolute;top:50%;width:8px;height:8px;border-radius:50%;background:var(--text);border:2px solid var(--panel);transform:translate(-50%,-50%);box-shadow:0 0 0 1px var(--border)}
+.tk-meter-track{position:relative;height:6px;border-radius:4px;background:linear-gradient(90deg,var(--red) 0%,var(--muted) 50%,var(--green) 100%);opacity:.7}
+.tk-meter-dot{position:absolute;top:50%;width:13px;height:13px;border-radius:50%;background:var(--text);border:2.5px solid var(--panel);transform:translate(-50%,-50%);box-shadow:0 0 0 1.5px var(--border),0 0 8px 1px var(--dot-glow,transparent)}
 .tk-meter-ticks{display:flex;justify-content:space-between;font-size:8.5px;color:var(--dim);line-height:1}
 .tk-meter-label{font-size:10px;color:var(--muted);white-space:nowrap;display:flex;justify-content:space-between;align-items:baseline}
 .tk-meter-value{color:var(--text)}
