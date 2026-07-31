@@ -644,7 +644,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   </div>
                 );
               })()}
-              )}
             </div>
           );
         })}

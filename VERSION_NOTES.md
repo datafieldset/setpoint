@@ -1,9 +1,9 @@
-# Setpoint v5.8
+# Setpoint v5.9
 
-## Volatility meter: real numbers, not just a dot
+## Build failure fixed — a real syntax error from v5.8's edit
 
-Added a signed scale under the meter track, -50 to +50, 0 in the middle, matching what Na asked for. The current lean now also shows as an actual number next to the label, "Leaning low -18" instead of just a dot position with no way to gauge how far it's actually leaning.
+v5.8 shipped a broken production build. When the meter's JSX was rewritten to add the numeric scale, an extra closing bracket from the old code was left behind, one leftover `)}` after the new code's own closing, invisible on a normal read but a hard syntax error to the actual compiler.
 
-Re-verified the direction/color pairing is genuinely correct after v5.7's fix: a low score sits on the left, the left side is now red, confirmed with a direct math check, not just re-reading the code. If it still looks backwards once this is live, that's a real, different issue worth digging into properly, not the same one again.
+Fixed by removing the orphaned bracket. This time verified with an actual JSX-aware parser (@babel/parser), not just eyeballing the diff, the same tool Next.js itself effectively uses under the hood, catching exactly this class of error before it reaches you instead of after.
 
-Also cleaned up a leftover dead CSS class (.tk-meter-fill) found while making this change, unused since the meter was first built.
+Going forward, every page.jsx change gets checked this way, not just visually reviewed. `node --check` alone can't validate JSX at all, it fails on this file with a generic error every time regardless of whether the code is actually correct, which meant real bracket mistakes like this one had no real safety net until now.
