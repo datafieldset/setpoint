@@ -9,6 +9,34 @@ import { neon } from "@neondatabase/serverless";
 
 export const dynamic = "force-dynamic";
 
+export async function DELETE(req) {
+  const session = await auth();
+  if (!session?.user?.isAdmin) {
+    return Response.json({ error: "not_admin" }, { status: 403 });
+  }
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return Response.json({ error: "no_database" }, { status: 500 });
+
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: "bad_request" }, { status: 400 }); }
+  const email = (body.email || "").trim().toLowerCase();
+  if (!email) return Response.json({ error: "missing_email" }, { status: 400 });
+  // Never allow deleting your own admin account this way, a lockout with
+  // no other admin UI to fix it from would be a real mess to recover from.
+  if (email === session.user.email.toLowerCase()) {
+    return Response.json({ error: "cannot_delete_self" }, { status: 400 });
+  }
+
+  try {
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+    const result = await sql`DELETE FROM users WHERE email = ${email} RETURNING id`;
+    if (!result.length) return Response.json({ error: "not_found" }, { status: 404 });
+    return Response.json({ ok: true });
+  } catch (e) {
+    return Response.json({ error: "server_error", detail: String(e.message || e).slice(0, 200) }, { status: 500 });
+  }
+}
+
 export async function GET(req) {
   const session = await auth();
   if (!session?.user?.isAdmin) {

@@ -1,17 +1,9 @@
-# Setpoint v6.4
+# Setpoint v6.5
 
-v6.3 folded in, wasn't pushed separately.
+## Delete users, with real confirmation
 
-## Alert delivery promise removed from pricing
+Each registration in the admin panel now has a "Delete user" link. Tapping it doesn't delete anything immediately, it shows a real confirmation step ("Delete this account? This can't be undone.") with Yes/Cancel, only the Yes click actually removes the account. Can't delete your own admin account this way, a lockout with no other admin UI to recover from would be a real mess.
 
-Dropped "Email delivery" (Watch tier) and "Telegram + Discord + email" (Trader tier) entirely. Alerts are dashboard-only, nothing promises a delivery channel that was never built. The webhooks feature on Pro is untouched, that's the customer's own endpoint, not something we send from.
+## A real way to see why the welcome email isn't sending
 
-## Real welcome email, via Resend
-
-New lib/email.js, a thin wrapper around Resend's API, scoped narrowly to account emails only, never alert delivery, that stays out of scope entirely. Wired into registration: a real welcome email now sends the moment an account is created. Fails gracefully, if the send fails for any reason (including before the sending domain is verified), registration itself is never blocked or affected.
-
-**Needs from you before this actually works:** a RESEND_API_KEY environment variable in Vercel, and a few DNS records added wherever setpointalerts.com's domain is managed, so Resend can verify the sending domain and actual inboxes trust the email instead of spam-filtering it. I'll give you the exact records once you've got a Resend account started.
-
-## Admin: real registration list + CSV download
-
-New page, reachable by clicking the ADMIN badge (which now also shows a live "X new" count for signups in the last 24 hours). Lists everyone who's registered, shows exactly what's actually captured today: email, plan, signup date. A real "Download CSV" link pulls the same data as an actual file. Name and phone don't appear because they're not collected anywhere in the system yet, that would need new fields added to the signup form itself, a separate decision.
+Added a "Send test email" button right in the admin panel. It sends a real test email to your own address and shows exactly what Resend says back, success, or the real failure reason, instead of guessing. Given the API key was just added and this is likely a first real send attempt, the most probable cause is the sending domain not being verified with Resend yet, Resend requires that before it'll send from a custom address like hello@setpointalerts.com at all, not just for spam-folder reasons. The test button will confirm this directly instead of us guessing back and forth.

@@ -397,13 +397,44 @@ function Guide({ onBack }) {
 function AdminPanel({ onBack }) {
   const [users, setUsers] = useState(null);
   const [error, setError] = useState(null);
+  const [confirmingEmail, setConfirmingEmail] = useState(null);
+  const [deletingEmail, setDeletingEmail] = useState(null);
+  const [testResult, setTestResult] = useState(null);
+  const [testing, setTesting] = useState(false);
 
-  useEffect(() => {
+  const loadUsers = () => {
     fetch("/api/admin/users", { cache: "no-store" })
       .then((r) => r.ok ? r.json() : Promise.reject(new Error("failed")))
       .then((json) => setUsers(json.users || []))
       .catch(() => setError("Couldn't load the registration list."));
-  }, []);
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const sendTest = async () => {
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/admin/test-email", { method: "POST" });
+      const json = await res.json();
+      setTestResult(json);
+    } catch {
+      setTestResult({ ok: false, reason: "request_failed" });
+    }
+    setTesting(false);
+  };
+
+  const doDelete = async (email) => {
+    setDeletingEmail(email);
+    try {
+      const res = await fetch("/api/admin/users", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ email }) });
+      if (res.ok) {
+        setUsers((prev) => prev.filter((u) => u.email !== email));
+      }
+    } catch { /* leave the row as-is, they can try again */ }
+    setDeletingEmail(null);
+    setConfirmingEmail(null);
+  };
 
   return (
     <div className="dash">
@@ -413,6 +444,21 @@ function AdminPanel({ onBack }) {
         <div className="guide-mark">S</div>
         <h1>Registrations</h1>
         <p>Everyone who's signed up, and what's actually captured today: email, plan, and signup date. Name and phone aren't collected yet, they're not asked for at signup.</p>
+      </div>
+
+      <div className="guide-section">
+        <h2 style={{ fontSize: 15 }}>Test the welcome email</h2>
+        <p className="guide-lede">Sends a real test email to your own address, {" "}and shows exactly what Resend says back, so a failed send doesn't have to stay a guess.</p>
+        <button className="ghost sm" onClick={sendTest} disabled={testing}>{testing ? "Sending…" : "Send test email"}</button>
+        {testResult && (
+          <div className="guide-glossary" style={{ marginTop: 12 }}>
+            {testResult.ok ? (
+              <span><b>Sent successfully.</b> Check your inbox (and spam folder).</span>
+            ) : (
+              <span><b>Failed: {testResult.reason}.</b> {testResult.detail || (testResult.reason === "no_api_key" ? "RESEND_API_KEY isn't set." : "")}</span>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="guide-section">
@@ -430,6 +476,17 @@ function AdminPanel({ onBack }) {
               <span className="guide-card-tier">{u.plan}{u.isAdmin ? " · admin" : ""}</span>
             </div>
             <div className="guide-card-desc">Signed up {new Date(u.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+            <div style={{ marginTop: 10 }}>
+              {confirmingEmail === u.email ? (
+                <span className="admin-confirm-row">
+                  <span className="admin-confirm-text">Delete this account? This can't be undone.</span>
+                  <button className="admin-danger-btn" onClick={() => doDelete(u.email)} disabled={deletingEmail === u.email}>{deletingEmail === u.email ? "Deleting…" : "Yes, delete"}</button>
+                  <button className="ghost sm" onClick={() => setConfirmingEmail(null)}>Cancel</button>
+                </span>
+              ) : (
+                <button className="admin-danger-link" onClick={() => setConfirmingEmail(u.email)}>Delete user</button>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -1562,4 +1619,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .guide-news-headline{font-weight:700;font-size:13.5px;margin-bottom:5px}
 .guide-news-body{color:var(--muted);font-size:12.5px;line-height:1.5}
 .guide-foot{padding:8px 4px 20px;text-align:center;color:var(--dim);font-size:11px;line-height:1.6}
+.admin-danger-link{background:none;border:none;color:var(--red-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0}
+.admin-confirm-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.admin-confirm-text{color:var(--red-soft);font-size:12px}
+.admin-danger-btn{background:var(--red-dim);border:1px solid var(--red);color:var(--red-soft);font-size:12px;font-weight:700;padding:6px 11px;border-radius:8px;cursor:pointer}
 `;
