@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES } from "../lib/signals.js";
 
 /* =========================================================================
    SETPOINT ALERTS — crypto alert terminal
@@ -79,11 +79,12 @@ function Ladder({ entry, stop, target, price, dir }) {
 
 function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess, isOpenPosition }) {
   return (
-    <div className={`sig-card ${s.dir}`}>
+    <div className={`sig-card ${s.dir} ${s.isConfluence ? "confluence" : ""}`}>
       <div className="sig-top">
         <div className="sig-id">
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.label}</span>
+          {s.isConfluence && <span className="confluence-tag">⚡ extreme read</span>}
           {isOpenPosition && <span className="open-pos-tag">still in motion</span>}
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
           {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
@@ -330,10 +331,114 @@ function Auth({ mode, plan, onBack }) {
   );
 }
 
+/* ================================= GUIDE =================================== */
+// Plain-English descriptions per signal label, same trigger logic as the
+// real note templates in lib/signals.js, just simplified. The proven list
+// itself is never hardcoded, it's built live from SIGNAL_RATES below, so
+// this page can never drift out of sync with what's actually proven.
+const GUIDE_DESC = {
+  "Volume spike": "A sudden burst of trading, way more than usual, in the direction shown.",
+  "Quiet accumulation": "Trading volume is quietly climbing while the price barely moves at all. Often the calm before a real move starts.",
+  "RSI oversold": "Price dropped fast enough that it's statistically stretched, and stretched moves tend to snap back.",
+  "RSI overbought": "Price climbed fast enough that it's statistically stretched, and stretched moves tend to snap back.",
+  "Volume building early": "Volume is already unusually heavy before the current candle has even finished forming, an early heads-up.",
+  "EMA cross up": "A short-term average crossed above a longer-term one, an early signal of a shift toward an uptrend.",
+  "EMA cross down": "A short-term average crossed below a longer-term one, an early signal of a shift toward a downtrend.",
+  "Momentum": "Price moved a large amount in a single bar, a burst of one-sided pressure.",
+};
+
+function Guide({ onBack }) {
+  const proven = Object.entries(SIGNAL_RATES)
+    .map(([key, v]) => {
+      const [label, tf, dir] = key.split("|");
+      return { label, tf, dir, rate: v.rate };
+    })
+    .filter((s) => s.rate != null && s.rate >= 0.58)
+    .sort((a, b) => b.rate - a.rate);
+
+  return (
+    <div className="dash">
+      <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
+
+      <div className="guide-hero">
+        <div className="guide-mark">S</div>
+        <h1>How Setpoint Works</h1>
+        <p>A plain-English guide to the three things you'll see on your dashboard: alerts, the lean meter, and the news read.</p>
+      </div>
+
+      <div className="guide-section">
+        <div className="guide-eyebrow">Part 1</div>
+        <h2>Alerts you can actually trust</h2>
+        <p className="guide-lede">Setpoint tests every alert type against real, historical price data before it ever shows up on your screen. Only setups that have proven themselves right more often than not, at least 58 times out of 100, show up by default. Here's what's currently proven, best track record first.</p>
+
+        {proven.length ? proven.map((s, i) => (
+          <div className="guide-card" key={i}>
+            <div className="guide-card-top">
+              <span className="guide-card-name">{s.label}</span>
+              <span className="guide-card-tier">{s.dir === "bull" ? "LONG" : "SHORT"} · {Math.round(s.rate * 100)}% · {TF[s.tf]?.label || s.tf}</span>
+            </div>
+            <div className="guide-card-desc">{GUIDE_DESC[s.label] || "A setup that's backtested well historically."}</div>
+          </div>
+        )) : (
+          <div className="guide-card"><div className="guide-card-desc">Nothing's currently proven at 58% or higher. This updates automatically as the data changes.</div></div>
+        )}
+
+        <div className="guide-glossary">
+          <b>The percentage is a real batting average, not a guarantee.</b> It means this exact setup has actually happened many times before, and that share of the time it played out the way the alert expected. It doesn't mean this specific alert will win, just that the odds have leaned that way historically. Anything that hasn't proven itself yet stays hidden by default, you can still see it by tapping "show anyway," it just comes with an honest, lower number attached.
+        </div>
+      </div>
+
+      <div className="guide-section">
+        <div className="guide-eyebrow">Part 2</div>
+        <h2>The lean meter</h2>
+        <p className="guide-lede">Under each coin's price, you'll see a small bar with a dot on it. This isn't an alert, it never fires or logs anything. Think of it like a mood thermometer: it's just telling you how stretched a coin's recent move looks right now.</p>
+
+        <div className="guide-meter-row">
+          <div className="guide-meter-label"><b>Near bottom</b>−40 or lower</div>
+          <div className="guide-meter-track"><div className="guide-meter-dot" style={{ left: "15%" }} /></div>
+        </div>
+        <div className="guide-meter-row">
+          <div className="guide-meter-label"><b>Neutral</b>near 0</div>
+          <div className="guide-meter-track"><div className="guide-meter-dot" style={{ left: "50%" }} /></div>
+        </div>
+        <div className="guide-meter-row">
+          <div className="guide-meter-label"><b>Near top</b>+40 or higher</div>
+          <div className="guide-meter-track"><div className="guide-meter-dot" style={{ left: "85%" }} /></div>
+        </div>
+
+        <div className="guide-field"><div className="guide-field-k">Middle of the bar (0)</div><div className="guide-field-v">The coin's been quiet, moving sideways in a tight range. Nothing big happening either way yet.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Leaning green, toward +50</div><div className="guide-field-v">Price has been climbing, and that climb has real strength behind it, not just noise.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Leaning red, toward −50</div><div className="guide-field-v">Same idea, mirrored, price has been dropping with real force behind it.</div></div>
+        <div className="guide-field"><div className="guide-field-k">The important part: hitting a hard edge</div><div className="guide-field-v">The dot only swings all the way to an extreme when a move was strong <i>and</i> is now visibly running out of energy. A strong move by itself isn't the signal, a strong move that's fading is.</div></div>
+      </div>
+
+      <div className="guide-section">
+        <div className="guide-eyebrow">Part 3</div>
+        <h2>The news read</h2>
+        <p className="guide-lede">Everything else on your dashboard comes purely from price. This one piece doesn't, it's an AI reading real, current crypto headlines and giving you a plain summary of the overall mood, refreshed every few hours.</p>
+
+        <div className="guide-news">
+          <div className="guide-news-top"><span className="guide-news-stance">Bearish</span><span className="guide-news-conf">Medium confidence</span></div>
+          <div className="guide-news-headline">Security fears and regulatory friction weigh on crypto</div>
+          <div className="guide-news-body">Large whale transfers are moving both directions with no clear signal. Liquidations picked up. Regulatory headlines add friction.</div>
+        </div>
+
+        <div className="guide-field"><div className="guide-field-k">Stance</div><div className="guide-field-v">Bullish, bearish, or neutral. Does today's overall news story lean positive, negative, or is it too mixed to call?</div></div>
+        <div className="guide-field"><div className="guide-field-k">Confidence</div><div className="guide-field-v">Low, medium, or high. How clear-cut the headlines actually are. "Bearish, medium confidence" means the news genuinely leans negative, but it's not overwhelming.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Reasoning</div><div className="guide-field-v">The short explanation underneath, always tied to real headlines from that day. Never invented, never guessed.</div></div>
+      </div>
+
+      <div className="guide-foot">Nothing on Setpoint tells you to buy or sell anything. Every number here is context pulled from real, historical data, meant to help you think it through yourself, not a recommendation.</div>
+      <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
+    </div>
+  );
+}
+
 /* =============================== DASHBOARD =============================== */
 // DEFAULT_TH now comes from lib/signals.js, imported above.
 
 function Dashboard({ account, onSignOut, justUpgraded }) {
+  const [showGuide, setShowGuide] = useState(false);
   const [watchlist, setWatchlist] = useState(["BTC", "SOL", "XLM"]);
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
@@ -539,8 +644,22 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
   const allSignals = useMemo(() => {
     const out = [];
-    watchlist.forEach((sym) => (data[sym]?.signals || []).forEach((s) => out.push({ ...s, sym, price: data[sym]?.snap?.price })));
-    return out.sort((a, b) => b.strength - a.strength);
+    watchlist.forEach((sym) => (data[sym]?.signals || []).forEach((s) => {
+      const meter = data[sym]?.meter;
+      // Confluence: a proven signal firing at the same moment the meter
+      // independently agrees this coin is genuinely stretched in that
+      // direction, not just leaning, at a real extreme. Two separate reads
+      // landing on the same answer is the rare moment worth flagging
+      // louder, not every fire. Proven-only on purpose, an unproven signal
+      // getting the same visual weight would teach trusting the flag
+      // itself over the underlying data.
+      const isConfluence = s.tier === "proven" && meter && (
+        (s.dir === "bull" && meter.score <= 15) ||
+        (s.dir === "bear" && meter.score >= 85)
+      );
+      out.push({ ...s, sym, price: data[sym]?.snap?.price, isConfluence });
+    }));
+    return out.sort((a, b) => (b.isConfluence - a.isConfluence) || (b.strength - a.strength));
   }, [data, watchlist]);
 
   const hiddenCount = useMemo(() => allSignals.filter((s) => s.tier !== "proven").length, [allSignals]);
@@ -583,6 +702,17 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  if (showGuide) {
+    return (
+      <div className="dash">
+        <div className="topbar">
+          <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+        </div>
+        <Guide onBack={() => setShowGuide(false)} />
+      </div>
+    );
+  }
+
   return (
     <div className="dash">
       <div className="topbar">
@@ -596,6 +726,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           <div className="acct">
             {account.isAdmin && <span className="admin-badge">ADMIN</span>}
             <span className="plan-badge">{{ watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "WATCH"}</span>
+            <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
         </div>
@@ -1160,6 +1291,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 
 .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:14px}
 .sig-card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);border-left-width:3px;border-radius:14px;padding:16px}
+.sig-card.confluence{border-color:var(--amber);box-shadow:0 0 0 1px rgba(245,184,81,.35),0 0 18px rgba(245,184,81,.12)}
+.confluence-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:var(--amber);background:rgba(245,184,81,.14);border:1px solid rgba(245,184,81,.35)}
 .sig-card.bull{border-left-color:var(--green)}
 .sig-card.bear{border-left-color:var(--red)}
 .sig-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
@@ -1359,4 +1492,39 @@ button:disabled{opacity:.6;cursor:not-allowed}
   .landing,.dash{overflow-x:hidden}
 }
 @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+/* Guide view — reuses the same tokens as the rest of the dashboard on
+   purpose, so recognizing something here means recognizing it for real. */
+.guide-back{display:flex;align-items:center;gap:6px;background:none;border:none;color:var(--green-soft);font-size:13px;font-weight:600;cursor:pointer;padding:10px 4px;margin-bottom:6px}
+.guide-hero{padding:20px 4px 26px;text-align:center;border-bottom:1px solid var(--border);margin-bottom:26px}
+.guide-hero h1{font-size:21px;margin:8px 0 6px;letter-spacing:-.01em}
+.guide-hero p{color:var(--muted);font-size:13.5px;margin:0 auto;max-width:400px}
+.guide-mark{width:36px;height:36px;border-radius:10px;background:var(--green);margin:0 auto;display:flex;align-items:center;justify-content:center;font-weight:800;color:#03110B;font-size:17px}
+.guide-section{padding:0 4px 32px;margin-bottom:28px;border-bottom:1px solid var(--border)}
+.guide-section:last-of-type{border-bottom:none}
+.guide-eyebrow{color:var(--green-soft);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
+.guide-section h2{font-size:18px;margin:0 0 8px}
+.guide-lede{color:var(--muted);font-size:13.5px;margin-bottom:18px;line-height:1.5}
+.guide-card{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:12px;padding:14px 16px;margin-bottom:10px}
+.guide-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
+.guide-card-name{font-weight:700;font-size:14px}
+.guide-card-tier{font-size:11px;font-weight:700;color:var(--green-soft);white-space:nowrap}
+.guide-card-desc{color:var(--muted);font-size:12.5px;line-height:1.5}
+.guide-glossary{background:var(--panel3);border:1px solid var(--border);border-radius:11px;padding:13px 15px;margin-top:16px;font-size:12px;color:var(--dim);line-height:1.5}
+.guide-glossary b{color:var(--text)}
+.guide-meter-row{display:flex;align-items:center;gap:12px;background:var(--panel2);border:1px solid var(--border);border-radius:11px;padding:12px 14px;margin-bottom:8px}
+.guide-meter-label{width:104px;font-size:12px;color:var(--muted);flex-shrink:0}
+.guide-meter-label b{color:var(--text);display:block;font-size:12.5px}
+.guide-meter-track{position:relative;flex:1;height:6px;border-radius:4px;background:linear-gradient(90deg,var(--red) 0%,var(--dim) 50%,var(--green) 100%);opacity:.7}
+.guide-meter-dot{position:absolute;top:50%;width:12px;height:12px;border-radius:50%;background:var(--text);border:2px solid var(--panel2);transform:translate(-50%,-50%);box-shadow:0 0 0 1.5px var(--border)}
+.guide-field{margin-top:14px}
+.guide-field-k{font-size:11.5px;font-weight:700;color:var(--green-soft);margin-bottom:2px}
+.guide-field-v{color:var(--muted);font-size:12.5px;line-height:1.5}
+.guide-news{background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.guide-news-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:7px}
+.guide-news-stance{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;padding:2px 8px;border-radius:6px;background:var(--red-dim);color:var(--red-soft)}
+.guide-news-conf{font-size:10.5px;color:var(--dim)}
+.guide-news-headline{font-weight:700;font-size:13.5px;margin-bottom:5px}
+.guide-news-body{color:var(--muted);font-size:12.5px;line-height:1.5}
+.guide-foot{padding:8px 4px 20px;text-align:center;color:var(--dim);font-size:11px;line-height:1.6}
 `;
