@@ -89,7 +89,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
           {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
           {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
           {s.biasTag && <span className={`bias-tag ${s.biasTag}`}>{s.biasTag === "with" ? "with market" : "against market"}</span>}
-          {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? `proven ${Math.round((s.tierRate || 0) * 100)}%` : `tested ${Math.round((s.tierRate || 0) * 100)}%`}</span>}
+          {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? `verified ${Math.round((s.tierRate || 0) * 100)}%` : `tested ${Math.round((s.tierRate || 0) * 100)}%`}</span>}
         </div>
         <DirBadge dir={s.dir} />
       </div>
@@ -328,7 +328,7 @@ function Guide({ onBack }) {
       <div className="guide-section">
         <div className="guide-eyebrow">Part 1</div>
         <h2>Alerts you can actually trust</h2>
-        <p className="guide-lede">Setpoint tests every alert type against real, historical price data before it ever shows up on your screen. Only setups that have proven themselves right more often than not, at least 58 times out of 100, show up by default. Here's what's currently proven, best track record first.</p>
+        <p className="guide-lede">Setpoint tests every alert type against real, historical price data before it ever shows up on your screen. Only setups that have verified themselves right more often than not, at least 58 times out of 100, show up by default. Here's what's currently verified, best track record first.</p>
 
         {proven.length ? proven.map((s, i) => (
           <div className="guide-card" key={i}>
@@ -339,11 +339,11 @@ function Guide({ onBack }) {
             <div className="guide-card-desc">{GUIDE_DESC[s.label] || "A setup that's backtested well historically."}</div>
           </div>
         )) : (
-          <div className="guide-card"><div className="guide-card-desc">Nothing's currently proven at 58% or higher. This updates automatically as the data changes.</div></div>
+          <div className="guide-card"><div className="guide-card-desc">Nothing's currently verified at 58% or higher. This updates automatically as the data changes.</div></div>
         )}
 
         <div className="guide-glossary">
-          <b>The percentage is a real batting average, not a guarantee.</b> It means this exact setup has actually happened many times before, and that share of the time it played out the way the alert expected. It doesn't mean this specific alert will win, just that the odds have leaned that way historically. Anything that hasn't proven itself yet stays hidden by default, you can still see it by tapping "show anyway," it just comes with an honest, lower number attached.
+          <b>The percentage is a real batting average, not a guarantee.</b> It means this exact setup has actually happened many times before, and that share of the time it played out the way the alert expected. It doesn't mean this specific alert will win, just that the odds have leaned that way historically. Anything that hasn't verified itself yet stays hidden by default, you can still see it by tapping "show anyway," it just comes with an honest, lower number attached.
         </div>
       </div>
 
@@ -903,17 +903,17 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
                 {hiddenCount > 0 && (
                   <button className="weak-toggle" onClick={() => setShowWeak((v) => !v)}>
-                    {showWeak ? `hide ${hiddenCount} not yet proven` : `${hiddenCount} not yet proven hidden, show anyway`}
+                    {showWeak ? `hide ${hiddenCount} not yet verified` : `${hiddenCount} not yet verified hidden, show anyway`}
                   </button>
                 )}
               </div>
               {visibleSignals.length === 0 ? (
                 <div className="empty">
-                  <div className="empty-h">{allSignals.length > 0 ? "Nothing proven right now." : "Nothing firing right now."}</div>
+                  <div className="empty-h">{allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}</div>
                   <div className="empty-d">
                     {allSignals.length > 0
-                      ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's backtested well twice yet. That's the point, not a bug, only proven setups show by default. Use the toggle above to see the rest.`
-                      : `This is normal. Setpoint only shows setups proven by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
+                      ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's backtested well twice yet. That's the point, not a bug, only verified setups show by default. Use the toggle above to see the rest.`
+                      : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
                   </div>
                 </div>
               ) : (
@@ -1013,6 +1013,57 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
         <aside className="onchain">
           <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
+
+          <div className="mc-top-row">
+            {fng && (
+              <div className="fng fng-compact">
+                <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
+                <div className="fng-meta"><div className="fng-lab">{fng.label}</div><div className="fng-sub">Fear &amp; Greed Index</div></div>
+              </div>
+            )}
+            <div className="mc-vol-block">
+              <div className="oc-cols"><span>24h change</span><span>24h volume</span></div>
+              {watchlist.map((sym) => {
+                const st = data[sym]?.stats;
+                const up = st && st.change24 >= 0;
+                return (
+                  <div className="oc-row" key={sym}>
+                    <div className="oc-sym">{sym}</div>
+                    {st ? (
+                      <>
+                        <div className={`oc-chg ${up ? "up" : "down"}`}>{fmtPct(st.change24)}</div>
+                        <div className="oc-vol mono">{fmtVol(st.volUsd)}</div>
+                      </>
+                    ) : <div className="oc-chg quiet">no data</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {weekly200 && (() => {
+            const btcPrice = data.BTC?.snap?.price;
+            const distPct = btcPrice ? ((btcPrice - weekly200.sma) / weekly200.sma) * 100 : null;
+            const near = distPct != null && Math.abs(distPct) <= 10;
+            return (
+              <div className={`w200-panel ${near ? "near" : ""}`}>
+                <div className="w200-head">BTC 200-week MA</div>
+                <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
+                <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
+              </div>
+            );
+          })()}
+
+          {macroRead && macroRead.read && (
+            <div className={`macro-panel ${macroRead.read.stance}`}>
+              <div className="macro-head">News read <span className="macro-tag">outside the price data</span></div>
+              <div className="macro-row"><span className="macro-stance">{macroRead.read.stance}</span><span className="macro-conf">{macroRead.read.confidence} confidence</span></div>
+              <div className="macro-headline">{macroRead.read.headline}</div>
+              <div className="macro-reason">{macroRead.read.reasoning}</div>
+              {macroRead.read.catalyst && <div className="macro-catalyst">⏳ {macroRead.read.catalyst}</div>}
+            </div>
+          )}
+
           {bias && bias.dir && (() => {
             // pctUp is always "percent of the basket currently up," regardless
             // of direction. That's correct for a bullish reading, backwards for
@@ -1032,27 +1083,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </div>
             );
           })()}
-          {weekly200 && (() => {
-            const btcPrice = data.BTC?.snap?.price;
-            const distPct = btcPrice ? ((btcPrice - weekly200.sma) / weekly200.sma) * 100 : null;
-            const near = distPct != null && Math.abs(distPct) <= 10;
-            return (
-              <div className={`w200-panel ${near ? "near" : ""}`}>
-                <div className="w200-head">BTC 200-week MA</div>
-                <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
-                <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
-              </div>
-            );
-          })()}
-          {macroRead && macroRead.read && (
-            <div className={`macro-panel ${macroRead.read.stance}`}>
-              <div className="macro-head">News read <span className="macro-tag">outside the price data</span></div>
-              <div className="macro-row"><span className="macro-stance">{macroRead.read.stance}</span><span className="macro-conf">{macroRead.read.confidence} confidence</span></div>
-              <div className="macro-headline">{macroRead.read.headline}</div>
-              <div className="macro-reason">{macroRead.read.reasoning}</div>
-              {macroRead.read.catalyst && <div className="macro-catalyst">⏳ {macroRead.read.catalyst}</div>}
-            </div>
-          )}
+
           {netFlow && (() => {
             const total = netFlow.toExchange + netFlow.fromExchange;
             const netDir = netFlow.net > 0 ? "in" : "out";
@@ -1071,28 +1102,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </div>
             );
           })()}
-          {fng && (
-            <div className="fng">
-              <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
-              <div className="fng-meta"><div className="fng-lab">{fng.label}</div><div className="fng-sub">Fear &amp; Greed Index</div></div>
-            </div>
-          )}
-          <div className="oc-cols"><span>24h change</span><span>24h volume</span></div>
-          {watchlist.map((sym) => {
-            const st = data[sym]?.stats;
-            const up = st && st.change24 >= 0;
-            return (
-              <div className="oc-row" key={sym}>
-                <div className="oc-sym">{sym}</div>
-                {st ? (
-                  <>
-                    <div className={`oc-chg ${up ? "up" : "down"}`}>{fmtPct(st.change24)}</div>
-                    <div className="oc-vol mono">{fmtVol(st.volUsd)}</div>
-                  </>
-                ) : <div className="oc-chg quiet">no data</div>}
-              </div>
-            );
-          })}
         </aside>
       </div>
 
@@ -1480,6 +1489,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-reason{color:var(--muted);font-size:11.5px;line-height:1.5}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
+.mc-top-row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:6px}
+.fng-compact{flex:0 0 auto;border-bottom:none;padding:6px 0;margin-bottom:0}
+.mc-vol-block{flex:1;min-width:140px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
 .fng-lab{font-weight:600;font-size:14px}
 .fng-sub{color:var(--dim);font-size:11px;margin-top:2px}

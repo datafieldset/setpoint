@@ -574,7 +574,7 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
   <input type="radio" name="t" id="tab-market">
   <div class="tabbar">
     <label for="tab-live">Scoreboard</label>
-    <label for="tab-signals">Signals</label>
+    <label for="tab-signals">Verified</label>
     <label for="tab-market">Market</label>
   </div>
 
@@ -608,13 +608,13 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     </div>
 
     <div class="panel replay-edge">
-      <div class="panel-head"><h2>Proven — 58%+</h2><span class="tag replay">Replay</span></div>
+      <div class="panel-head"><h2>Verified — 58%+</h2><span class="tag replay">Replay</span></div>
       ${proven.length ? proven.map((b) => callout(b, "good")).join("") : "<div class='empty'>Nothing clearing 58% this run.</div>"}
     </div>
 
     <div class="panel replay-edge">
       <div class="panel-head"><h2>Worth improving — 48-57%</h2><span class="tag replay">Replay</span></div>
-      <div class="desc">Consistently close but not quite proven, this is where the next real improvement usually comes from, not from what's already failing outright. RSI oversold's trend gate started exactly here.</div>
+      <div class="desc">Consistently close but not quite verified, this is where the next real improvement usually comes from, not from what's already failing outright. RSI oversold's trend gate started exactly here.</div>
       ${watch.length ? watch.map((b) => callout(b, "watch")).join("") : "<div class='empty'>Nothing sitting in the 48-57% range this run.</div>"}
     </div>
 

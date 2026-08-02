@@ -93,7 +93,7 @@ function summarize(rows) {
   const buckets = {};
   
   for (const r of rows) {
-    const tierLabel = r.tier === "proven" ? "Proven" : r.tier === "weak" ? "Weak" : "Testing";
+    const tierLabel = r.tier === "proven" ? "Verified" : r.tier === "weak" ? "Weak" : "Testing";
     
     // Group 1: By signal type + timeframe + direction only (baseline)
     const baselineKey = `${r.label} · ${TF[r.tf]?.label || r.tf} · ${r.dir === "bull" ? "Long" : "Short"}`;
@@ -176,7 +176,7 @@ function renderMarkdown({ buckets }) {
   lines.push(`## Worth improving — 48-57%`);
   lines.push(``);
   if (watch.length) {
-    lines.push(`Consistently close but not quite proven, this is where the next real improvement is most likely hiding.`);
+    lines.push(`Consistently close but not quite verified, this is where the next real improvement is most likely hiding.`);
     lines.push(``);
     for (const b of watch) {
       lines.push(`- **${b.key}**: ${b.wins}W / ${b.losses}L = ${pct(b.winRate)} (fired ${b.fired}x)`);
