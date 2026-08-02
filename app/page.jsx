@@ -127,11 +127,10 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 
 /* ============================== LANDING PAGE ============================= */
 function Landing({ onPickPlan, onSignIn }) {
-  const onWaitlist = () => { const el = document.getElementById("waitlist"); if (el) el.scrollIntoView({ behavior: "smooth" }); };
   const demoSig = { label: "Momentum", dir: "bull", strength: 0.72, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = [
-    { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · EMA cross", "Email delivery"], cta: "Start free" },
-    { id: "trader", name: "Trader", price: "$19", per: "/mo", pop: true, feats: ["Up to 6 coins", "Everything in Watch", "Entry / stop / target on every alert", "Whale & exchange-flow signals", "Telegram + Discord + email", "Hourly digest"], cta: "Get Trader" },
+    { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · EMA cross"], cta: "Start free" },
+    { id: "trader", name: "Trader", price: "$19", per: "/mo", pop: true, feats: ["Up to 6 coins", "Everything in Watch", "Entry / stop / target on every alert", "Whale & exchange-flow signals", "Hourly digest"], cta: "Get Trader" },
     { id: "desk", name: "Pro", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Whale-flow alerts with size thresholds", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Pro" },
   ];
   return (
@@ -140,7 +139,7 @@ function Landing({ onPickPlan, onSignIn }) {
         <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="nav-r">
           <button className="ghost" onClick={onSignIn}>Sign in</button>
-          <button className="solid" onClick={onWaitlist}>Early access</button>
+          <button className="solid" onClick={() => onPickPlan("watch")}>Get started</button>
         </div>
       </nav>
 
@@ -152,8 +151,7 @@ function Landing({ onPickPlan, onSignIn }) {
           <h1>See the alert, the price, and where to get in, <em>all on one card.</em></h1>
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
-            <button className="solid lg" onClick={onWaitlist}>Join early access</button>
-            <button className="ghost lg" onClick={() => onPickPlan("watch")}>Start free, no card needed</button>
+            <button className="solid lg" onClick={() => onPickPlan("watch")}>Start free, no card needed</button>
           </div>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
         </div>
@@ -209,49 +207,10 @@ function Landing({ onPickPlan, onSignIn }) {
         <p className="pricing-foot">All plans include the entry, stop, and target on every alert. Upgrade or cancel any time from your dashboard.</p>
       </section>
 
-      <section className="waitlist" id="waitlist">
-        <Waitlist />
-      </section>
-
       <footer className="foot">
         <div className="brand sm"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         <div className="disc">Setpoint sends informational alerts only. It is not a broker, does not execute trades, and does not provide financial advice. Levels shown are computed reference points, not recommendations. Crypto is volatile, so do your own research.</div>
       </footer>
-    </div>
-  );
-}
-
-/* =============================== WAITLIST =============================== */
-function Waitlist() {
-  const [email, setEmail] = useState("");
-  const [done, setDone] = useState(false);
-  const [err, setErr] = useState("");
-  const submit = () => {
-    const ok = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-    if (!ok) { setErr("Enter a valid email address."); return; }
-    setErr("");
-    setDone(true);
-  };
-  if (done) {
-    return (
-      <div className="wl-inner">
-        <div className="wl-check">✓</div>
-        <h2>You are on the list</h2>
-        <p className="wl-sub">Thanks. We will email {email.trim()} the moment Setpoint opens. No spam in the meantime.</p>
-      </div>
-    );
-  }
-  return (
-    <div className="wl-inner">
-      <div className="eyebrow center">EARLY ACCESS</div>
-      <h2>Get notified when Setpoint opens</h2>
-      <p className="wl-sub">It is still in private testing. Leave your email and we will let you know the day it goes live, plus locked-in launch pricing for early members.</p>
-      <div className="wl-form">
-        <input value={email} onChange={(e) => { setEmail(e.target.value); setErr(""); }} onKeyDown={(e) => e.key === "Enter" && submit()} placeholder="you@email.com" type="email" aria-label="email" />
-        <button className="solid lg" onClick={submit}>Notify me</button>
-      </div>
-      {err && <div className="wl-err">{err}</div>}
-      <div className="wl-fine">We will only use your email to tell you about the launch.</div>
     </div>
   );
 }
@@ -434,11 +393,60 @@ function Guide({ onBack }) {
   );
 }
 
+/* =============================== ADMIN PANEL ============================== */
+function AdminPanel({ onBack }) {
+  const [users, setUsers] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/admin/users", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("failed")))
+      .then((json) => setUsers(json.users || []))
+      .catch(() => setError("Couldn't load the registration list."));
+  }, []);
+
+  return (
+    <div className="dash">
+      <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
+
+      <div className="guide-hero">
+        <div className="guide-mark">S</div>
+        <h1>Registrations</h1>
+        <p>Everyone who's signed up, and what's actually captured today: email, plan, and signup date. Name and phone aren't collected yet, they're not asked for at signup.</p>
+      </div>
+
+      <div className="guide-section">
+        <div className="guide-card-top" style={{ marginBottom: 14 }}>
+          <span className="guide-card-name">{users ? `${users.length} total` : "Loading…"}</span>
+          <a className="ghost sm" href="/api/admin/users?csv=1">Download CSV</a>
+        </div>
+
+        {error && <div className="guide-card"><div className="guide-card-desc">{error}</div></div>}
+
+        {users && users.map((u, i) => (
+          <div className="guide-card" key={i}>
+            <div className="guide-card-top">
+              <span className="guide-card-name mono" style={{ fontSize: 13 }}>{u.email}</span>
+              <span className="guide-card-tier">{u.plan}{u.isAdmin ? " · admin" : ""}</span>
+            </div>
+            <div className="guide-card-desc">Signed up {new Date(u.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>
+          </div>
+        ))}
+      </div>
+
+      <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
+    </div>
+  );
+}
+
 /* =============================== DASHBOARD =============================== */
 // DEFAULT_TH now comes from lib/signals.js, imported above.
 
 function Dashboard({ account, onSignOut, justUpgraded }) {
   const [showGuide, setShowGuide] = useState(false);
+  const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [adminStats, setAdminStats] = useState(null);
+  const [adminUsers, setAdminUsers] = useState(null);
   const [watchlist, setWatchlist] = useState(["BTC", "SOL", "XLM"]);
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
@@ -702,6 +710,18 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Eager, lightweight: just the counts, so the new-signups badge shows
+  // immediately without needing to open the panel. The full list (and any
+  // CSV download) only loads once the panel's actually opened.
+  useEffect(() => {
+    if (!account.isAdmin) return;
+    fetch("/api/admin/users", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => { if (json) setAdminStats({ total: json.total, newLast24h: json.newLast24h }); })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (showGuide) {
     return (
       <div className="dash">
@@ -709,6 +729,17 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
         </div>
         <Guide onBack={() => setShowGuide(false)} />
+      </div>
+    );
+  }
+
+  if (showAdminPanel) {
+    return (
+      <div className="dash">
+        <div className="topbar">
+          <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+        </div>
+        <AdminPanel onBack={() => setShowAdminPanel(false)} />
       </div>
     );
   }
@@ -724,7 +755,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           <div className="refresh">{loading ? <span className="dot-pulse" /> : <span className="dot-ok" />}<span className="refresh-t">{secsToRefresh != null ? `refresh ${secsToRefresh}s` : "…"}</span></div>
           <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
           <div className="acct">
-            {account.isAdmin && <span className="admin-badge">ADMIN</span>}
+            {account.isAdmin && (
+              <button className="admin-badge" onClick={() => setShowAdminPanel(true)}>
+                ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
+              </button>
+            )}
             <span className="plan-badge">{{ watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "WATCH"}</span>
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
@@ -1235,7 +1270,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .icon-btn:hover{color:var(--text);border-color:var(--green)}
 .acct{display:flex;align-items:center;gap:9px}
 .plan-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--green);background:var(--green-dim);border:1px solid var(--green);padding:4px 9px;border-radius:6px}
-.admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px}
+.admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
 
 .ticker{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0}
 .tk{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-width:180px;flex:1}

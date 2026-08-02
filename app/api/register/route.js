@@ -4,6 +4,7 @@
 
 import { neon } from "@neondatabase/serverless";
 import bcrypt from "bcryptjs";
+import { sendEmail, welcomeEmailHtml } from "../../../lib/email.js";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,10 @@ export async function POST(req) {
 
     const hash = await bcrypt.hash(password, 10);
     await sql`INSERT INTO users (email, password_hash, plan) VALUES (${email}, ${hash}, 'watch')`;
+    // Fire-and-forget: registration itself already succeeded above, a
+    // failed or slow email send (e.g. domain not verified with Resend
+    // yet) should never turn a real account creation into an error.
+    sendEmail({ to: email, subject: "Welcome to Setpoint", html: welcomeEmailHtml(email) }).catch(() => {});
     return Response.json({ ok: true });
   } catch (e) {
     return Response.json({ error: "server_error", detail: String(e).slice(0, 200) }, { status: 500 });

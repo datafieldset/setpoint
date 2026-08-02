@@ -1,18 +1,17 @@
-# Setpoint v6.2
+# Setpoint v6.4
 
-Everything folded into one release, v6.1 (Volume spike short gate) was never pushed separately.
+v6.3 folded in, wasn't pushed separately.
 
-## Volume spike short: timeframe-aware trend gate (carried from v6.1)
-15m/1h short only fire when not riding with the trend, 30m only fires when it is, 5m stays ungated. See v6.1 notes for the full data breakdown.
+## Alert delivery promise removed from pricing
 
-## Confluence flag — proven signal + extreme meter reading, together
+Dropped "Email delivery" (Watch tier) and "Telegram + Discord + email" (Trader tier) entirely. Alerts are dashboard-only, nothing promises a delivery channel that was never built. The webhooks feature on Pro is untouched, that's the customer's own endpoint, not something we send from.
 
-When a proven (58%+) signal fires on a coin whose lean meter is independently sitting at a genuine extreme, in the matching direction, that card now gets a distinct amber glow and an "⚡ extreme read" tag, and gets pulled to the top of Opportunities regardless of strength score. Proven-only by design, an unproven signal getting the same visual weight would teach trusting the flag itself instead of the underlying data.
+## Real welcome email, via Resend
 
-## In-app Guide, gated to signed-in accounts
+New lib/email.js, a thin wrapper around Resend's API, scoped narrowly to account emails only, never alert delivery, that stays out of scope entirely. Wired into registration: a real welcome email now sends the moment an account is created. Fails gracefully, if the send fails for any reason (including before the sending domain is verified), registration itself is never blocked or affected.
 
-A new "GUIDE" button next to your plan badge opens a plain-English explainer covering proven alerts, the lean meter, and the news read, right inside the dashboard, with a back button to return. The proven-alerts list is generated live from the real SIGNAL_RATES table on every render, not hardcoded, so it can never drift out of sync as signals get tuned. Only reachable from inside the authenticated dashboard, so it's automatically limited to signed-in accounts.
+**Needs from you before this actually works:** a RESEND_API_KEY environment variable in Vercel, and a few DNS records added wherever setpointalerts.com's domain is managed, so Resend can verify the sending domain and actual inboxes trust the email instead of spam-filtering it. I'll give you the exact records once you've got a Resend account started.
 
-## Real bug caught before shipping
+## Admin: real registration list + CSV download
 
-While inserting the Guide component, an editing mistake deleted the actual `function Dashboard(...)` declaration line. Caught immediately with the real JSX parser (the process fix from v5.9), not left for the next build to fail on. Fixed and reverified before packaging.
+New page, reachable by clicking the ADMIN badge (which now also shows a live "X new" count for signups in the last 24 hours). Lists everyone who's registered, shows exactly what's actually captured today: email, plan, signup date. A real "Download CSV" link pulls the same data as an actual file. Name and phone don't appear because they're not collected anywhere in the system yet, that would need new fields added to the signup form itself, a separate decision.
