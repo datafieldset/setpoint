@@ -1,9 +1,17 @@
-# Setpoint v6.5
+# Setpoint v6.6
 
-## Delete users, with real confirmation
+## Switched from Resend to real Gmail sending
 
-Each registration in the admin panel now has a "Delete user" link. Tapping it doesn't delete anything immediately, it shows a real confirmation step ("Delete this account? This can't be undone.") with Yes/Cancel, only the Yes click actually removes the account. Can't delete your own admin account this way, a lockout with no other admin UI to recover from would be a real mess.
+The 403 confirmed it directly: Resend requires a verified domain, and gmail.com can't be verified by anyone but Google. Rewired lib/email.js to send through Gmail's own servers instead, using nokanetmail@gmail.com as the real sender, authenticated with a Gmail App Password. Same function signatures as before, so nothing else needed to change, the welcome email and the admin test-email button both just work against the new sending method automatically.
 
-## A real way to see why the welcome email isn't sending
+**Needs two new environment variables in Vercel before this actually works:**
+- `GMAIL_USER` — nokanetmail@gmail.com
+- `GMAIL_APP_PASSWORD` — the 16-character app password from Google Account → Security → App passwords (needs 2-Step Verification turned on first)
 
-Added a "Send test email" button right in the admin panel. It sends a real test email to your own address and shows exactly what Resend says back, success, or the real failure reason, instead of guessing. Given the API key was just added and this is likely a first real send attempt, the most probable cause is the sending domain not being verified with Resend yet, Resend requires that before it'll send from a custom address like hello@setpointalerts.com at all, not just for spam-folder reasons. The test button will confirm this directly instead of us guessing back and forth.
+No DNS changes needed at all this time, that's the whole point of switching.
+
+## A real dependency conflict caught before it could break the build
+
+Adding nodemailer at the version I first tried (9.x) directly conflicted with a peer dependency next-auth already requires (nodemailer ^7.x for its own optional email-provider support). Caught this by actually running the install locally instead of just writing the version number and assuming it'd work, this would have broken Vercel's build entirely on deploy otherwise. Fixed to the compatible version (^7.0.7) and reinstalled clean.
+
+Separately noticed: npm flagged some existing vulnerabilities in next-auth and Next.js itself, unrelated to this change, pre-existing in the current dependency versions. Not touched, that's a bigger, separate upgrade decision, just worth knowing about.
