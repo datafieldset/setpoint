@@ -729,6 +729,12 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
   const hiddenCount = useMemo(() => allSignals.filter((s) => s.tier !== "proven").length, [allSignals]);
   const visibleSignals = useMemo(() => (showWeak ? allSignals : allSignals.filter((s) => s.tier === "proven")), [allSignals, showWeak]);
+  // Open positions still resolve correctly in the background for any coin,
+  // watchlisted or not, close-alert doesn't care about the watchlist at
+  // all. This just controls what's actually shown, once a coin's removed
+  // from the watchlist, its open trades stop showing here too, even
+  // though they're still quietly tracking to a real win or loss.
+  const visibleOpenPositions = useMemo(() => openPositions.filter((p) => watchlist.includes(p.coin)), [openPositions, watchlist]);
 
   const saveWatchlist = useCallback((list) => {
     fetch("/api/my-watchlist", {
@@ -893,7 +899,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               Opportunities <span className="dash-tab-n">{visibleSignals.length}</span>
             </button>
             <button className={`dash-tab ${dashTab === "open" ? "active" : ""}`} onClick={() => setDashTab("open")}>
-              Open positions {openPositions.length > 0 && <span className="dash-tab-n">{openPositions.length}</span>}
+              Open positions {visibleOpenPositions.length > 0 && <span className="dash-tab-n">{visibleOpenPositions.length}</span>}
             </button>
           </div>
 
@@ -925,16 +931,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           ) : (
             <>
               <div className="section-head">
-                <span className="sh-sub">{openPositions.length} still in motion, not resolved yet</span>
+                <span className="sh-sub">{visibleOpenPositions.length} still in motion, not resolved yet</span>
               </div>
-              {openPositions.length === 0 ? (
+              {visibleOpenPositions.length === 0 ? (
                 <div className="empty">
                   <div className="empty-h">Nothing open right now.</div>
-                  <div className="empty-d">Fires here stay visible until they actually hit target or stop, this fills in the moment something's live.</div>
+                  <div className="empty-d">Fires here stay visible until they actually hit target or stop, this fills in the moment something's live. Only shows coins on your current watchlist, if you've removed one, anything still open for it keeps tracking quietly in the background, it just won't show here anymore.</div>
                 </div>
               ) : (
                 <div className="cards-grid">
-                  {openPositions.map((p) => (
+                  {visibleOpenPositions.map((p) => (
                     <SignalCard
                       key={`open:${p.coin}:${p.tf}:${p.label}:${p.dir}:${p.firedAt}`}
                       s={{ dir: p.dir, label: p.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: p.entry, stop: p.stop, target: p.target, tf: p.tf, tier: p.tier, tierRate: p.tierRate }}
@@ -1489,7 +1495,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-reason{color:var(--muted);font-size:11.5px;line-height:1.5}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
-.mc-top-row{display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;margin-bottom:6px}
+.mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
 .fng-compact{flex:0 0 auto;border-bottom:none;padding:6px 0;margin-bottom:0}
 .mc-vol-block{flex:1;min-width:140px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}

@@ -1,9 +1,9 @@
-# Setpoint v6.7
+# Setpoint v6.8
 
-## Market context reordered
+## Mobile fix: Volume moved below Fear & Greed
 
-Volume and Fear & Greed now sit right under the "Market context" heading, side by side, followed by the 200-week MA, then the news read. Bias panel and whale flow moved below that same block.
+Was side by side, squeezing both on narrow screens. Now stacked, Fear & Greed first, Volume right below it.
 
-## "Signals" tab renamed to "Verified", and the word changed everywhere it shows up
+## Open Positions now respects your current watchlist
 
-The backtest page's middle tab is now "Verified" instead of "Signals". More importantly, every place the app tells you a setup is trustworthy now says "verified" instead of "proven", the badges on alert cards, the empty-state messages, the Guide's explanations, the backtest page's section headers, and the downloaded report. More honest framing: nothing here is claiming to be permanently proven, it's been checked against real, historical data and verified to hold up, an ongoing claim, not a permanent one.
+A trade for a coin you've since removed no longer shows up in Open Positions. It's still tracking correctly in the background, close-alert doesn't check your watchlist at all, so nothing about resolution changed, this only changes what's actually displayed. Once you remove a coin, its open trades quietly keep resolving, they just stop showing on your screen.
