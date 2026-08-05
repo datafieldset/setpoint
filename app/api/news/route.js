@@ -114,7 +114,20 @@ export async function getTelegram(channels) {
       const r = await fetch(`https://t.me/s/${ch}`, { headers: UA, cache: "no-store" });
       if (!r.ok) return [];
       const html = await r.text();
-      const blocks = html.split("js-message_text").slice(1);
+      // Telegram's public preview page has changed its exact markup before
+      // without warning, and a scrape depending on one exact class string
+      // breaks completely and silently when that happens, exactly what
+      // took this down for a week undetected. Try several real, known
+      // patterns from Telegram's own widget markup, in order, the first
+      // one that actually finds real message blocks wins, instead of
+      // depending on a single brittle string staying exactly the same
+      // forever.
+      const splitPatterns = ["js-message_text", "tgme_widget_message_text", "tgme_widget_message "];
+      let blocks = [];
+      for (const pattern of splitPatterns) {
+        const found = html.split(pattern).slice(1);
+        if (found.length > 0) { blocks = found; break; }
+      }
       const items = [];
       for (const b of blocks) {
         const tm = b.match(/^[^>]*>([\s\S]*?)<\/div>/);

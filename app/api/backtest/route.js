@@ -592,6 +592,9 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     <div class="panel live-edge">
       <div class="panel-head"><h2>Whale flow direction</h2><span class="tag live"><span class="pulse"></span>Real transfers</span></div>
       <div class="desc">Does exchange inflow or outflow actually predict BTC's next move? ${whale?.totalLogged || 0} transfers logged${whale?.lastAt ? `, most recent ${new Date(whale.lastAt).toUTCString()}` : ""}. "% up" is the share of resolved checkpoints where BTC was higher than it was the moment the transfer fired, not the traditional-convention test, the raw direction, so you can read it either way.</div>
+      ${whale?.lastAt && (Date.now() - new Date(whale.lastAt).getTime()) > 48 * 3600000
+        ? `<div class="err">⚠ Stale: nothing new logged in ${Math.floor((Date.now() - new Date(whale.lastAt).getTime()) / 3600000)} hours. The source this reads from (a Telegram scrape, no official API) may have broken again.</div>`
+        : ""}
       ${whale?.error ? `<div class="err">${whale.error}</div>` : ""}
       ${whaleRows
         ? `<table><thead><tr><th>Direction</th><th>+15m</th><th>+30m</th><th>+1h</th><th>+4h</th><th>+12h</th></tr></thead><tbody>${whaleRows}</tbody></table>`

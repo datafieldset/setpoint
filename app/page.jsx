@@ -401,6 +401,8 @@ function AdminPanel({ onBack }) {
   const [deletingEmail, setDeletingEmail] = useState(null);
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
+  const [whaleResult, setWhaleResult] = useState(null);
+  const [testingWhale, setTestingWhale] = useState(false);
 
   const loadUsers = () => {
     fetch("/api/admin/users", { cache: "no-store" })
@@ -436,6 +438,19 @@ function AdminPanel({ onBack }) {
     setConfirmingEmail(null);
   };
 
+  const testWhale = async () => {
+    setTestingWhale(true);
+    setWhaleResult(null);
+    try {
+      const res = await fetch("/api/admin/test-whale", { cache: "no-store" });
+      const json = await res.json();
+      setWhaleResult(json);
+    } catch {
+      setWhaleResult({ error: "request_failed" });
+    }
+    setTestingWhale(false);
+  };
+
   return (
     <div className="dash">
       <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
@@ -456,6 +471,23 @@ function AdminPanel({ onBack }) {
               <span><b>Sent successfully.</b> Check your inbox (and spam folder).</span>
             ) : (
               <span><b>Failed: {testResult.reason}.</b> {testResult.detail || (testResult.reason === "no_api_key" ? "RESEND_API_KEY isn't set." : "")}</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="guide-section">
+        <h2 style={{ fontSize: 15 }}>Test the whale flow scrape</h2>
+        <p className="guide-lede">Both the live dashboard's whale panel and the backtest page's whale tracking read from the same source, a scrape of Telegram's public @whale_alert_io page, no official API. That kind of scrape can silently break. This checks it directly and shows the real result.</p>
+        <button className="ghost sm" onClick={testWhale} disabled={testingWhale}>{testingWhale ? "Checking…" : "Test whale scrape"}</button>
+        {whaleResult && (
+          <div className="guide-glossary" style={{ marginTop: 12 }}>
+            {whaleResult.error ? (
+              <span><b>Failed: {whaleResult.error}.</b> {whaleResult.detail}</span>
+            ) : whaleResult.messageBlocksFound > 0 ? (
+              <span><b>Working.</b> HTTP {whaleResult.httpStatus}, found {whaleResult.messageBlocksFound} real messages on the page.</span>
+            ) : (
+              <span><b>Broken: HTTP {whaleResult.httpStatus}, but 0 messages found.</b> {whaleResult.httpOk ? "The page loaded fine, but the parser found nothing in it, likely Telegram changed the page's structure." : "The request itself failed, likely blocked or rate-limited."}</span>
             )}
           </div>
         )}
@@ -1090,7 +1122,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             );
           })()}
 
-          {netFlow && (() => {
+          {netFlow ? (() => {
             const total = netFlow.toExchange + netFlow.fromExchange;
             const netDir = netFlow.net > 0 ? "in" : "out";
             const netPct = total > 0 ? Math.round((Math.abs(netFlow.net) / total) * 100) : 0;
@@ -1107,7 +1139,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <div className="netflow-note">{netDir === "in" ? "Real observations so far have leaned bullish after inflow, likely capital moving in to deploy, not to sell." : "Real observations so far have leaned bearish after outflow, likely a real exit, not accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
               </div>
             );
-          })()}
+          })() : (
+            // Used to just silently disappear when there's nothing to
+            // show, easy to mistake for a real bug instead of the source
+            // (a Telegram scrape, no official API) genuinely having
+            // nothing new to report right now. Says so plainly instead.
+            <div className="netflow-panel out">
+              <div className="netflow-head">Whale net flow</div>
+              <div className="netflow-note">No large transfers detected right now. This reads from a free Telegram scrape, not an official API, so it can go quiet for stretches, or genuinely break, without much warning. If this stays empty for more than a day or two, it's likely broken rather than just quiet.</div>
+            </div>
+          )}
         </aside>
       </div>
 

@@ -392,6 +392,12 @@ async function fetchWhaleSection() {
     lines.push("");
     lines.push("BTC price change at each checkpoint after a large transfer, regardless of which asset moved. `to_exchange` = onto an exchange (traditionally read as possible sell pressure), `from_exchange` = off an exchange (traditionally read as possible accumulation). Whether that read actually holds is the open question this table is meant to answer.");
     lines.push("");
+    const lastAt = new Date(rows[0].fired_at).getTime();
+    const hoursSince = Math.floor((Date.now() - lastAt) / 3600000);
+    if (hoursSince > 48) {
+      lines.push(`⚠ **Stale: nothing new logged in ${hoursSince} hours.** The source this reads from (a Telegram scrape, no official API) may have broken again.`);
+      lines.push("");
+    }
 
     // Aggregate win rate per direction per checkpoint: does price move the
     // "expected" way (down after inflow, up after outflow) more than half
