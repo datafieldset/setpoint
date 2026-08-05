@@ -390,7 +390,7 @@ async function fetchWhaleSection() {
     const lines = [];
     lines.push("## Whale flow price impact");
     lines.push("");
-    lines.push("BTC price change at each checkpoint after a large transfer, regardless of which asset moved. `to_exchange` = onto an exchange (traditionally read as possible sell pressure), `from_exchange` = off an exchange (traditionally read as possible accumulation). Whether that read actually holds is the open question this table is meant to answer.");
+    lines.push("BTC price change at each checkpoint after a large ($500k+) individual trade on Coinbase. `to_exchange` = a large sell, `from_exchange` = a large buy. Does real buy/sell pressure actually predict what BTC does next, that's the open question this table is meant to answer.");
     lines.push("");
     const lastAt = new Date(rows[0].fired_at).getTime();
     const hoursSince = Math.floor((Date.now() - lastAt) / 3600000);

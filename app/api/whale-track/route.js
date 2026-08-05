@@ -3,21 +3,29 @@
 // Whale flow price-impact tracker. Visit this like /api/scoreboard, any
 // time. Two things happen on every visit:
 //
-// 1. Log: every whale transfer Whale Alert has posted (via the same free
-//    Telegram feed /api/news already reads) gets logged once, deduped by
-//    its Telegram link so repeated visits don't double-count the same
-//    transfer.
-// 2. Resolve: any logged transfer that's old enough gets checked against
+// 1. Log: real, individual large trades on Coinbase (BTC, $500k+) get
+//    logged once, deduped by a synthetic id built from Coinbase's own
+//    trade_id so repeated visits don't double-count the same trade.
+// 2. Resolve: any logged trade that's old enough gets checked against
 //    real BTC candles at 15m, 30m, 1h, 4h, and 12h after it fired, filling
 //    in whatever checkpoints have had enough time pass.
 //
-// Why BTC specifically, regardless of which asset the whale actually
-// moved: the open question here isn't "does an ETH whale move affect ETH
-// price," it's whether large exchange flow in general is a useful market
-// read, and BTC is the cleanest, most liquid bellwether for that. Same
-// reasoning the existing pooled net-flow panel in Market Context already
-// uses, just extended to check price outcome instead of stopping at "here
-// was the flow."
+// This used to read from a free scrape of Telegram's public @whale_alert_io
+// page (via /api/news's getTelegram()). Replaced (Aug 5) after real
+// evidence showed that scrape was very likely blocked specifically from
+// this deployment platform, not fixable by better parsing or a more
+// realistic User-Agent, both tried and neither resolved it. Now reads
+// straight from Coinbase's own trade feed, the same API every signal on
+// this app already depends on, proven reliable from here.
+//
+// Kept the exact same internal direction vocabulary ("to_exchange" /
+// "from_exchange") so every downstream piece, logging, checkpoint
+// resolution, the direction-aggregation table, keeps working completely
+// unchanged. A large sell (taker sold into the book) maps to
+// "to_exchange" the same way a transfer landing on an exchange used to,
+// a large buy maps to "from_exchange" the same way a transfer leaving
+// one used to, same bullish/bearish reading convention, new real source
+// underneath it.
 //
 // This is deliberately a measurement surface, not a scoring input. Nothing
 // live reads from whale_track to adjust anything yet. Same phased,
@@ -27,11 +35,10 @@
 // running it automatically (same cron question already deferred elsewhere
 // in this project).
 
-import { getTelegram } from "../news/route.js";
-
 export const dynamic = "force-dynamic";
 
-const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
+const HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" };
+const LARGE_TRADE_USD = 500000;
 const CHECKPOINTS = [
   { key: "15m", ms: 15 * 60 * 1000, bars: 1 },
   { key: "30m", ms: 30 * 60 * 1000, bars: 2 },
@@ -39,33 +46,30 @@ const CHECKPOINTS = [
   { key: "4h", ms: 4 * 60 * 60 * 1000, bars: 16 },
   { key: "12h", ms: 12 * 60 * 60 * 1000, bars: 48 },
 ];
-const EXCHANGES = ["binance", "coinbase", "kraken", "okx", "bybit", "huobi", "htx", "bitfinex", "gate.io", "gate", "kucoin", "upbit", "bitstamp", "gemini", "crypto.com", "mexc", "bithumb", "bitget"];
-
-// Same parse logic as /api/news, kept local so a change to the news route's
-// own parsing can't silently break how whale transfers are read here.
-function parseWhale(text, when, link) {
-  const matches = [...text.matchAll(/([\d,]+(?:\.\d+)?)\s*[#$]?([A-Za-z]{2,6})\b/g)];
-  const pick = matches.find((m) => m[2].toUpperCase() !== "USD");
-  if (!pick) return null;
-  const asset = pick[2].toUpperCase();
-  const usdM = text.match(/\(?\$?\s*([\d,]+(?:\.\d+)?)\s*USD/i);
-  const usd = usdM ? parseFloat(usdM[1].replace(/,/g, "")) : null;
-  const low = text.toLowerCase();
-  const ft = low.match(/from\s+(.+?)\s+to\s+(.+)$/);
-  let dir = "other";
-  if (ft) {
-    const fromEx = EXCHANGES.some((e) => ft[1].includes(e));
-    const toEx = EXCHANGES.some((e) => ft[2].includes(e));
-    if (toEx && !fromEx) dir = "to_exchange";
-    else if (fromEx && !toEx) dir = "from_exchange";
-    else if (fromEx && toEx) dir = "exchange_move";
-  }
-  return { asset, usd, dir, when, link };
-}
 
 async function getWhaleTransfers() {
-  const tg = await getTelegram(["whale_alert_io"]);
-  return tg.map((x) => parseWhale(x.title, x.when, x.link)).filter(Boolean);
+  try {
+    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/trades?limit=300", { headers: HEADERS, cache: "no-store" });
+    if (!r.ok) return [];
+    const raw = await r.json();
+    if (!Array.isArray(raw)) return [];
+    const out = [];
+    for (const t of raw) {
+      const price = parseFloat(t.price), size = parseFloat(t.size);
+      const usd = price * size;
+      if (!(usd >= LARGE_TRADE_USD)) continue;
+      out.push({
+        asset: "BTC",
+        usd,
+        dir: t.side === "sell" ? "to_exchange" : "from_exchange",
+        when: new Date(t.time).getTime(),
+        link: `coinbase-trade-${t.trade_id}`,
+      });
+    }
+    return out;
+  } catch {
+    return [];
+  }
 }
 
 function aggregate(candles, gran, factor) {
@@ -186,7 +190,7 @@ function pct(x) {
 // bullish), which runs opposite to the standard on-chain convention, real
 // data settles it either way instead of going by memory of a couple events.
 export function aggregateWhaleDirection(rows) {
-  const dirs = { to_exchange: { label: "Onto exchange (inflow)", cps: {} }, from_exchange: { label: "Off exchange (outflow)", cps: {} } };
+  const dirs = { to_exchange: { label: "Large sell trades", cps: {} }, from_exchange: { label: "Large buy trades", cps: {} } };
   const CP_KEYS = ["15m", "30m", "1h", "4h", "12h"];
   for (const d of Object.values(dirs)) for (const k of CP_KEYS) d.cps[k] = { n: 0, up: 0, down: 0, flat: 0 };
 

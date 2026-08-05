@@ -28,7 +28,7 @@ const RSS_FEEDS = [
 // Watcher Guru and Whale Alert break moves faster than mainstream RSS. Add more
 // channel handles here (their t.me/s/<handle> must be public). X/Twitter-only
 // accounts still need the paid X API.
-export const TELEGRAM_CHANNELS = ["watcherguru", "whale_alert_io"];
+export const TELEGRAM_CHANNELS = ["watcherguru"];
 
 const EXCHANGES = ["binance", "coinbase", "kraken", "okx", "bybit", "huobi", "htx", "bitfinex", "gate.io", "gate", "kucoin", "upbit", "bitstamp", "gemini", "crypto.com", "mexc", "bithumb", "bitget"];
 
@@ -197,7 +197,7 @@ export async function GET(req) {
     getRss(), getReddit(), getBluesky(symbols), getTelegram(TELEGRAM_CHANNELS),
   ]);
   const all = [...rss, ...reddit, ...bsky, ...tg]
-    .filter((x) => x.title && x.title.length > 4 && x.source !== "@whale_alert_io");
+    .filter((x) => x.title && x.title.length > 4);
 
   const coins = {};
   symbols.forEach((sym) => {

@@ -1,11 +1,11 @@
-# Setpoint v7.1
+# Setpoint v7.2
 
-## Whale flow: replaced the broken source entirely, not patched again
+## The other whale system, actually fixed this time
 
-Investigated this myself directly this time. Fetched the actual Telegram page myself, confirmed it's genuinely alive and posting real transfers. Checked Whale Alert's own official API docs directly: there is no free tier at all, only a paid $29.95/mo plan with a 7-day trial. Given the evidence now clearly pointed to something structural (works everywhere tested, still failed from Vercel even after two different real fixes), continuing to patch the scraper wasn't going to work.
+v7.1 only fixed the live dashboard's panel and explicitly left the backtest page's deeper whale-tracking system (the one with price impact at 15m/30m/1h/4h/12h checkpoints) on the old broken Telegram source, that's what was still showing "183 hours stale." Should have just finished the job instead of leaving it split. Fixed now.
 
-Replaced it entirely with something built on infrastructure this app already proves reliable: Coinbase's own trade feed, the same API every signal on this dashboard already depends on. The live "Large trade flow" panel (renamed from "Whale net flow") now tracks real, individual trades above $500k on Coinbase directly, net buy vs. sell pressure, no scraping, no third-party page that can silently break.
+Same real replacement as the live panel: whale-track/route.js reads directly from Coinbase's own trade feed instead of scraping Telegram, real large trades ($500k+) on BTC, logged and checked against real price the same way as before, just a real, reliable source underneath instead of a page that goes silently blocked for a week.
 
-Worth being precise about what changed: this measures something genuinely different than before, real buy/sell pressure on one exchange, not wallet transfers across the whole blockchain. Direct and unambiguous instead of a debated proxy, more buying is simply bullish, more selling is simply bearish, no interpretation needed.
+Kept the exact same internal plumbing (direction vocabulary, checkpoint resolution, the aggregation table) so nothing about how this data flows had to change, only where it originates. Updated the labels ("Large sell trades" / "Large buy trades") to honestly describe what's actually being measured now, not leftover wording from the wallet-transfer era.
 
-**Known remaining gap:** the backtest page's separate whale-tracking system (the one measuring price impact at 15m/30m/1h/4h/12h checkpoints) still depends on the same broken Telegram source. That's a bigger, separate rebuild, not touched in this fix, flagged clearly rather than left quietly inconsistent.
+Also cleaned up the now-fully-dead Telegram whale channel fetch in the news route, it was being fetched and then immediately filtered out and unused, real wasted work for nothing, removed entirely.
