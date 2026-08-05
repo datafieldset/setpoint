@@ -478,9 +478,9 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
   const whaleRows = whale?.dirs ? Object.values(whale.dirs).map((d) => {
     const cells = CP_ORDER.map((k) => {
       const c = d.cps[k];
-      if (c.n < 3) return `<td class="low">n=${c.n}</td>`;
+      if (c.n < 3) return `<td class="low">${c.n} resolved</td>`;
       const upRate = Math.round((c.up / c.n) * 100);
-      return `<td>${upRate}% up <span class="low">(n=${c.n})</span></td>`;
+      return `<td>${upRate}% up <span class="low">(${c.n} resolved)</span></td>`;
     }).join("");
     return `<tr><td>${d.label}</td>${cells}</tr>`;
   }).join("") : "";
