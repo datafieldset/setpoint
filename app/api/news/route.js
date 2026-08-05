@@ -196,9 +196,6 @@ export async function GET(req) {
   const [rss, reddit, bsky, tg] = await Promise.all([
     getRss(), getReddit(), getBluesky(symbols), getTelegram(TELEGRAM_CHANNELS),
   ]);
-  // Whale Alert has its own net-flow read in Market Context now, so it stays
-  // out of the news feed, but its posts still feed that aggregate below.
-  const whaleItems = tg.filter((x) => x.source === "@whale_alert_io");
   const all = [...rss, ...reddit, ...bsky, ...tg]
     .filter((x) => x.title && x.title.length > 4 && x.source !== "@whale_alert_io");
 
@@ -217,27 +214,56 @@ export async function GET(req) {
     }).slice(0, 6);
   });
 
-  // Net flow: pooled across every large transfer Whale Alert posted, not
-  // filtered to any one coin. Individual coins go quiet for days, whale
-  // activity overall never does, BTC and stablecoins alone move billions
-  // daily. Positive net means more money moving onto exchanges lately
-  // (often read as building sell pressure), negative means more moving off
-  // (often read as accumulation). This is a read, not a rule, worded that
-  // way everywhere it's shown.
-  const parsed = whaleItems.map((x) => parseWhale(x.title, x.when, x.link)).filter(Boolean);
-  let toExchange = 0, fromExchange = 0, txCount = 0;
-  for (const w of parsed) {
-    if (w.usd == null) continue;
-    if (w.dir === "to_exchange") { toExchange += w.usd; txCount++; }
-    else if (w.dir === "from_exchange") { fromExchange += w.usd; txCount++; }
-  }
-  const netFlow = txCount > 0 ? {
-    toExchange, fromExchange, net: toExchange - fromExchange, txCount,
-    recent: parsed.filter((w) => w.dir === "to_exchange" || w.dir === "from_exchange").slice(0, 4),
-  } : null;
+  // Large trade flow: real, unusually large individual trades on Coinbase
+  // itself, not scraped wallet-transfer alerts. Replaced the Telegram
+  // scrape (Aug 5) after real evidence showed it was very likely blocked
+  // specifically from this deployment platform's IP range, not fixable
+  // by better parsing or a more realistic User-Agent, both tried and
+  // both didn't resolve it. This reads from the same Coinbase API every
+  // signal on this dashboard already depends on, proven reliable from
+  // here. Genuinely a different measurement than before: real buy/sell
+  // trade pressure on one exchange, not wallet movement across the whole
+  // blockchain, worded that way everywhere it's shown, not oversold as
+  // the same thing under a new source.
+  const netFlow = await getLargeTradeFlow();
 
   return Response.json(
     { coins, netFlow, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
+}
+
+async function getLargeTradeFlow() {
+  const LARGE_TRADE_USD = 500000; // a single trade above this is "large" enough to count
+  try {
+    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/trades?limit=200", { headers: UA, cache: "no-store" });
+    if (!r.ok) return null;
+    const raw = await r.json();
+    if (!Array.isArray(raw) || !raw.length) return null;
+    let buyUsd = 0, sellUsd = 0, txCount = 0;
+    const recent = [];
+    for (const t of raw) {
+      const price = parseFloat(t.price), size = parseFloat(t.size);
+      const usd = price * size;
+      if (!(usd >= LARGE_TRADE_USD)) continue;
+      // Coinbase's `side` is the taker's side: "buy" means a market buy
+      // order matched, real upward pressure; "sell" means a market sell,
+      // real downward pressure. Direct, not a proxy the way wallet
+      // movement was.
+      if (t.side === "buy") buyUsd += usd; else sellUsd += usd;
+      txCount++;
+      recent.push({ usd, side: t.side, when: new Date(t.time).getTime() });
+    }
+    if (txCount === 0) return null;
+    recent.sort((a, b) => b.when - a.when);
+    return {
+      toExchange: sellUsd, // kept the same field names the UI already reads, repurposed: sell-side pressure
+      fromExchange: buyUsd, // buy-side pressure
+      net: sellUsd - buyUsd,
+      txCount,
+      recent: recent.slice(0, 4).map((r) => ({ dir: r.side === "sell" ? "to_exchange" : "from_exchange", when: r.when })),
+    };
+  } catch {
+    return null;
+  }
 }

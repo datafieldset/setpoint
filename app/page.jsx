@@ -1124,29 +1124,28 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
           {netFlow ? (() => {
             const total = netFlow.toExchange + netFlow.fromExchange;
-            const netDir = netFlow.net > 0 ? "in" : "out";
+            const netDir = netFlow.net > 0 ? "sell" : "buy"; // net = sellUsd - buyUsd
             const netPct = total > 0 ? Math.round((Math.abs(netFlow.net) / total) * 100) : 0;
             return (
               <div className={`netflow-panel ${netDir}`}>
-                <div className="netflow-head">Whale net flow <span className="netflow-tag">{netFlow.txCount} large moves tracked</span></div>
+                <div className="netflow-head">Large trade flow <span className="netflow-tag">{netFlow.txCount} large trades tracked</span></div>
                 <div className="netflow-row">
-                  <span className="netflow-dir">{netDir === "in" ? "▲ net onto exchanges" : "▼ net off exchanges"}</span>
+                  <span className="netflow-dir">{netDir === "buy" ? "▲ net buying" : "▼ net selling"}</span>
                   <span className="netflow-amt mono">{fmtVol(Math.abs(netFlow.net))} ({netPct}%)</span>
                 </div>
                 {netFlow.recent && netFlow.recent[0]?.when && (
                   <div className="netflow-ts">Most recent: {new Date(netFlow.recent[0].when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
                 )}
-                <div className="netflow-note">{netDir === "in" ? "Real observations so far have leaned bullish after inflow, likely capital moving in to deploy, not to sell." : "Real observations so far have leaned bearish after outflow, likely a real exit, not accumulation."} Pooled across everything Whale Alert posted, not just your watchlist, so this stays current even when one coin goes quiet.</div>
+                <div className="netflow-note">Real, unusually large individual trades on Coinbase (BTC, $500k+), net buy vs. sell pressure from the taker side. Direct buy/sell pressure, not a proxy, more buying pushes price up, more selling pushes it down.</div>
               </div>
             );
           })() : (
             // Used to just silently disappear when there's nothing to
-            // show, easy to mistake for a real bug instead of the source
-            // (a Telegram scrape, no official API) genuinely having
-            // nothing new to report right now. Says so plainly instead.
-            <div className="netflow-panel out">
-              <div className="netflow-head">Whale net flow</div>
-              <div className="netflow-note">No large transfers detected right now. This reads from a free Telegram scrape, not an official API, so it can go quiet for stretches, or genuinely break, without much warning. If this stays empty for more than a day or two, it's likely broken rather than just quiet.</div>
+            // show, easy to mistake for a real bug instead of genuinely
+            // having nothing large enough to report right now.
+            <div className="netflow-panel sell">
+              <div className="netflow-head">Large trade flow</div>
+              <div className="netflow-note">No unusually large trades detected right now. This reads directly from Coinbase's own trade feed, the same source every signal on this dashboard already depends on.</div>
             </div>
           )}
         </aside>
@@ -1599,14 +1598,14 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .coin-note{margin-bottom:14px;padding-bottom:14px;border-bottom:1px solid var(--hair)}
 .cn-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:9px}
 .netflow-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
-.netflow-panel.in{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
-.netflow-panel.out{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
+.netflow-panel.buy{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.netflow-panel.sell{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
 .netflow-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
 .netflow-tag{text-transform:none;letter-spacing:0;font-style:italic;font-weight:400}
 .netflow-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .netflow-dir{font-size:12px;font-weight:700}
-.netflow-panel.in .netflow-dir{color:var(--green)}
-.netflow-panel.out .netflow-dir{color:var(--red-soft)}
+.netflow-panel.buy .netflow-dir{color:var(--green)}
+.netflow-panel.sell .netflow-dir{color:var(--red-soft)}
 .netflow-amt{font-size:13px;font-weight:700}
 .netflow-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
 .netflow-ts{color:var(--dim);font-size:10px;margin-top:4px;font-family:monospace}

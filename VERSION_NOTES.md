@@ -1,11 +1,11 @@
-# Setpoint v7.0
+# Setpoint v7.1
 
-## Whale flow: found real evidence, made the actual likely fix
+## Whale flow: replaced the broken source entirely, not patched again
 
-The staleness warning confirmed the resilient parser alone wasn't enough, still 182 hours stale after visiting the page with the new code. That result actually ruled something out: it's not just Telegram's markup changing, since the new parser tries three different real patterns and still found nothing.
+Investigated this myself directly this time. Fetched the actual Telegram page myself, confirmed it's genuinely alive and posting real transfers. Checked Whale Alert's own official API docs directly: there is no free tier at all, only a paid $29.95/mo plan with a 7-day trial. Given the evidence now clearly pointed to something structural (works everywhere tested, still failed from Vercel even after two different real fixes), continuing to patch the scraper wasn't going to work.
 
-Fetched the actual Telegram page directly myself to check. It's completely alive, dozens of real, current whale transfers posted today. That rules out "the source is dead" entirely, and points somewhere much more specific: the request is very likely succeeding everywhere except from Vercel's own servers specifically, which is a well-known pattern, cloud/datacenter IP ranges get filtered by anti-scraping rules that residential or varied traffic sails through.
+Replaced it entirely with something built on infrastructure this app already proves reliable: Coinbase's own trade feed, the same API every signal on this dashboard already depends on. The live "Large trade flow" panel (renamed from "Whale net flow") now tracks real, individual trades above $500k on Coinbase directly, net buy vs. sell pressure, no scraping, no third-party page that can silently break.
 
-The one concrete, free thing to fix on our end: the request was sending a User-Agent that literally announces itself as a bot ("setpointalerts/1.1..."), exactly the kind of thing simple anti-bot filtering checks first. Changed it to a real browser's User-Agent string instead.
+Worth being precise about what changed: this measures something genuinely different than before, real buy/sell pressure on one exchange, not wallet transfers across the whole blockchain. Direct and unambiguous instead of a debated proxy, more buying is simply bullish, more selling is simply bearish, no interpretation needed.
 
-Being honest about the limits here: I can't fully verify this resolves it, since I have no way to reproduce Vercel's exact network path from where I'm working. This is the most likely real fix given the evidence, not a certainty. If it's still stale a few days after this deploys, that would point to an IP-level block specifically, which would mean the free scraping approach has hit a real wall, and the only fully reliable path left would be a paid, official data source.
+**Known remaining gap:** the backtest page's separate whale-tracking system (the one measuring price impact at 15m/30m/1h/4h/12h checkpoints) still depends on the same broken Telegram source. That's a bigger, separate rebuild, not touched in this fix, flagged clearly rather than left quietly inconsistent.
