@@ -38,7 +38,6 @@
 export const dynamic = "force-dynamic";
 
 const HEADERS = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" };
-const LARGE_TRADE_USD = 500000;
 const CHECKPOINTS = [
   { key: "15m", ms: 15 * 60 * 1000, bars: 1 },
   { key: "30m", ms: 30 * 60 * 1000, bars: 2 },
@@ -47,23 +46,38 @@ const CHECKPOINTS = [
   { key: "12h", ms: 12 * 60 * 60 * 1000, bars: 48 },
 ];
 
+// Coinbase's actual /trades endpoint requires authentication (an API key
+// and signed request), confirmed directly from their own docs, this was
+// the real bug the whole time, not caching, not Vercel, not Telegram. A
+// silent try/catch meant every single request failed with an auth error
+// and returned nothing, forever, no matter what else got fixed around it.
+// This reads 1-minute BTC candles instead, the exact same public,
+// unauthenticated endpoint (granularity=60) already proven working
+// elsewhere in this app for the ambiguous-bar resolution. A bar with
+// unusually high volume compared to its own recent average stands in for
+// a real burst of large trading activity, direction read from whether
+// that bar closed up (net buying) or down (net selling).
 async function getWhaleTransfers() {
   try {
-    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/trades?limit=300", { headers: HEADERS, cache: "no-store" });
+    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", { headers: HEADERS, cache: "no-store" });
     if (!r.ok) return [];
     const raw = await r.json();
-    if (!Array.isArray(raw)) return [];
+    if (!Array.isArray(raw) || raw.length < 30) return [];
+    const candles = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volume: x[5] }));
     const out = [];
-    for (const t of raw) {
-      const price = parseFloat(t.price), size = parseFloat(t.size);
-      const usd = price * size;
-      if (!(usd >= LARGE_TRADE_USD)) continue;
+    for (let i = 20; i < candles.length; i++) {
+      const window = candles.slice(Math.max(0, i - 20), i);
+      const avgVol = window.reduce((s, c) => s + c.volume, 0) / window.length;
+      const c = candles[i];
+      if (avgVol <= 0 || c.volume < avgVol * 4) continue; // needs to be a real burst, not just typical noise
+      const avgPrice = (c.high + c.low) / 2;
+      const usd = c.volume * avgPrice;
       out.push({
         asset: "BTC",
         usd,
-        dir: t.side === "sell" ? "to_exchange" : "from_exchange",
-        when: new Date(t.time).getTime(),
-        link: `coinbase-trade-${t.trade_id}`,
+        dir: c.close >= c.open ? "from_exchange" : "to_exchange",
+        when: c.time,
+        link: `coinbase-candle-${c.time}`,
       });
     }
     return out;

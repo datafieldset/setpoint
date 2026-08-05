@@ -234,31 +234,41 @@ export async function GET(req) {
 }
 
 async function getLargeTradeFlow() {
-  const LARGE_TRADE_USD = 500000; // a single trade above this is "large" enough to count
+  // Coinbase's actual /trades endpoint requires authentication, confirmed
+  // directly from their own docs, this was the real bug this whole time,
+  // not caching, not Vercel. Every request here was silently failing on
+  // an auth error and returning null, meaning this panel was quietly
+  // showing its empty state the entire time since it was first built,
+  // never actually working. Switched to 1-minute candles instead, the
+  // same public, unauthenticated endpoint already proven working
+  // elsewhere in this app. An unusually high-volume bar compared to its
+  // own recent average stands in for a real burst of large trading
+  // activity, direction read from whether that bar closed up or down.
   try {
-    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/trades?limit=200", { headers: UA, cache: "no-store" });
+    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", { headers: UA, cache: "no-store" });
     if (!r.ok) return null;
     const raw = await r.json();
-    if (!Array.isArray(raw) || !raw.length) return null;
+    if (!Array.isArray(raw) || raw.length < 30) return null;
+    const candles = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volume: x[5] }));
     let buyUsd = 0, sellUsd = 0, txCount = 0;
     const recent = [];
-    for (const t of raw) {
-      const price = parseFloat(t.price), size = parseFloat(t.size);
-      const usd = price * size;
-      if (!(usd >= LARGE_TRADE_USD)) continue;
-      // Coinbase's `side` is the taker's side: "buy" means a market buy
-      // order matched, real upward pressure; "sell" means a market sell,
-      // real downward pressure. Direct, not a proxy the way wallet
-      // movement was.
-      if (t.side === "buy") buyUsd += usd; else sellUsd += usd;
+    for (let i = 20; i < candles.length; i++) {
+      const window = candles.slice(Math.max(0, i - 20), i);
+      const avgVol = window.reduce((s, c) => s + c.volume, 0) / window.length;
+      const c = candles[i];
+      if (avgVol <= 0 || c.volume < avgVol * 4) continue;
+      const avgPrice = (c.high + c.low) / 2;
+      const usd = c.volume * avgPrice;
+      const side = c.close >= c.open ? "buy" : "sell";
+      if (side === "buy") buyUsd += usd; else sellUsd += usd;
       txCount++;
-      recent.push({ usd, side: t.side, when: new Date(t.time).getTime() });
+      recent.push({ usd, side, when: c.time });
     }
     if (txCount === 0) return null;
     recent.sort((a, b) => b.when - a.when);
     return {
-      toExchange: sellUsd, // kept the same field names the UI already reads, repurposed: sell-side pressure
-      fromExchange: buyUsd, // buy-side pressure
+      toExchange: sellUsd,
+      fromExchange: buyUsd,
       net: sellUsd - buyUsd,
       txCount,
       recent: recent.slice(0, 4).map((r) => ({ dir: r.side === "sell" ? "to_exchange" : "from_exchange", when: r.when })),

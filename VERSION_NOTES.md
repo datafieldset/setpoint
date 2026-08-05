@@ -1,7 +1,11 @@
-# Setpoint v7.3
+# Setpoint v7.4
 
-## Fixed a real leftover: the warning text still blamed Telegram
+## The actual root cause, confirmed from Coinbase's own documentation
 
-Found and fixed one genuine bug: after replacing the whale data source with Coinbase in v7.2, the staleness warning message itself was never updated, it was still hardcoded to say "a Telegram scrape, no official API," which is exactly why every report kept sounding like nothing had changed even though the actual source had. That's fixed now, on both the backtest page and the download report.
+Found it for real this time. The exact endpoint used in v7.1 and v7.2, /products/BTC-USD/trades, requires authentication, an API key and a signed request, confirmed directly from Coinbase's own docs. It was called with none. Every single request has been silently failing on an auth error and returning nothing, this whole time, on both the live dashboard panel and the backtest page's tracker. That's the entire reason nothing ever changed no matter what else got fixed around it, not caching, not Vercel, not Telegram.
 
-That explains why the wording looked identical. It doesn't explain why the exact same timestamp, to the second, has shown up across four separate rounds now. I checked every layer that could cause that on my end, fetch caching, database query caching, the page's own HTTP response headers, all three are correctly set to never cache, all three were already the exact category of bug fixed once before today elsewhere in this app, and none of them are the issue here. That specific pattern, the identical frozen second, points to something in how the page is being viewed, not what's actually deployed.
+Replaced it with something genuinely public and already proven working: 1-minute BTC candles, no authentication needed, no new signup, no new key. An unusually high-volume 1-minute bar compared to its own recent average stands in for a real burst of large trading activity, direction read from whether that bar closed up or down.
+
+Tested the actual detection logic directly with realistic synthetic candle data before shipping, confirmed it correctly flags real bursts and correctly ignores normal activity.
+
+Being straight about this: v7.1's fix never actually worked either, same underlying bug, it just failed quietly enough to look like nothing was wrong instead of crashing.
