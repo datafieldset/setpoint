@@ -395,7 +395,7 @@ async function fetchWhaleSection() {
     const lastAt = new Date(rows[0].fired_at).getTime();
     const hoursSince = Math.floor((Date.now() - lastAt) / 3600000);
     if (hoursSince > 48) {
-      lines.push(`⚠ **Stale: nothing new logged in ${hoursSince} hours.** The source this reads from (a Telegram scrape, no official API) may have broken again.`);
+      lines.push(`⚠ **Stale: nothing new logged in ${hoursSince} hours.**`);
       lines.push("");
     }
 
