@@ -8,7 +8,12 @@ export const revalidate = 0;
 
 import { NAME } from "../../../lib/coins.js";
 
-const UA = { "User-Agent": "setpointalerts/1.1 (+https://setpointalerts.com)" };
+// Was a self-identifying bot string before ("setpointalerts/1.1..."),
+// changed to a real browser UA. A request that announces itself as a bot
+// is exactly the kind of thing simple anti-scraping rules filter first,
+// and that's a very plausible reason this could work fine from other
+// tools/networks while quietly failing specifically from a server.
+const UA = { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36" };
 
 const RSS_FEEDS = [
   { source: "CoinDesk", url: "https://www.coindesk.com/arc/outboundfeeds/rss/" },

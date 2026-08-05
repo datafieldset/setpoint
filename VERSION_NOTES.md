@@ -1,15 +1,11 @@
-# Setpoint v6.9
+# Setpoint v7.0
 
-## RSI overbought: volume gate on 30m, full removal on 15m and 1h
+## Whale flow: found real evidence, made the actual likely fix
 
-Aug 5's backtest showed the 64% winner on 30m was being dragged down by one specific condition, volume showing as "confirmed" only hit 30%, while every other volume state was 75-100%. Gated that one condition out on 30m, real number underneath should be closer to 75-80%.
+The staleness warning confirmed the resilient parser alone wasn't enough, still 182 hours stale after visiting the page with the new code. That result actually ruled something out: it's not just Telegram's markup changing, since the new parser tries three different real patterns and still found nothing.
 
-15m and 1h removed from live firing entirely, both consistently weak (33-35%) with no condition split that redeems either one. 5m untouched, already removed in v5.4. Tested all 6 real cases directly before shipping.
+Fetched the actual Telegram page directly myself to check. It's completely alive, dozens of real, current whale transfers posted today. That rules out "the source is dead" entirely, and points somewhere much more specific: the request is very likely succeeding everywhere except from Vercel's own servers specifically, which is a well-known pattern, cloud/datacenter IP ranges get filtered by anti-scraping rules that residential or varied traffic sails through.
 
-## Whale flow: made the scrape resilient, and made staleness impossible to miss
+The one concrete, free thing to fix on our end: the request was sending a User-Agent that literally announces itself as a bot ("setpointalerts/1.1..."), exactly the kind of thing simple anti-bot filtering checks first. Changed it to a real browser's User-Agent string instead.
 
-Real fix instead of a diagnostic: the parser used to depend on matching one exact string in Telegram's page markup, if that string ever changed, everything broke completely and silently, which is exactly what happened, both the live panel and the backtest tracking went a full week without a single new transfer, unnoticed. Now tries three real, known patterns from Telegram's own public widget markup in order, the first one that actually finds real messages wins, instead of depending on one string staying exactly the same forever.
-
-Also fixed the actual "empty fields" you saw directly: when there's no whale data, the panel used to just silently vanish, easy to mistake for a bug. Now it always shows something, either the real data, or a plain explanation that nothing's come through right now. And both the live panel and the backtest page now automatically flag it in red if nothing new has come in for more than 48 hours, no button to press, no test to run, it just says so.
-
-No new signups, no new services, no testing required, this is a durable fix to the actual mechanism, not another diagnostic asking for a click.
+Being honest about the limits here: I can't fully verify this resolves it, since I have no way to reproduce Vercel's exact network path from where I'm working. This is the most likely real fix given the evidence, not a certainty. If it's still stale a few days after this deploys, that would point to an IP-level block specifically, which would mean the free scraping approach has hit a real wall, and the only fully reliable path left would be a paid, official data source.
