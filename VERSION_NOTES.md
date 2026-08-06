@@ -1,5 +1,7 @@
-# Setpoint v7.5
+# Setpoint v7.6
 
-## The "n=" notation replaced with plain English
+## Password rotated
 
-That wasn't a rendering bug, "n=3" is genuine statistics shorthand (n = sample size) that reads as unclear symbols to anyone without a stats background. Replaced with plain wording everywhere it showed up on the whale flow table: "33% up (3 resolved)" instead of "33% up (n=3)", and just "2 resolved" instead of "n=2" for the ones still too small to show a real rate.
+The internal access password (protecting the backtest research pages, close-alert, and open-positions) is rotated to a new value. Updated everywhere it appeared: the shared access check (lib/access.js), both client-side fetch calls that use it (app/page.jsx), and the GitHub Actions cron workflow file. Verified no trace of the old password remains anywhere in the repo before pushing.
+
+Pushed directly this time, first real use of direct push access instead of a zip handoff.
