@@ -6,8 +6,8 @@ import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES } from "../lib/signals.js";
 
 /* =========================================================================
-   SETPOINT ALERTS — crypto alert terminal
-   Alerts-only. Live price signals + entry/exit ladders.
+   SETPOINT — crypto market terminal
+   Live price signals + entry/exit ladders.
    Data: Coinbase (no key). Not financial advice.
    ========================================================================= */
 
@@ -136,7 +136,7 @@ function Landing({ onPickPlan, onSignIn }) {
   return (
     <div className="landing">
       <nav className="nav">
-        <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+        <div className="brand"><span className="logo-dot" />Setpoint</div>
         <div className="nav-r">
           <button className="ghost" onClick={onSignIn}>Sign in</button>
           <button className="solid" onClick={() => onPickPlan("watch")}>Get started</button>
@@ -147,7 +147,7 @@ function Landing({ onPickPlan, onSignIn }) {
 
       <header className="hero">
         <div className="hero-l">
-          <div className="eyebrow">ALERTS, NOT AUTOPILOT</div>
+          <div className="eyebrow">SIGNALS, NOT AUTOPILOT</div>
           <h1>See the alert, the price, and where to get in, <em>all on one card.</em></h1>
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
@@ -208,7 +208,7 @@ function Landing({ onPickPlan, onSignIn }) {
       </section>
 
       <footer className="foot">
-        <div className="brand sm"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+        <div className="brand sm"><span className="logo-dot" />Setpoint</div>
         <div className="disc">Setpoint sends informational alerts only. It is not a broker, does not execute trades, and does not provide financial advice. Levels shown are computed reference points, not recommendations. Crypto is volatile, so do your own research.</div>
       </footer>
     </div>
@@ -274,7 +274,7 @@ function Auth({ mode, plan, onBack }) {
     <div className="auth-wrap">
       <button className="auth-back" onClick={onBack}>← back</button>
       <div className="auth-card">
-        <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+        <div className="brand"><span className="logo-dot" />Setpoint</div>
         <h3>{mode === "signin" ? "Welcome back" : "Create your account"}</h3>
         {mode !== "signin" && <div className="plan-chip">{planName}</div>}
         <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" autoComplete="email" /></label>
@@ -821,7 +821,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return (
       <div className="dash">
         <div className="topbar">
-          <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+          <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
         <Guide onBack={() => setShowGuide(false)} />
       </div>
@@ -832,7 +832,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return (
       <div className="dash">
         <div className="topbar">
-          <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+          <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
         <AdminPanel onBack={() => setShowAdminPanel(false)} />
       </div>
@@ -842,7 +842,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   return (
     <div className="dash">
       <div className="topbar">
-        <div className="brand"><span className="logo-dot" />Setpoint<span className="brand-tag">ALERTS</span></div>
+        <div className="brand"><span className="logo-dot" />Setpoint</div>
         <div className="tf-toggle">
           {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
         </div>
@@ -1550,7 +1550,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .oc-vol{font-size:12px;color:var(--muted);text-align:right;min-width:56px}
 .oc-foot{color:var(--dim);font-size:11px;line-height:1.55;margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
 
-.brand-tag{color:var(--red);font-family:'JetBrains Mono',monospace;font-size:.5em;font-weight:700;letter-spacing:.14em;margin-left:6px;vertical-align:top;position:relative;top:.15em}
 
 .ai-take{margin-top:12px;padding-top:12px;border-top:1px solid var(--hair)}
 .ai-btn{width:100%;background:var(--panel3);border:1px solid var(--border);color:var(--text);font-size:12.5px;font-weight:600;padding:9px;border-radius:9px;transition:border-color .15s,background .15s}

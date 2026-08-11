@@ -1,8 +1,8 @@
 import Providers from "./providers.jsx";
 
 export const metadata = {
-  title: "Setpoint Alerts",
-  description: "Crypto alert terminal. See the alert, the price, and the levels on one card.",
+  title: "Setpoint",
+  description: "Crypto market data and signals, verified against real price history.",
 };
 
 export const viewport = {
