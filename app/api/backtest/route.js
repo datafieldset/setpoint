@@ -340,6 +340,62 @@ async function getWhaleDirectionStats() {
 // kept clearly labeled apart everywhere they're shown, since confusing a
 // real outcome for a simulated one would be a real mistake to make.
 const ROLLING_N = 20;
+// Recent-vs-all-time drift check. Two numbers for every signal that's
+// ever resolved a trade: the full, all-time win rate (the honest,
+// stable long-run record), and a recent window (last 20 resolved trades)
+// that reacts faster to whatever's happening lately. Neither number is
+// "the" answer on its own — a signal is genuinely reliable when the two
+// stay close together over time, and it's worth a real look together
+// when they drift apart, which is exactly what this flags. Internal
+// only, never shown to a customer, that's the whole point: customers get
+// one honest, stable number, we get to see underneath it.
+const RECENT_WINDOW = 20;
+const DRIFT_THRESHOLD = 0.15; // 15 points apart is flagged as worth reviewing together
+
+async function getSignalDrift() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return [];
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+    const rows = await sql`
+      SELECT label, tf, dir, outcome, fired_at
+      FROM signal_track
+      WHERE outcome IN ('win', 'loss')
+      ORDER BY label, tf, dir, fired_at DESC
+    `;
+    const groups = new Map();
+    for (const r of rows) {
+      const key = `${r.label}|${r.tf}|${r.dir}`;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(r.outcome);
+    }
+    const out = [];
+    for (const [key, outcomes] of groups) {
+      const [label, tf, dir] = key.split("|");
+      const allTimeN = outcomes.length;
+      const allTimeWins = outcomes.filter((o) => o === "win").length;
+      const allTimeRate = allTimeWins / allTimeN;
+      const recentSlice = outcomes.slice(0, RECENT_WINDOW); // already ordered newest-first
+      const recentN = recentSlice.length;
+      const recentWins = recentSlice.filter((o) => o === "win").length;
+      const recentRate = recentN > 0 ? recentWins / recentN : null;
+      const drift = recentRate != null ? Math.abs(recentRate - allTimeRate) : null;
+      out.push({
+        key: `${label} · ${tf} · ${dir}`,
+        allTimeN, allTimeRate,
+        recentN, recentRate,
+        drift,
+        flagged: drift != null && drift >= DRIFT_THRESHOLD && allTimeN >= 5,
+      });
+    }
+    return out.sort((a, b) => (b.flagged - a.flagged) || (b.allTimeN - a.allTimeN));
+  } catch {
+    return [];
+  }
+}
+
+
 async function getLiveScoreboard() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return { buckets: [], totalTracked: 0, totalOpen: 0, resolveInfo: { checked: 0, resolved: 0, errors: [] } };
@@ -421,7 +477,7 @@ async function getLiveScoreboard() {
   }
 }
 
-function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, live, whale }) {
+function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, live, whale, drift }) {
   const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));
   // Three tiers, not just winners/losers: 58%+ is the real proven bar.
   // 48-57% is a real middle zone worth attention, consistently close but
@@ -550,6 +606,8 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
     .up{color:var(--green)}.down{color:var(--red)}
     .note{color:var(--dim);font-size:12px;line-height:1.6;margin-top:26px;padding-top:16px;border-top:1px solid var(--border)}
     .err{color:var(--amber);font-size:12px;margin-bottom:14px}
+    .drift-flag{background:rgba(245,184,81,.1)}
+    .drift-flag td:first-child{color:var(--amber);font-weight:600}
     td.bull{color:var(--green);font-weight:600}
     td.bear{color:var(--red);font-weight:600}
     .empty{color:var(--dim);font-size:12.5px}
@@ -599,6 +657,19 @@ function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consist
       ${whaleRows
         ? `<table><thead><tr><th>Direction</th><th>+15m</th><th>+30m</th><th>+1h</th><th>+4h</th><th>+12h</th></tr></thead><tbody>${whaleRows}</tbody></table>`
         : `<div class="empty">Not enough logged transfers yet. Fills in as Whale Alert posts large transfers and this page (or the download) gets visited.</div>`}
+    </div>
+
+    <div class="panel live-edge">
+      <div class="panel-head"><h2>Signal drift</h2><span class="tag live"><span class="pulse"></span>Internal only</span></div>
+      <div class="desc">All-time is the full, honest track record, stable, large sample. Recent is just the last ${RECENT_WINDOW} resolved trades, reacts faster. When they stay close, that's a signal actually behaving predictably. When they drift ${Math.round(DRIFT_THRESHOLD * 100)}pts or more apart, flagged below, that's worth a real look together, not an automatic change either direction. Never shown to customers, internal only.</div>
+      ${drift && drift.length
+        ? `<table><thead><tr><th>Signal</th><th>All-time</th><th>Recent (${RECENT_WINDOW})</th><th>Drift</th></tr></thead><tbody>${drift.map((d) => `<tr class="${d.flagged ? "drift-flag" : ""}">
+            <td>${d.flagged ? "⚠ " : ""}${d.key}</td>
+            <td>${Math.round(d.allTimeRate * 100)}% (${d.allTimeN})</td>
+            <td>${d.recentRate != null ? `${Math.round(d.recentRate * 100)}% (${d.recentN})` : "—"}</td>
+            <td>${d.drift != null ? `${Math.round(d.drift * 100)}pt` : "—"}</td>
+          </tr>`).join("")}</tbody></table>`
+        : `<div class="empty">Not enough resolved trades yet to compare.</div>`}
     </div>
   </div>
 
@@ -684,8 +755,9 @@ export async function GET(req) {
   const consistency = await getConsistencyRanking();
   const live = await getLiveScoreboard();
   const whale = await getWhaleDirectionStats();
+  const drift = await getSignalDrift();
 
-  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, live, whale });
+  const html = renderHtml({ buckets, runAt, dbInfo, errors, totalFired: allRows.length, turns: allTurns, consistency, live, whale, drift });
   return new Response(html, {
     headers: {
       "content-type": "text/html; charset=utf-8",
