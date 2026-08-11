@@ -152,6 +152,7 @@ function Landing({ onPickPlan, onSignIn }) {
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
             <button className="solid lg" onClick={() => onPickPlan("watch")}>Start free, no card needed</button>
+            <a className="ghost lg" href="/watch">Watch it live</a>
           </div>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
         </div>
