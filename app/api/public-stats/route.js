@@ -5,19 +5,29 @@
 // page is "don't take our word for it," which only means something if
 // anyone can check it without an account.
 //
-// Returns every resolved trade, wins and losses both, real percentages
-// only, computed fresh from signal_track every time. Deliberately not
-// filtered to only currently-verified signal types, hiding the ones that
-// didn't work would be exactly the kind of thing this page exists to
-// not do.
+// The headline number is the real, live win rate across setups that are
+// actually verified (58%+, same bar used everywhere else in this app),
+// since that's the honest answer to "how good is Setpoint," not a number
+// blended together with setups still being tested that were never
+// promoted to customers in the first place. The feed below still shows
+// every resolved trade, verified and testing both, wins and losses both,
+// nothing hidden, each one tagged so it's clear which is which. Real
+// transparency means showing everything, it doesn't mean pretending two
+// different things are the same thing.
 import { brandName } from "../../../lib/brand.js";
+import { SIGNAL_RATES, PROVEN_THRESHOLD } from "../../../lib/signals.js";
 
 export const dynamic = "force-dynamic";
+
+function isVerified(label, tf, dir) {
+  const entry = SIGNAL_RATES[`${label}|${tf}|${dir}`];
+  return entry?.rate != null && entry.rate >= PROVEN_THRESHOLD;
+}
 
 export async function GET() {
   const conn = process.env.DATABASE_URL;
   if (!conn) {
-    return Response.json({ totalResolved: 0, wins: 0, losses: 0, winRate: null, recent: [] }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, testingTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
   }
   try {
     const { neon } = await import("@neondatabase/serverless");
@@ -27,33 +37,35 @@ export async function GET() {
       FROM signal_track
       WHERE outcome IN ('win', 'loss')
       ORDER BY resolved_at DESC
-      LIMIT 50
     `;
-    // Totals computed from the full table, not just the 50 shown, the
-    // headline number should reflect everything, not just the recent feed.
-    const totals = await sql`
-      SELECT outcome, COUNT(*)::int AS n
-      FROM signal_track
-      WHERE outcome IN ('win', 'loss')
-      GROUP BY outcome
-    `;
-    const wins = totals.find((t) => t.outcome === "win")?.n || 0;
-    const losses = totals.find((t) => t.outcome === "loss")?.n || 0;
-    const totalResolved = wins + losses;
-    const winRate = totalResolved > 0 ? wins / totalResolved : null;
 
-    const recent = rows.map((r) => ({
-      coin: r.coin,
-      tf: r.tf,
-      name: brandName(r.label),
-      dir: r.dir,
-      outcome: r.outcome,
-      firedAt: r.fired_at,
-      resolvedAt: r.resolved_at,
-    }));
+    let verifiedWins = 0, verifiedLosses = 0, testingWins = 0, testingLosses = 0;
+    const tagged = rows.map((r) => {
+      const verified = isVerified(r.label, r.tf, r.dir);
+      if (verified) { r.outcome === "win" ? verifiedWins++ : verifiedLosses++; }
+      else { r.outcome === "win" ? testingWins++ : testingLosses++; }
+      return {
+        coin: r.coin,
+        tf: r.tf,
+        name: brandName(r.label),
+        dir: r.dir,
+        outcome: r.outcome,
+        verified,
+        resolvedAt: r.resolved_at,
+      };
+    });
 
-    return Response.json({ totalResolved, wins, losses, winRate, recent }, { headers: { "cache-control": "no-store" } });
+    const verifiedTotal = verifiedWins + verifiedLosses;
+    const testingTotal = testingWins + testingLosses;
+    const verifiedWinRate = verifiedTotal > 0 ? verifiedWins / verifiedTotal : null;
+    const testingWinRate = testingTotal > 0 ? testingWins / testingTotal : null;
+
+    return Response.json({
+      verifiedWinRate, verifiedTotal, verifiedWins, verifiedLosses,
+      testingWinRate, testingTotal,
+      recent: tagged.slice(0, 50),
+    }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
-    return Response.json({ totalResolved: 0, wins: 0, losses: 0, winRate: null, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, testingTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
   }
 }

@@ -138,6 +138,7 @@ function Landing({ onPickPlan, onSignIn }) {
       <nav className="nav">
         <div className="brand"><span className="logo-dot" />Setpoint</div>
         <div className="nav-r">
+          <a className="watch-live-link" href="/watch"><span className="live-dot" />Watch it live</a>
           <button className="ghost" onClick={onSignIn}>Sign in</button>
           <button className="solid" onClick={() => onPickPlan("watch")}>Get started</button>
         </div>
@@ -152,7 +153,7 @@ function Landing({ onPickPlan, onSignIn }) {
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
             <button className="solid lg" onClick={() => onPickPlan("watch")}>Start free, no card needed</button>
-            <a className="ghost lg" href="/watch">Watch it live</a>
+            <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live</a>
           </div>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
         </div>
@@ -1279,6 +1280,11 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .ghost{background:transparent;color:var(--text);border:1px solid var(--border);border-radius:9px;padding:9px 16px;font-size:14px;transition:border-color .15s,background .15s}
 .ghost:hover{border-color:var(--green);background:var(--green-dim)}
 .ghost.lg{padding:13px 22px;font-size:15px}
+.watch-live-link{display:inline-flex;align-items:center;gap:8px;color:var(--green-soft);border:1px solid rgba(0,209,121,.35);background:rgba(0,209,121,.08);border-radius:9px;padding:9px 16px;font-size:14px;font-weight:600;text-decoration:none;transition:background .15s,border-color .15s}
+.watch-live-link:hover{background:rgba(0,209,121,.16);border-color:rgba(0,209,121,.55)}
+.watch-live-link.lg{padding:13px 22px;font-size:15px}
+.live-dot{width:7px;height:7px;border-radius:50%;background:var(--green);flex-shrink:0;animation:live-pulse 1.6s ease-in-out infinite}
+@keyframes live-pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(0,209,121,.5)}50%{opacity:.6;box-shadow:0 0 0 4px rgba(0,209,121,0)}}
 .ghost.full{width:100%}
 .ghost.sm{padding:6px 11px;font-size:12.5px}
 :focus-visible{outline:2px solid var(--green);outline-offset:2px}
