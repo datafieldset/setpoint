@@ -135,7 +135,7 @@ const CSS = `
   .dot.loss{background:var(--red)}
   .watch-legend-total{font-size:12px;color:var(--dim);max-width:240px;margin-top:4px}
   .watch-feed-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 22px;margin-bottom:12px}
-  .watch-scroll{padding:0 22px;max-height:640px;overflow-y:auto;border-radius:12px}
+  .watch-scroll{padding:0 22px;max-height:400px;overflow-y:auto;border-radius:12px}
   .watch-scroll::-webkit-scrollbar{width:8px}
   .watch-scroll::-webkit-scrollbar-track{background:transparent}
   .watch-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
