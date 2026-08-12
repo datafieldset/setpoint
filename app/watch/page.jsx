@@ -70,28 +70,36 @@ export default function WatchPage() {
           {data.recent.length === 0 ? (
             <div className="watch-empty">Nothing resolved yet. Check back soon.</div>
           ) : (
-            <div className="watch-grid">
-              {data.recent.map((t, i) => (
-                <div className={`watch-card ${t.outcome}`} key={i}>
-                  <div className="wc-top">
-                    <span className="wc-coin">{t.coin}</span>
-                    <span className="wc-name">{t.dir === "bull" ? "Buy" : "Sell"} {t.name}</span>
-                    <span className={`wc-outcome ${t.outcome}`}>{t.outcome === "win" ? "WIN" : "LOSS"}</span>
+            <div className="watch-scroll">
+              <div className="watch-grid">
+                {data.recent.map((t, i) => (
+                  <div className={`watch-card ${t.outcome}`} key={i}>
+                    <div className="wc-top">
+                      <span className="wc-coin">{t.coin}</span>
+                      <span className="wc-name">{t.dir === "bull" ? "Buy" : "Sell"} {t.name}</span>
+                      <span className={`wc-outcome ${t.outcome}`}>{t.outcome === "win" ? "WIN" : "LOSS"}</span>
+                    </div>
+                    <div className="wc-levels">
+                      <div className="wc-level"><span className="wc-level-k">Entry</span><span className="wc-level-v mono">{fmtPrice(t.entry)}</span></div>
+                      <div className="wc-arrow">→</div>
+                      <div className="wc-level"><span className="wc-level-k">Exit</span><span className="wc-level-v mono">{fmtPrice(t.exit)}</span></div>
+                      <div className={`wc-pct ${t.outcome}`}>{t.pctMove >= 0 ? "+" : ""}{t.pctMove.toFixed(2)}%</div>
+                    </div>
+                    <div className="wc-times">
+                      <span>Fired {new Date(t.firedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                      <span>Resolved {new Date(t.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                    </div>
                   </div>
-                  <div className="wc-levels">
-                    <div className="wc-level"><span className="wc-level-k">Entry</span><span className="wc-level-v mono">{fmtPrice(t.entry)}</span></div>
-                    <div className="wc-arrow">→</div>
-                    <div className="wc-level"><span className="wc-level-k">Exit</span><span className="wc-level-v mono">{fmtPrice(t.exit)}</span></div>
-                    <div className={`wc-pct ${t.outcome}`}>{t.pctMove >= 0 ? "+" : ""}{t.pctMove.toFixed(2)}%</div>
-                  </div>
-                  <div className="wc-times">
-                    <span>Fired {new Date(t.firedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                    <span>Resolved {new Date(t.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                  </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           )}
+
+          <div className="watch-cta">
+            <h2>This is what verified actually means.</h2>
+            <p>Every trade above, real, resolved, checkable against your own chart. Get these on your own dashboard, live, the moment they fire.</p>
+            <a className="watch-cta-btn" href="/#pricing">Start free, no card needed</a>
+          </div>
         </>
       )}
 
@@ -127,7 +135,16 @@ const CSS = `
   .dot.loss{background:var(--red)}
   .watch-legend-total{font-size:12px;color:var(--dim);max-width:240px;margin-top:4px}
   .watch-feed-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 22px;margin-bottom:12px}
-  .watch-grid{padding:0 22px;display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+  .watch-scroll{padding:0 22px;max-height:640px;overflow-y:auto;border-radius:12px}
+  .watch-scroll::-webkit-scrollbar{width:8px}
+  .watch-scroll::-webkit-scrollbar-track{background:transparent}
+  .watch-scroll::-webkit-scrollbar-thumb{background:var(--border);border-radius:8px}
+  .watch-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px;padding-bottom:4px}
+  .watch-cta{margin:32px 22px 0;padding:28px 24px;background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--border);border-radius:16px;text-align:center}
+  .watch-cta h2{font-size:19px;margin:0 0 8px}
+  .watch-cta p{color:var(--muted);font-size:13.5px;margin:0 auto 18px;max-width:400px;line-height:1.5}
+  .watch-cta-btn{display:inline-block;background:var(--green);color:#03110B;font-weight:700;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none}
+  .watch-cta-btn:hover{background:#00e884}
   .watch-card{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--dim);border-radius:12px;padding:14px}
   .watch-card.win{border-left-color:var(--green)}
   .watch-card.loss{border-left-color:var(--red)}

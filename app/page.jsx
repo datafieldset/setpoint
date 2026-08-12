@@ -192,7 +192,7 @@ function Landing({ onPickPlan, onSignIn }) {
         </div>
       </section>
 
-      <section className="pricing">
+      <section className="pricing" id="pricing">
         <h2>Pricing at launch</h2>
         <p className="pricing-sub">Cancel anytime. Setpoint only sends alerts. It never holds your funds or places a trade.</p>
         <div className="tiers">
