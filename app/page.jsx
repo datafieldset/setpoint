@@ -772,6 +772,25 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // though they're still quietly tracking to a real win or loss.
   const visibleOpenPositions = useMemo(() => openPositions.filter((p) => watchlist.includes(p.coin)), [openPositions, watchlist]);
 
+  // Market Meter (internal only, never shown to customers, no label on
+  // the badge itself). The volatility meter (per-coin, price-based) and
+  // the bias scale (whole-engine, outcome-based) run as two independent
+  // reads. This watches for the rare moment they agree: several coins
+  // showing real exhaustion at the same time the bias scale shows both
+  // longs and shorts genuinely struggling, together, not just one side
+  // ahead by a little. That combination is a stronger, more specific
+  // signal than either read alone, the same idea as the per-alert
+  // confluence flag, applied to the whole market instead of one trade.
+  const marketMeter = useMemo(() => {
+    if (!signalBias?.bothWeak) return null;
+    const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 15).length;
+    const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 85).length;
+    if (nearBottom >= 2) return { dir: "bottom", nearBottom, nearTop };
+    if (nearTop >= 2) return { dir: "top", nearBottom, nearTop };
+    return null;
+  }, [signalBias, data, watchlist]);
+
+
   const saveWatchlist = useCallback((list) => {
     fetch("/api/my-watchlist", {
       method: "POST",
@@ -858,6 +877,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <button className="admin-badge" onClick={() => setShowAdminPanel(true)}>
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
               </button>
+            )}
+            {account.isAdmin && marketMeter && (
+              <span className={`mm-badge ${marketMeter.dir}`} title={`Market Meter: ${marketMeter.nearBottom} coin(s) near bottom, ${marketMeter.nearTop} near top, both sides weak`}>◆</span>
             )}
             <span className="plan-badge">{{ watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "WATCH"}</span>
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
@@ -1411,6 +1433,10 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .acct{display:flex;align-items:center;gap:9px}
 .plan-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--green);background:var(--green-dim);border:1px solid var(--green);padding:4px 9px;border-radius:6px}
 .admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
+.mm-badge{font-size:14px;cursor:help;animation:live-pulse-mm 1.6s ease-in-out infinite}
+.mm-badge.bottom{color:var(--green)}
+.mm-badge.top{color:var(--red)}
+@keyframes live-pulse-mm{0%,100%{opacity:1}50%{opacity:.4}}
 
 .ticker{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0}
 .tk{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-width:180px;flex:1}
