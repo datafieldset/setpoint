@@ -4,6 +4,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES } from "../lib/signals.js";
+import { brandName } from "../lib/brand.js";
 
 /* =========================================================================
    SETPOINT — crypto market terminal
@@ -83,13 +84,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
       <div className="sig-top">
         <div className="sig-id">
           <span className="sym">{sym}</span>
-          <span className="sig-type">{s.label}</span>
+          <span className="sig-type">{s.dir === "bull" ? "Buy" : "Sell"} {brandName(s.label)} {Math.round((s.tierRate || 0) * 100)}%</span>
           {s.isConfluence && <span className="confluence-tag">⚡ extreme read</span>}
           {isOpenPosition && <span className="open-pos-tag">still in motion</span>}
-          {s.volTag && <span className={`vol-tag ${s.volTag}`}>{s.volTag === "confirmed" ? "vol confirmed" : s.volTag === "rising" ? "vol rising" : "light volume"}</span>}
-          {s.trendTag && <span className={`trend-tag ${s.trendTag}`}>{s.trendTag === "with" ? "with trend" : "against trend"}</span>}
-          {s.biasTag && <span className={`bias-tag ${s.biasTag}`}>{s.biasTag === "with" ? "with market" : "against market"}</span>}
-          {s.tier && <span className={`tier-tag ${s.tier}`}>{s.tier === "proven" ? `verified ${Math.round((s.tierRate || 0) * 100)}%` : `tested ${Math.round((s.tierRate || 0) * 100)}%`}</span>}
         </div>
         <DirBadge dir={s.dir} />
       </div>
@@ -127,9 +124,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 
 /* ============================== LANDING PAGE ============================= */
 function Landing({ onPickPlan, onSignIn }) {
-  const demoSig = { label: "Momentum", dir: "bull", strength: 0.72, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
+  const demoSig = { label: "Quiet accumulation", dir: "bull", strength: 0.72, tierRate: 0.80, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = [
-    { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · EMA cross"], cta: "Start free" },
+    { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · Breakout"], cta: "Start free" },
     { id: "trader", name: "Trader", price: "$19", per: "/mo", pop: true, feats: ["Up to 6 coins", "Everything in Watch", "Entry / stop / target on every alert", "Whale & exchange-flow signals", "Hourly digest"], cta: "Get Trader" },
     { id: "desk", name: "Pro", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Whale-flow alerts with size thresholds", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Pro" },
   ];
@@ -175,9 +172,9 @@ function Landing({ onPickPlan, onSignIn }) {
             ["Early pace", "Volume on the bar that is still forming already running hot for how far in we are, so you see it before the bar even closes."],
             ["Quiet accumulation", "Volume climbing while price holds flat, the kind of quiet build-up that often comes before a real move."],
             ["RSI stretch", "Overbought or oversold readings, on the timeframe you actually trade, weighed against whether volume actually backs it."],
-            ["EMA cross", "The 9 EMA crosses the 21 EMA. A slower signal that flags a possible trend change and fires rarely."],
-            ["Whale flow", "Large transfers moving to and from exchanges on your watchlist, the kind of on-chain activity a price chart never shows you."],
-            ["AI read", "An LLM weighs the signal against live headlines and tells you fade or breakout, not just a ping."]].map(([t, d]) => (
+            ["Breakout / Breakdown", "A market that was genuinely coiled tight just broke, real expansion after real compression, not a passive read."],
+            ["Whale flow", "Unusually large trading bursts on Coinbase, net buy vs. sell pressure, the kind of activity a price chart alone doesn't call out."],
+            ["AI read", "An LLM weighs the signal against live headlines and tells you what's actually driving it, not just a ping."]].map(([t, d]) => (
             <div className="feat-item" key={t}><div className="feat-h">{t}</div><div className="feat-d">{d}</div></div>
           ))}
         </div>
@@ -303,8 +300,8 @@ const GUIDE_DESC = {
   "RSI oversold": "Price dropped fast enough that it's statistically stretched, and stretched moves tend to snap back.",
   "RSI overbought": "Price climbed fast enough that it's statistically stretched, and stretched moves tend to snap back.",
   "Volume building early": "Volume is already unusually heavy before the current candle has even finished forming, an early heads-up.",
-  "EMA cross up": "A short-term average crossed above a longer-term one, an early signal of a shift toward an uptrend.",
-  "EMA cross down": "A short-term average crossed below a longer-term one, an early signal of a shift toward a downtrend.",
+  "Breakout": "The market was genuinely coiled tight and just broke into real upside expansion, not a passive read of the current regime.",
+  "Breakdown": "The market was genuinely coiled tight and just broke into real downside expansion, not a passive read of the current regime.",
   "Momentum": "Price moved a large amount in a single bar, a burst of one-sided pressure.",
 };
 
@@ -1498,20 +1495,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .sig-id{display:flex;align-items:center;gap:6px;flex-wrap:wrap;row-gap:4px}
 .sig-id .sym{font-family:'Bricolage Grotesque';font-weight:800;font-size:17px}
 .sig-type{font-size:12.5px;color:var(--muted);font-weight:500}
-.vol-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
-.vol-tag.confirmed{color:var(--green);background:var(--green-dim)}
-.vol-tag.rising{color:var(--green-soft);background:var(--green-dim)}
-.vol-tag.light{color:var(--amber);background:var(--amber-dim)}
-.trend-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
-.trend-tag.with{color:var(--green);background:var(--green-dim)}
-.trend-tag.against{color:var(--red);background:var(--red-dim)}
-.bias-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
-.bias-tag.with{color:var(--green-soft);background:var(--green-dim)}
-.bias-tag.against{color:var(--red-soft);background:var(--red-dim)}
 .open-pos-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;color:var(--amber);background:var(--amber-dim);border:1px solid rgba(245,184,81,.35)}
-.tier-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px}
-.tier-tag.proven{color:#03110B;background:var(--green)}
-.tier-tag.tested{color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.4)}
 .badge{font-size:10.5px;font-weight:700;letter-spacing:.06em;padding:4px 9px;border-radius:6px}
 .badge.up{color:var(--green);background:var(--green-dim)}
 .badge.down{color:var(--red);background:var(--red-dim)}
