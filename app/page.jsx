@@ -551,6 +551,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [globalError, setGlobalError] = useState(null);
   const [fng, setFng] = useState(null);
   const [bias, setBias] = useState(null);
+  const [signalBias, setSignalBias] = useState(null);
   const [risk, setRisk] = useState(null);
   const [weekly200, setWeekly200] = useState(null);
   const [macroRead, setMacroRead] = useState(null);
@@ -685,6 +686,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       setBias(currentBias);
       setRisk(currentRisk);
       setWeekly200(json.weekly200 || null);
+      setSignalBias(json.signalBias || null);
 
       const next = {};
       let anyOk = false;
@@ -1053,6 +1055,22 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
         <aside className="onchain">
           <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
+
+          {signalBias && (
+            <div className="sb-panel">
+              <div className="sb-head">
+                <span className="sb-title">Setpoint read</span>
+                <span className="sb-label">{signalBias.label}</span>
+              </div>
+              <div className="sb-track-row">
+                <div className="tk-meter-track sb-track">
+                  <div className="tk-meter-dot" style={{ left: `${signalBias.score}%` }} />
+                </div>
+              </div>
+              <div className="tk-meter-ticks sb-ticks"><span>Shorts</span><span>Even</span><span>Longs</span></div>
+              <div className="sb-sub">Real win rate across every resolved trade, longs vs. shorts, not sentiment.</div>
+            </div>
+          )}
 
           <div className="mc-top-row">
             {fng && (
@@ -1543,6 +1561,14 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.sb-panel{padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
+.sb-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.sb-title{font-size:12.5px;font-weight:700;color:var(--muted)}
+.sb-label{font-size:12px;font-weight:600}
+.sb-track-row{margin-bottom:4px}
+.sb-track{height:6px}
+.sb-ticks{margin-top:4px;font-size:9px}
+.sb-sub{color:var(--dim);font-size:10.5px;margin-top:6px;line-height:1.4}
 .fng-compact{flex:0 0 auto;border-bottom:none;padding:6px 0;margin-bottom:0}
 .mc-vol-block{flex:1;min-width:140px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}

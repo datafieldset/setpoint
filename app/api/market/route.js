@@ -174,6 +174,48 @@ function withTimeout(promise, ms, fallback) {
   ]);
 }
 
+// Setpoint's own read: which direction is actually winning right now,
+// across every resolved trade the engine has made, not just the 7
+// verified setups. Fear & Greed reads the crowd's mood. This reads
+// what's actually working, real outcomes, not sentiment. Deliberately
+// pulls from the full pool (verified and testing both), a verified-only
+// read would have nothing at all on the short side right now, most of
+// the real short-side edge is still in testing, this is exactly where a
+// real regime shift shows up first, before anything's proven enough to
+// get a name. Same signed -50/+50 scale as the volatility meter, for a
+// consistent visual language across the app, 50 = neutral, no real lean
+// with too few resolved trades on either side to trust.
+const BIAS_WINDOW = 30;
+const BIAS_MIN_SAMPLE = 5;
+
+async function getSignalBias() {
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return null;
+  try {
+    const { neon } = await import("@neondatabase/serverless");
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+    const rows = await sql`
+      SELECT dir, outcome
+      FROM signal_track
+      WHERE outcome IN ('win', 'loss')
+      ORDER BY resolved_at DESC
+      LIMIT 400
+    `;
+    const bull = rows.filter((r) => r.dir === "bull").slice(0, BIAS_WINDOW);
+    const bear = rows.filter((r) => r.dir === "bear").slice(0, BIAS_WINDOW);
+    if (bull.length < BIAS_MIN_SAMPLE || bear.length < BIAS_MIN_SAMPLE) {
+      return { score: 50, label: "Not enough data yet", bullN: bull.length, bearN: bear.length };
+    }
+    const bullRate = bull.filter((r) => r.outcome === "win").length / bull.length;
+    const bearRate = bear.filter((r) => r.outcome === "win").length / bear.length;
+    const score = Math.round(Math.max(0, Math.min(100, 50 + (bullRate - bearRate) * 50)));
+    const label = score >= 65 ? "Longs winning more" : score <= 35 ? "Shorts winning more" : "Roughly even";
+    return { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
@@ -181,7 +223,7 @@ export async function GET(req) {
   const tfParam = searchParams.get("tf");
   const tf = isValidTf(tfParam) ? tfParam : "15m";
 
-  const [coins, fng, bias, weekly200] = await Promise.all([
+  const [coins, fng, bias, weekly200, signalBias] = await Promise.all([
     Promise.all(
       symbols.map(async (sym) => {
         try {
@@ -197,11 +239,12 @@ export async function GET(req) {
     // Cached almost always, but guard the rare cold-cache case anyway, this
     // is background context, it should never be why the dashboard feels slow.
     withTimeout(getWeekly200MA().catch(() => null), 8000, null),
+    getSignalBias(),
   ]);
 
   const risk = reversalRisk(bias, fng?.value);
   return Response.json(
-    { coins, fng, bias, risk, weekly200, tf, at: Date.now() },
+    { coins, fng, bias, risk, weekly200, signalBias, tf, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }
