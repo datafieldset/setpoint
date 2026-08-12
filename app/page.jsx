@@ -741,8 +741,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
   const secsToRefresh = lastUpdate ? Math.max(0, 60 - Math.floor((now - lastUpdate) / 1000)) : null;
 
-  const [showWeak, setShowWeak] = useState(false);
-
   const allSignals = useMemo(() => {
     const out = [];
     watchlist.forEach((sym) => (data[sym]?.signals || []).forEach((s) => {
@@ -763,8 +761,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return out.sort((a, b) => (b.isConfluence - a.isConfluence) || (b.strength - a.strength));
   }, [data, watchlist]);
 
-  const hiddenCount = useMemo(() => allSignals.filter((s) => s.tier !== "proven").length, [allSignals]);
-  const visibleSignals = useMemo(() => (showWeak ? allSignals : allSignals.filter((s) => s.tier === "proven")), [allSignals, showWeak]);
+  const visibleSignals = useMemo(() => allSignals.filter((s) => s.tier === "proven"), [allSignals]);
   // Open positions still resolve correctly in the background for any coin,
   // watchlisted or not, close-alert doesn't care about the watchlist at
   // all. This just controls what's actually shown, once a coin's removed
@@ -971,18 +968,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <>
               <div className="section-head">
                 <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
-                {hiddenCount > 0 && (
-                  <button className="weak-toggle" onClick={() => setShowWeak((v) => !v)}>
-                    {showWeak ? `hide ${hiddenCount} not yet verified` : `${hiddenCount} not yet verified hidden, show anyway`}
-                  </button>
-                )}
               </div>
               {visibleSignals.length === 0 ? (
                 <div className="empty">
                   <div className="empty-h">{allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}</div>
                   <div className="empty-d">
                     {allSignals.length > 0
-                      ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's backtested well twice yet. That's the point, not a bug, only verified setups show by default. Use the toggle above to see the rest.`
+                      ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
                       : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
                   </div>
                 </div>
@@ -1481,13 +1473,13 @@ button:disabled{opacity:.6;cursor:not-allowed}
 
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
-.weak-toggle{margin-left:auto;font-size:11px;color:var(--red-soft);background:var(--red-dim);border:1px solid rgba(255,92,108,.3);padding:4px 10px;border-radius:20px;white-space:nowrap}
+
 .dash-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px}
 .dash-tab{background:none;border:none;padding:9px 4px;margin-right:22px;font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
 .dash-tab.active{color:var(--text);border-bottom-color:var(--green)}
 .dash-tab-n{color:var(--dim);font-weight:500;font-size:12px;margin-left:3px}
 .dash-tab.active .dash-tab-n{color:var(--green-soft)}
-.weak-toggle:hover{filter:brightness(1.1)}
+
 .section-head h2{font-size:20px;font-weight:700}
 .sh-sub{color:var(--dim);font-size:12.5px}
 .sh-sub.sample{color:var(--amber)}
