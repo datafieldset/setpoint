@@ -209,7 +209,7 @@ async function getSignalBias() {
     const bullRate = bull.filter((r) => r.outcome === "win").length / bull.length;
     const bearRate = bear.filter((r) => r.outcome === "win").length / bear.length;
     const score = Math.round(Math.max(0, Math.min(100, 50 + (bullRate - bearRate) * 50)));
-    const label = score >= 65 ? "Longs winning more" : score <= 35 ? "Shorts winning more" : "Roughly even";
+    const label = score >= 60 ? "Longs winning more" : score >= 55 ? "Leaning long" : score <= 40 ? "Shorts winning more" : score <= 45 ? "Leaning short" : "Roughly even";
     return { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length };
   } catch {
     return null;
