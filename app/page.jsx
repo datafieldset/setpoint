@@ -1561,7 +1561,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
 .sb-panel{padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
-.sb-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
 .sb-track-row{margin-bottom:4px}
 .sb-track{height:6px}
