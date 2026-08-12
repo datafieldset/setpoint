@@ -1,19 +1,21 @@
 // app/api/public-stats/route.js
 //
-// Genuinely public, no password, no login, nothing. That's the whole
-// point: this feeds the Watch Live page, and the entire premise of that
-// page is "don't take our word for it," which only means something if
-// anyone can check it without an account.
+// Genuinely public, no password, no login. This page's entire premise is
+// "check it yourself", which only works if anyone can hit this endpoint
+// without an account.
 //
-// The headline number is the real, live win rate across setups that are
-// actually verified (58%+, same bar used everywhere else in this app),
-// since that's the honest answer to "how good is Setpoint," not a number
-// blended together with setups still being tested that were never
-// promoted to customers in the first place. The feed below still shows
-// every resolved trade, verified and testing both, wins and losses both,
-// nothing hidden, each one tagged so it's clear which is which. Real
-// transparency means showing everything, it doesn't mean pretending two
-// different things are the same thing.
+// Only ever returns trades from currently-verified (58%+) signals, the 7
+// setups actually sold to customers. A visitor here is checking Setpoint
+// the product, not the whole engine, testing-tier signals were never
+// promoted to anyone and don't belong in a page proving what customers
+// actually get.
+//
+// Every trade includes its locked entry/stop/target, exactly as they
+// were the moment it fired, that's the actual proof behind "we don't
+// redraw", a visitor can check every one of these against their own
+// chart. The exit price is never a separate, editable field, it's always
+// exactly the target (on a win) or the stop (on a loss), the same two
+// numbers that were locked in from the start.
 import { brandName } from "../../../lib/brand.js";
 import { SIGNAL_RATES, PROVEN_THRESHOLD } from "../../../lib/signals.js";
 
@@ -27,45 +29,46 @@ function isVerified(label, tf, dir) {
 export async function GET() {
   const conn = process.env.DATABASE_URL;
   if (!conn) {
-    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, testingTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
   }
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     const rows = await sql`
-      SELECT coin, tf, label, dir, outcome, fired_at, resolved_at
+      SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at
       FROM signal_track
       WHERE outcome IN ('win', 'loss')
       ORDER BY resolved_at DESC
     `;
 
-    let verifiedWins = 0, verifiedLosses = 0, testingWins = 0, testingLosses = 0;
-    const tagged = rows.map((r) => {
-      const verified = isVerified(r.label, r.tf, r.dir);
-      if (verified) { r.outcome === "win" ? verifiedWins++ : verifiedLosses++; }
-      else { r.outcome === "win" ? testingWins++ : testingLosses++; }
-      return {
-        coin: r.coin,
-        tf: r.tf,
-        name: brandName(r.label),
-        dir: r.dir,
-        outcome: r.outcome,
-        verified,
-        resolvedAt: r.resolved_at,
-      };
-    });
+    let wins = 0, losses = 0;
+    const recent = [];
+    for (const r of rows) {
+      if (!isVerified(r.label, r.tf, r.dir)) continue; // testing-tier, never shown here
+      r.outcome === "win" ? wins++ : losses++;
+      const entry = parseFloat(r.entry);
+      const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
+      const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
+      if (recent.length < 40) {
+        recent.push({
+          coin: r.coin,
+          tf: r.tf,
+          name: brandName(r.label),
+          dir: r.dir,
+          outcome: r.outcome,
+          entry, exit,
+          pctMove,
+          firedAt: r.fired_at,
+          resolvedAt: r.resolved_at,
+        });
+      }
+    }
 
-    const verifiedTotal = verifiedWins + verifiedLosses;
-    const testingTotal = testingWins + testingLosses;
-    const verifiedWinRate = verifiedTotal > 0 ? verifiedWins / verifiedTotal : null;
-    const testingWinRate = testingTotal > 0 ? testingWins / testingTotal : null;
+    const verifiedTotal = wins + losses;
+    const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
-    return Response.json({
-      verifiedWinRate, verifiedTotal, verifiedWins, verifiedLosses,
-      testingWinRate, testingTotal,
-      recent: tagged.slice(0, 50),
-    }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ verifiedWinRate, verifiedTotal, wins, losses, recent }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
-    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, testingTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
   }
 }
