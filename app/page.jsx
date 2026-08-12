@@ -783,10 +783,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // confluence flag, applied to the whole market instead of one trade.
   const marketMeter = useMemo(() => {
     if (!signalBias?.bothWeak) return null;
-    const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 15).length;
-    const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 85).length;
-    if (nearBottom >= 2) return { dir: "bottom", nearBottom, nearTop };
-    if (nearTop >= 2) return { dir: "top", nearBottom, nearTop };
+    // Matches the meter's own "Near bottom"/"Near top" label thresholds
+    // exactly (score<=20 / >=80, see lib/signals.js volatilityMeter).
+    // Using a stricter cutoff here than what's visibly labeled on the coin
+    // chip would mean a coin could show "Near bottom" on screen and still
+    // not count toward this.
+    const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 20).length;
+    const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 80).length;
+    const needed = watchlist.length <= 2 ? 1 : watchlist.length <= 4 ? 2 : Math.ceil(watchlist.length / 3);
+    if (nearBottom >= needed) return { dir: "bottom", nearBottom, nearTop, needed };
+    if (nearTop >= needed) return { dir: "top", nearBottom, nearTop, needed };
     return null;
   }, [signalBias, data, watchlist]);
 
