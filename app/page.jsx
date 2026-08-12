@@ -1059,7 +1059,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           {signalBias && (
             <div className="sb-panel">
               <div className="sb-head">
-                <span className="sb-label">{signalBias.label}</span>
+                <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
               </div>
               <div className="sb-track-row">
                 <div className="tk-meter-track sb-track">
@@ -1067,7 +1067,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 </div>
               </div>
               <div className="tk-meter-ticks sb-ticks"><span>Shorts</span><span>Even</span><span>Longs</span></div>
-              <div className="sb-sub">Real win rate across every resolved trade, longs vs. shorts, not sentiment.</div>
+              <div className="sb-sub">
+                {signalBias.bullRate != null
+                  ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
+                  : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
+              </div>
             </div>
           )}
 
@@ -1563,6 +1567,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .sb-panel{padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
+.sb-score{color:var(--dim);font-weight:400;margin-left:2px}
 .sb-track-row{margin-bottom:4px}
 .sb-track{height:6px}
 .sb-ticks{margin-top:4px;font-size:9px}
