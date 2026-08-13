@@ -21,7 +21,7 @@ jobs:
     steps:
       - name: Hit close-alert endpoint
         run: |
-          curl -sS -f "https://setpointalerts.com/api/close-alert?key=honolulupup" \
+          curl -sS -f "https://setpointalerts.com/api/close-alert?key=verified2026" \
             -o response.json \
             -w "\nHTTP status: %{http_code}\n"
           cat response.json

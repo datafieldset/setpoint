@@ -583,7 +583,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // scoreboard.
   const loadOpenPositions = useCallback(async () => {
     try {
-      const res = await fetch("/api/open-positions?key=honolulupup", { cache: "no-store" });
+      const res = await fetch("/api/open-positions?key=verified2026", { cache: "no-store" });
       if (!res.ok) return;
       const json = await res.json();
       setOpenPositions(json.positions || []);
@@ -668,7 +668,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     // happen to fire. Doesn't block or slow this function, and doesn't
     // need its own success/failure handling here, it's allowed to just
     // quietly retry next cycle if it fails.
-    fetch("/api/close-alert?key=honolulupup", { cache: "no-store" }).catch(() => {});
+    fetch("/api/close-alert?key=verified2026", { cache: "no-store" }).catch(() => {});
     try {
       const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=${tfKey}`, { cache: "no-store" });
       if (!res.ok) throw new Error("api " + res.status);
