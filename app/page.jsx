@@ -302,6 +302,8 @@ const GUIDE_DESC = {
   "Volume building early": "Volume is already unusually heavy before the current candle has even finished forming, an early heads-up.",
   "Breakout": "The market was genuinely coiled tight and just broke into real upside expansion, not a passive read of the current regime.",
   "Breakdown": "The market was genuinely coiled tight and just broke into real downside expansion, not a passive read of the current regime.",
+  "Grind Up": "A sustained, steady climb, most of the recent bars moving the same direction, a real cumulative move, not a single dramatic bar.",
+  "Grind Down": "A sustained, steady decline, most of the recent bars moving the same direction, a real cumulative move, not a single dramatic bar.",
   "Momentum": "Price moved a large amount in a single bar, a burst of one-sided pressure.",
 };
 
