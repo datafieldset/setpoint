@@ -39,7 +39,7 @@ export default function WatchPage() {
       <div className="watch-hero">
         <div className="watch-mark">S</div>
         <h1>We don't redraw.</h1>
-        <p>Pull up your own chart. It'll match, every time. Every level below was locked the moment it fired, the 7 verified setups Setpoint actually sells, nothing hand-picked.</p>
+        <p>Pull up your own chart. It'll match, every time. Every level below was locked the moment it fired.</p>
       </div>
 
       {error && <div className="watch-empty">{error}</div>}
