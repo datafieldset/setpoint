@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 
 /* =========================================================================
@@ -551,6 +551,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [fng, setFng] = useState(null);
   const [bias, setBias] = useState(null);
   const [signalBias, setSignalBias] = useState(null);
+  const [liveGate, setLiveGate] = useState({});
   const [risk, setRisk] = useState(null);
   const [weekly200, setWeekly200] = useState(null);
   const [macroRead, setMacroRead] = useState(null);
@@ -686,6 +687,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       setRisk(currentRisk);
       setWeekly200(json.weekly200 || null);
       setSignalBias(json.signalBias || null);
+      setLiveGate(json.liveGate || {});
 
       const next = {};
       let anyOk = false;
@@ -760,7 +762,20 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return out.sort((a, b) => (b.isConfluence - a.isConfluence) || (b.strength - a.strength));
   }, [data, watchlist]);
 
-  const visibleSignals = useMemo(() => allSignals.filter((s) => s.tier === "proven"), [allSignals]);
+  // "Verified" is now a live status, not a one-time-earned label. A
+  // signal only shows here if its real, current recent-20 performance is
+  // actually still clearing 58%, not just because the backtested table
+  // said it did at some point. Requires a real minimum sample before the
+  // live number can override the static one either way, not enough
+  // recent data should never silently hide something that's actually
+  // fine, same principle Signal Drift already uses.
+  const isLiveVerified = useCallback((s) => {
+    const gate = liveGate[`${s.label}|${s.tf}|${s.dir}`];
+    if (!gate) return true; // not enough recent data yet, trust the backtested number
+    return gate.rate >= PROVEN_THRESHOLD;
+  }, [liveGate]);
+
+  const visibleSignals = useMemo(() => allSignals.filter((s) => s.tier === "proven" && isLiveVerified(s)), [allSignals, isLiveVerified]);
   // Open positions still resolve correctly in the background for any coin,
   // watchlisted or not, close-alert doesn't care about the watchlist at
   // all. This just controls what's actually shown, once a coin's removed
