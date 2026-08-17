@@ -1187,13 +1187,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className={`netflow-panel ${netDir}`}>
                 <div className="netflow-head">Large trade flow <span className="netflow-tag">{netFlow.txCount} large trades tracked</span></div>
                 <div className="netflow-row">
-                  <span className="netflow-dir">{netDir === "buy" ? "▲ net buying" : "▼ net selling"}</span>
+                  <span className="netflow-dir">{netDir === "buy" ? "▲ net buying" : "● net selling"}</span>
                   <span className="netflow-amt mono">{fmtVol(Math.abs(netFlow.net))} ({netPct}%)</span>
                 </div>
                 {netFlow.recent && netFlow.recent[0]?.when && (
                   <div className="netflow-ts">Most recent: {new Date(netFlow.recent[0].when).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</div>
                 )}
-                <div className="netflow-note">Real, unusually large individual trades on Coinbase (BTC, $500k+), net buy vs. sell pressure from the taker side. Direct buy/sell pressure, not a proxy, more buying pushes price up, more selling pushes it down.</div>
+                <div className="netflow-note">Real, unusually large individual trades on Coinbase (BTC, $500k+). Net buying has real, backtested edge (74-78% at the 4h mark). Net selling is shown for context only, our own data hasn't found it a reliable predictor either direction, so it's never colored as a signal.</div>
               </div>
             );
           })() : (
@@ -1659,13 +1659,13 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cn-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--green);font-weight:700;margin-bottom:9px}
 .netflow-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .netflow-panel.buy{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
-.netflow-panel.sell{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
+.netflow-panel.sell{background:var(--panel2);border-color:var(--border)}
 .netflow-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
 .netflow-tag{text-transform:none;letter-spacing:0;font-style:italic;font-weight:400}
 .netflow-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .netflow-dir{font-size:12px;font-weight:700}
 .netflow-panel.buy .netflow-dir{color:var(--green)}
-.netflow-panel.sell .netflow-dir{color:var(--red-soft)}
+.netflow-panel.sell .netflow-dir{color:var(--muted)}
 .netflow-amt{font-size:13px;font-weight:700}
 .netflow-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
 .netflow-ts{color:var(--dim);font-size:10px;margin-top:4px;font-family:monospace}
