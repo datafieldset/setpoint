@@ -266,6 +266,38 @@ async function getLiveVerifiedGate() {
   }
 }
 
+// Real, recent whale outflow within roughly the last 4 hours, feeds the
+// new Quiet Build + Whale Confirmation signal. Same proven burst-
+// detection technique already live for the whale flow panel: an
+// unusually high-volume 1-minute bar (≥4x its own trailing-20 average)
+// stands in for a large trade, direction from whether that bar closed up
+// (buy, outflow, per the standard buying=bullish framing this app uses)
+// or down. A single fetch of BTC's own 1-minute candles naturally covers
+// about 5 hours of history, more than enough to check the last 4.
+const WHALE_OUTFLOW_WINDOW_MS = 4 * 60 * 60 * 1000;
+
+async function getRecentWhaleOutflow() {
+  try {
+    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", { headers: HEADERS, cache: "no-store" });
+    if (!r.ok) return false;
+    const raw = await r.json();
+    if (!Array.isArray(raw) || raw.length < 30) return false;
+    const candles = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, open: x[3], close: x[4], volume: x[5] }));
+    const cutoff = Date.now() - WHALE_OUTFLOW_WINDOW_MS;
+    for (let i = 20; i < candles.length; i++) {
+      const c = candles[i];
+      if (c.time < cutoff) continue;
+      const window = candles.slice(Math.max(0, i - 20), i);
+      const avgVol = window.reduce((s, x) => s + x.volume, 0) / window.length;
+      if (avgVol <= 0 || c.volume < avgVol * 4) continue;
+      if (c.close >= c.open) return true; // a real, recent buy-side burst
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export async function GET(req) {
   const { searchParams } = new URL(req.url);
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
@@ -273,7 +305,7 @@ export async function GET(req) {
   const tfParam = searchParams.get("tf");
   const tf = isValidTf(tfParam) ? tfParam : "15m";
 
-  const [coins, fng, bias, weekly200, signalBias, liveGate] = await Promise.all([
+  const [coins, fng, bias, weekly200, signalBias, liveGate, recentWhaleOutflow] = await Promise.all([
     Promise.all(
       symbols.map(async (sym) => {
         try {
@@ -291,11 +323,12 @@ export async function GET(req) {
     withTimeout(getWeekly200MA().catch(() => null), 8000, null),
     getSignalBias(),
     getLiveVerifiedGate(),
+    getRecentWhaleOutflow(),
   ]);
 
   const risk = reversalRisk(bias, fng?.value);
   return Response.json(
-    { coins, fng, bias, risk, weekly200, signalBias, liveGate, tf, at: Date.now() },
+    { coins, fng, bias, risk, weekly200, signalBias, liveGate, recentWhaleOutflow, tf, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }
