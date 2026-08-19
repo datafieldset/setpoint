@@ -4,11 +4,15 @@
 // "check it yourself", which only works if anyone can hit this endpoint
 // without an account.
 //
-// Only ever returns trades from currently-verified (58%+) signals, the 7
-// setups actually sold to customers. A visitor here is checking Setpoint
-// the product, not the whole engine, testing-tier signals were never
-// promoted to anyone and don't belong in a page proving what customers
-// actually get.
+// Only ever returns trades from signals that are BOTH statically
+// verified AND currently clearing 58% on their real recent-20 trades,
+// the same live gate the customer dashboard itself uses (v9.8). This
+// page used to check only the static table, a real, found inconsistency
+// (Aug 19): the dashboard could quietly stop showing a drifted signal as
+// an active alert while this page kept counting its trades toward the
+// headline number regardless, two surfaces of the same product
+// disagreeing about what "verified" currently means. Fixed to share the
+// exact same check.
 //
 // Every trade includes its locked entry/stop/target, exactly as they
 // were the moment it fired, that's the actual proof behind "we don't
@@ -17,13 +21,16 @@
 // exactly the target (on a win) or the stop (on a loss), the same two
 // numbers that were locked in from the start.
 import { brandName } from "../../../lib/brand.js";
-import { SIGNAL_RATES, PROVEN_THRESHOLD } from "../../../lib/signals.js";
+import { SIGNAL_RATES, PROVEN_THRESHOLD, getLiveVerifiedGate } from "../../../lib/signals.js";
 
 export const dynamic = "force-dynamic";
 
-function isVerified(label, tf, dir) {
+function isVerified(label, tf, dir, liveGate) {
   const entry = SIGNAL_RATES[`${label}|${tf}|${dir}`];
-  return entry?.rate != null && entry.rate >= PROVEN_THRESHOLD;
+  if (!entry?.rate || entry.rate < PROVEN_THRESHOLD) return false;
+  const gate = liveGate[`${label}|${tf}|${dir}`];
+  if (!gate) return true; // not enough recent data yet, trust the backtested number
+  return gate.rate >= PROVEN_THRESHOLD;
 }
 
 export async function GET() {
@@ -34,17 +41,20 @@ export async function GET() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const rows = await sql`
-      SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at
-      FROM signal_track
-      WHERE outcome IN ('win', 'loss')
-      ORDER BY resolved_at DESC
-    `;
+    const [rows, liveGate] = await Promise.all([
+      sql`
+        SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at
+        FROM signal_track
+        WHERE outcome IN ('win', 'loss')
+        ORDER BY resolved_at DESC
+      `,
+      getLiveVerifiedGate(),
+    ]);
 
     let wins = 0, losses = 0;
     const recent = [];
     for (const r of rows) {
-      if (!isVerified(r.label, r.tf, r.dir)) continue; // testing-tier, never shown here
+      if (!isVerified(r.label, r.tf, r.dir, liveGate)) continue; // testing-tier or currently underperforming, never shown here
       r.outcome === "win" ? wins++ : losses++;
       const entry = parseFloat(r.entry);
       const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);

@@ -186,6 +186,24 @@ function renderMarkdown({ buckets }) {
   }
   lines.push(``);
 
+  // A brand new signal with real, resolved trades but under 5 of them
+  // used to just be silently absent from every table above, no different
+  // from something that never fired at all. That's indistinguishable
+  // from broken, and it's exactly what happened with Whale Flow (Aug 19).
+  // Named here instead, plainly, real and resolving, just not enough yet
+  // to trust a percentage on.
+  const stillBuilding = mainBuckets.filter((b) => !b.sampleOk && b.fired > 0);
+  if (stillBuilding.length) {
+    lines.push(`## Still building a sample`);
+    lines.push(``);
+    lines.push(`Real, resolved trades, just not 5 of them yet, too early to trust a percentage on. Not missing, not broken, just new.`);
+    lines.push(``);
+    for (const b of stillBuilding) {
+      lines.push(`- **${b.key}**: ${b.wins}W / ${b.losses}L (${b.fired} resolved so far)`);
+    }
+    lines.push(``);
+  }
+
   // Reversal watch: always shown regardless of whether it clears 58% yet,
   // since this is the signal actively being rebuilt and tracked run to run.
   if (reversalConfirm.length) {
@@ -332,12 +350,22 @@ function renderLiveSection(live) {
   lines.push(`Real signals that fired on the live dashboard, checked against real price since. Not a replay, this is what actually happened. ${live.totalTracked} signals logged total, ${live.totalOpen} still open, resolved ${live.resolveInfo.resolved} of ${live.resolveInfo.checked} pending on this visit. Rolling window of the most recent ${ROLLING_N} outcomes per bucket.`);
   lines.push(``);
   const withSample = live.buckets.filter((b) => b.n >= 5);
+  const tooFewYet = live.buckets.filter((b) => b.n < 5);
   if (withSample.length) {
     lines.push(`| Setup | Last N | Won | Lost | Win rate |`);
     lines.push(`| --- | --- | --- | --- | --- |`);
     for (const b of withSample) lines.push(`| ${b.key} | ${b.n} | ${b.wins} | ${b.losses} | ${pct(b.winRate)} |`);
   } else {
     lines.push(`No live setup has 5+ resolved outcomes yet.`);
+  }
+  // A signal with real, resolved trades but under 5 of them used to just
+  // vanish from this report entirely, no different from one that never
+  // fired at all. That's indistinguishable from broken. Named here
+  // instead, plainly, still building toward a trustworthy sample.
+  if (tooFewYet.length) {
+    lines.push(``);
+    lines.push(`**Still building a sample (under 5 resolved, real but not enough yet):**`);
+    for (const b of tooFewYet) lines.push(`- ${b.key}: ${b.wins}W / ${b.losses}L (${b.n} resolved so far)`);
   }
   return lines.join("\n") + "\n";
 }

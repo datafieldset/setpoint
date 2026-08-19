@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { TF, isValidTf } from "../../../lib/timeframes.js";
-import { marketBias, reversalRisk } from "../../../lib/signals.js";
+import { marketBias, reversalRisk, getLiveVerifiedGate } from "../../../lib/signals.js";
 import { aggregate } from "../../../lib/resolve.js";
 
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
@@ -221,48 +221,7 @@ async function getSignalBias() {
   }
 }
 
-// Makes "verified" a live status instead of a static, one-time-earned
-// label. The customer dashboard's own filter used to trust a hand-edited
-// table that only changes when we sit down and review it, meaning a
-// signal could keep showing as verified while its real, current
-// performance had already fallen well under the bar. This computes the
-// same real, live recent-20 number Signal Drift already uses, per
-// (label, tf, dir), so the dashboard can check "is this actually earning
-// it right now" on every load, not "did this earn it at some point in
-// the past." Requires a real minimum sample before it can override the
-// backtested number either way, not enough recent data should never
-// silently hide something that's actually fine.
-const LIVE_GATE_MIN_SAMPLE = 5;
-const LIVE_GATE_WINDOW = 20;
 
-async function getLiveVerifiedGate() {
-  const conn = process.env.DATABASE_URL;
-  if (!conn) return {};
-  try {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const rows = await sql`
-      SELECT label, tf, dir, outcome
-      FROM signal_track
-      WHERE outcome IN ('win', 'loss')
-      ORDER BY label, tf, dir, resolved_at DESC
-    `;
-    const groups = new Map();
-    for (const r of rows) {
-      const key = `${r.label}|${r.tf}|${r.dir}`;
-      if (!groups.has(key)) groups.set(key, []);
-      const arr = groups.get(key);
-      if (arr.length < LIVE_GATE_WINDOW) arr.push(r.outcome);
-    }
-    const gate = {};
-    for (const [key, outcomes] of groups) {
-      if (outcomes.length < LIVE_GATE_MIN_SAMPLE) continue;
-      const wins = outcomes.filter((o) => o === "win").length;
-      gate[key] = { rate: wins / outcomes.length, n: outcomes.length };
-    }
-    return gate;
-  } catch {
-    return {};
   }
 }
 
