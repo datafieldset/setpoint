@@ -221,10 +221,6 @@ async function getSignalBias() {
   }
 }
 
-
-  }
-}
-
 // Real, recent whale outflow within roughly the last 4 hours, feeds the
 // new Quiet Build + Whale Confirmation signal. Same proven burst-
 // detection technique already live for the whale flow panel: an
