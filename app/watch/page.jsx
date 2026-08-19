@@ -36,6 +36,8 @@ export default function WatchPage() {
     <div className="watch-page">
       <style>{CSS}</style>
 
+      <a href="/" className="watch-back">← Back to Setpoint</a>
+
       <div className="watch-hero">
         <div className="watch-mark">S</div>
         <h1>We don't redraw.</h1>
@@ -109,6 +111,10 @@ export default function WatchPage() {
 }
 
 const CSS = `
+  html, body {
+    background: #0A0F0D;
+    margin: 0;
+  }
   :root{
     --bg:#0A0F0D; --panel:#0F1712; --panel2:#0D1310; --text:#EAF2EE; --muted:#93A69D; --dim:#5E7168;
     --border:#223029; --green:#00D179; --red:#FF5C6C;
@@ -117,6 +123,8 @@ const CSS = `
   .mono{font-family:'JetBrains Mono',monospace}
   .watch-page{background:var(--bg);color:var(--text);font-family:-apple-system,Inter,system-ui,sans-serif;min-height:100vh;max-width:900px;margin:0 auto;padding:0 0 60px}
   .watch-hero{padding:44px 22px 28px;text-align:center;border-bottom:1px solid var(--border)}
+  .watch-back{display:inline-block;color:var(--muted);font-size:13px;text-decoration:none;padding:16px 22px 0;transition:color .15s}
+  .watch-back:hover{color:var(--text)}
   .watch-mark{width:40px;height:40px;border-radius:11px;background:var(--green);margin:0 auto 16px;display:flex;align-items:center;justify-content:center;font-weight:800;color:#03110B;font-size:19px}
   .watch-hero h1{font-size:26px;margin:0 0 8px}
   .watch-hero p{color:var(--muted);font-size:14px;margin:0 auto;max-width:460px;line-height:1.5}
