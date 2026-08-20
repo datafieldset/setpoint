@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
-import { COIN_PRESETS, NAME, MAX_COINS } from "../lib/coins.js";
+import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
@@ -126,9 +126,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 function Landing({ onPickPlan, onSignIn }) {
   const demoSig = { label: "Quiet accumulation", dir: "bull", strength: 0.72, tierRate: 0.80, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = [
-    { id: "watch", name: "Watch", price: "$0", per: "free", pop: false, feats: ["3 coins", "15m & 1h price alerts", "Momentum · Volume · RSI · Breakout"], cta: "Start free" },
-    { id: "trader", name: "Trader", price: "$19", per: "/mo", pop: true, feats: ["Up to 6 coins", "Everything in Watch", "Entry / stop / target on every alert", "Whale & exchange-flow signals", "Hourly digest"], cta: "Get Trader" },
-    { id: "desk", name: "Pro", price: "$49", per: "/mo", pop: false, feats: ["Everything in Trader", "Whale-flow alerts with size thresholds", "Custom thresholds & webhooks", "Hourly + daily digests", "Multiple watchlists"], cta: "Get Pro" },
+    { id: "starter", name: "Starter", price: "$9.99", per: "/mo", pop: false, feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend", "Volatility meter & extreme-read alerts"], cta: "Get Starter" },
+    { id: "trader", name: "Trader", price: "$19.99", per: "/mo", pop: true, feats: ["3 coins", "Everything in Starter"], cta: "Get Trader" },
+    { id: "desk", name: "Pro", price: "$49.99", per: "/mo", pop: false, feats: ["10 coins", "Everything in Trader"], cta: "Get Pro" },
   ];
   return (
     <div className="landing">
@@ -137,11 +137,11 @@ function Landing({ onPickPlan, onSignIn }) {
         <div className="nav-r">
           <a className="watch-live-link" href="/watch"><span className="live-dot" />Watch it live</a>
           <button className="ghost" onClick={onSignIn}>Sign in</button>
-          <button className="solid" onClick={() => onPickPlan("watch")}>Get started</button>
+          <button className="solid" onClick={() => onPickPlan("starter")}>Get started</button>
         </div>
       </nav>
 
-      <div className="testing-band"><span className="tb-dot" />Signals are live. Pick a plan below to get started, no card needed on Watch.</div>
+      <div className="testing-band"><span className="tb-dot" />Signals are live. Every plan gets the full product, nothing held back, the only choice is how many coins.</div>
 
       <header className="hero">
         <div className="hero-l">
@@ -149,7 +149,7 @@ function Landing({ onPickPlan, onSignIn }) {
           <h1>See the alert, the price, and where to get in, <em>all on one card.</em></h1>
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
-            <button className="solid lg" onClick={() => onPickPlan("watch")}>Start free, no card needed</button>
+            <button className="solid lg" onClick={() => onPickPlan("starter")}>Get started, from $9.99/mo</button>
             <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live</a>
           </div>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
@@ -220,7 +220,7 @@ function Auth({ mode, plan, onBack }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const planName = { watch: "Watch (free)", trader: "Trader, $19/mo", desk: "Pro, $49/mo" }[plan] || "Watch (free)";
+  const planName = { starter: "Starter, $9.99/mo", trader: "Trader, $19.99/mo", desk: "Pro, $49.99/mo" }[plan] || "Starter, $9.99/mo";
 
   const ERR_MSG = {
     email_taken: "That email already has an account. Try signing in instead.",
@@ -246,10 +246,12 @@ function Auth({ mode, plan, onBack }) {
       const result = await signIn("credentials", { email, password: pw, redirect: false });
       if (result?.error) { setErr(ERR_MSG[result.error] || "Wrong email or password."); setBusy(false); return; }
 
-      // A paid plan on signup means real Stripe checkout next, not instant
-      // access. Someone signing in to an existing account, or choosing the
-      // free Watch tier, just lands in the dashboard as usual.
-      if (mode !== "signin" && (plan === "trader" || plan === "desk")) {
+      // Every plan is a real paid plan now, no more free Watch tier, so
+      // signup always means real Stripe checkout next, never instant
+      // access. This used to only check trader/desk, a real bug once
+      // Starter stopped being free, it would have created an account
+      // with no payment ever collected.
+      if (mode !== "signin" && (plan === "starter" || plan === "trader" || plan === "desk")) {
         const co = await fetch("/api/checkout", {
           method: "POST",
           headers: { "content-type": "application/json" },
@@ -278,7 +280,7 @@ function Auth({ mode, plan, onBack }) {
         {mode !== "signin" && <div className="plan-chip">{planName}</div>}
         <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" autoComplete="email" /></label>
         <label className="fld"><span>Password</span><input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="••••••••" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>
-        {mode !== "signin" && plan && plan !== "watch" && (
+        {mode !== "signin" && plan && (
           <div className="pay-note">You'll go to Stripe's real checkout next to complete payment, this creates your account first, nothing is charged until you finish there.</div>
         )}
         {err && <div className="auth-err">{err}</div>}
@@ -533,11 +535,12 @@ function AdminPanel({ onBack }) {
 // DEFAULT_TH now comes from lib/signals.js, imported above.
 
 function Dashboard({ account, onSignOut, justUpgraded }) {
+  const maxCoins = maxCoinsForPlan(account.plan);
   const [showGuide, setShowGuide] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
-  const [watchlist, setWatchlist] = useState(["BTC", "SOL", "XLM"]);
+  const [watchlist, setWatchlist] = useState(["BTC"]); // safe starting point for every plan, including Starter's 1-coin limit — grows from real saved data once it loads
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
@@ -818,7 +821,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
   const addCoin = (raw) => {
     const sym = (raw || "").trim().toUpperCase();
-    if (!sym || watchlist.includes(sym) || watchlist.length >= MAX_COINS) return;
+    if (!sym || watchlist.includes(sym) || watchlist.length >= maxCoins) return;
     const next = [...watchlist, sym];
     setWatchlist(next); setAddText(""); setShowAdd(false);
     saveWatchlist(next);
@@ -898,7 +901,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             {account.isAdmin && marketMeter && (
               <span className={`mm-badge ${marketMeter.dir}`} title={`Market Meter: ${marketMeter.nearBottom} coin(s) near bottom, ${marketMeter.nearTop} near top, both sides weak`}>◆</span>
             )}
-            <span className="plan-badge">{{ watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "WATCH"}</span>
+            <span className="plan-badge">{{ starter: "STARTER", watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
@@ -951,7 +954,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           );
         })}
-        {watchlist.length < MAX_COINS && (
+        {watchlist.length < maxCoins && (
           showAdd ? (
             <div className="tk add">
               <input autoFocus value={addText} onChange={(e) => setAddText(e.target.value)} onKeyDown={(e) => e.key === "Enter" && addCoin(addText)} placeholder="SYMBOL" />
@@ -965,7 +968,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       </div>
 
       {globalError && <div className="banner">{globalError}</div>}
-      {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
+      {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ starter: "Starter", trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
 
       <div className="dash-body">
         <div className="opps">

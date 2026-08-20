@@ -15,6 +15,7 @@ import Stripe from "stripe";
 export const dynamic = "force-dynamic";
 
 const PRICE_IDS = {
+  starter: process.env.STRIPE_PRICE_STARTER,
   trader: process.env.STRIPE_PRICE_TRADER,
   desk: process.env.STRIPE_PRICE_PRO, // internal id stays "desk", the product is displayed and sold as "Setpoint Pro"
 };
