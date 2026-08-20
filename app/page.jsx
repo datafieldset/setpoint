@@ -173,7 +173,8 @@ function Landing({ onPickPlan, onSignIn }) {
             ["Quiet accumulation", "Volume climbing while price holds flat, the kind of quiet build-up that often comes before a real move."],
             ["RSI stretch", "Overbought or oversold readings, on the timeframe you actually trade, weighed against whether volume actually backs it."],
             ["Breakout / Breakdown", "A market that was genuinely coiled tight just broke, real expansion after real compression, not a passive read."],
-            ["Whale flow", "Unusually large trading bursts on Coinbase, net buy vs. sell pressure, the kind of activity a price chart alone doesn't call out."],
+            ["Grind Up / Down", "A sustained, steady move, most of the recent bars agreeing on direction, a real cumulative move, not one dramatic bar."],
+            ["Whale flow", "A real, standalone buy signal on large Coinbase trades, backtested edge, not just a context panel."],
             ["AI read", "An LLM weighs the signal against live headlines and tells you what's actually driving it, not just a ping."]].map(([t, d]) => (
             <div className="feat-item" key={t}><div className="feat-h">{t}</div><div className="feat-d">{d}</div></div>
           ))}
