@@ -12,8 +12,35 @@ import { aggregate } from "../../../lib/resolve.js";
 
 const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
 
+// Shared, in-memory cache, kept at module scope so it survives across
+// requests handled by the same warm serverless instance. If five users
+// are all watching BTC at the same moment, this means one real Coinbase
+// request instead of five redundant ones for the exact same data. Not a
+// perfect, guaranteed cache across every concurrent instance Vercel might
+// spin up under real load, that would need an external store (the
+// existing Neon database, or a dedicated cache service), but this is a
+// real, free, zero-new-infrastructure first layer that helps in the
+// common case right now. 25s TTL, comfortably under the 60s client
+// refresh interval, so cached data never gets meaningfully stale, it
+// just avoids re-fetching the same thing multiple times within one
+// refresh window.
+const CANDLE_CACHE = new Map();
+const STATS_CACHE = new Map();
+const CACHE_TTL_MS = 25000;
+
+function getCached(cache, key) {
+  const hit = cache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > CACHE_TTL_MS) { cache.delete(key); return null; }
+  return hit.data;
+}
+
 async function fetchCandles(sym, tf) {
   const meta = TF[tf] || TF["15m"];
+  const cacheKey = `${sym}:${tf}`;
+  const cached = getCached(CANDLE_CACHE, cacheKey);
+  if (cached) return cached;
+
   const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
   const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
   if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
@@ -25,16 +52,22 @@ async function fetchCandles(sym, tf) {
     .reverse()
     .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
     .filter((c) => c.close > 0);
-  return meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
+  const result = meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
+  CANDLE_CACHE.set(cacheKey, { data: result, at: Date.now() });
+  return result;
 }
 
 async function fetchStats(sym) {
+  const cached = getCached(STATS_CACHE, sym);
+  if (cached) return cached;
   try {
     const r = await fetch(`https://api.exchange.coinbase.com/products/${sym}-USD/stats`, { headers: HEADERS, cache: "no-store" });
     if (!r.ok) return null;
     const s = await r.json();
     const open = parseFloat(s.open), last = parseFloat(s.last), vol = parseFloat(s.volume);
-    return { change24: open > 0 ? ((last - open) / open) * 100 : null, volUsd: vol * last, last };
+    const result = { change24: open > 0 ? ((last - open) / open) * 100 : null, volUsd: vol * last, last };
+    STATS_CACHE.set(sym, { data: result, at: Date.now() });
+    return result;
   } catch {
     return null;
   }
