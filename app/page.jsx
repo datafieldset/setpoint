@@ -1376,10 +1376,10 @@ export default function App() {
       {!account && view === "auth" && (
         <Auth mode={authMode} plan={plan} onBack={() => setView("landing")} />
       )}
-      {account && account.plan === "watch" && (
+      {account && account.plan === "watch" && !account.isAdmin && (
         <UpgradeGate account={account} onSignOut={handleSignOut} />
       )}
-      {account && account.plan !== "watch" && (
+      {account && (account.plan !== "watch" || account.isAdmin) && (
         <Dashboard account={account} onSignOut={handleSignOut} justUpgraded={justUpgraded} />
       )}
     </div>
