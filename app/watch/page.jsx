@@ -1,22 +1,29 @@
 "use client";
 // app/watch/page.jsx
 //
-// Public, no login, no password. This page exists to prove one specific
-// thing: Setpoint's signals don't repaint. A level shown here was locked
-// the moment the trade fired, the exit shown is always exactly the
-// target (win) or the stop (loss), never a separate number assembled
-// after the fact. Anyone can pull up their own chart and check every
-// single one of these against real price history themselves.
+// Requires a real, free account to view (Aug 20) — a deliberate reversal
+// of how this page started. It used to be genuinely public specifically
+// so a skeptical visitor could check it with zero friction. Real
+// decision now: anyone wanting to watch it live provides basic, free
+// registration first, and that same account is what they upgrade from
+// later, no second registration anywhere in the loop.
 //
-// Only shows the 7 currently-verified setups, the ones actually sold to
-// customers. Wins and losses both, real percentages, nothing hand-picked.
+// This page exists to prove one specific thing: Setpoint's signals don't
+// repaint. A level shown here was locked the moment the trade fired, the
+// exit shown is always exactly the target (win) or the stop (loss),
+// never a separate number assembled after the fact. Only shows the
+// currently-verified setups, the ones actually sold to customers. Wins
+// and losses both, real percentages, nothing hand-picked.
 import { useEffect, useState } from "react";
+import { useSession } from "next-auth/react";
 
 export default function WatchPage() {
+  const { status } = useSession(); // "loading" | "authenticated" | "unauthenticated"
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
+    if (status !== "authenticated") return; // no real account yet, nothing to fetch
     let alive = true;
     const load = () => {
       fetch("/api/public-stats", { cache: "no-store" })
@@ -27,10 +34,35 @@ export default function WatchPage() {
     load();
     const id = setInterval(load, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [status]);
 
   const winRatePct = data?.verifiedWinRate != null ? Math.round(data.verifiedWinRate * 100) : null;
   const fmtPrice = (n) => (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(n >= 1 ? 2 : 5));
+
+  if (status === "loading") {
+    return (
+      <div className="watch-page">
+        <style>{CSS}</style>
+        <div className="watch-gate-boot">Setpoint</div>
+      </div>
+    );
+  }
+
+  if (status !== "authenticated") {
+    return (
+      <div className="watch-page">
+        <style>{CSS}</style>
+        <a href="/" className="watch-back">← Back to Setpoint</a>
+        <div className="watch-hero">
+          <div className="watch-mark">S</div>
+          <h1>Watch it live, free.</h1>
+          <p>Every locked level, every real trade, win or lose. Create a free account to see it, no card needed. Upgrade whenever you want live signals on your own coins, same account, no re-registering.</p>
+          <a className="watch-cta-btn" href="/?signup=watch">Create a free account</a>
+          <a className="watch-gate-signin" href="/">Already have an account? Sign in →</a>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="watch-page">
@@ -154,6 +186,9 @@ const CSS = `
   .watch-cta p{color:var(--muted);font-size:13.5px;margin:0 auto 18px;max-width:400px;line-height:1.5}
   .watch-cta-btn{display:inline-block;background:var(--green);color:#03110B;font-weight:700;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none}
   .watch-cta-link{display:block;color:var(--muted);font-size:12.5px;margin-top:14px;text-decoration:none}
+  .watch-gate-boot{max-width:900px;margin:80px auto;text-align:center;color:var(--muted);font-family:'Bricolage Grotesque';font-weight:700}
+  .watch-gate-signin{display:block;color:var(--muted);font-size:13px;margin-top:18px;text-decoration:none}
+  .watch-gate-signin:hover{color:var(--text)}
   .watch-cta-link:hover{color:var(--text)}
   .watch-cta-btn:hover{background:#00e884}
   .watch-card{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--dim);border-radius:12px;padding:14px}
