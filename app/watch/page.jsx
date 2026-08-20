@@ -99,8 +99,9 @@ export default function WatchPage() {
 
           <div className="watch-cta">
             <h2>This is what verified actually means.</h2>
-            <p>Every trade above, real, resolved, checkable against your own chart. Get these on your own dashboard, live, the moment they fire.</p>
-            <a className="watch-cta-btn" href="/#pricing">Start free, no card needed</a>
+            <p>Every trade above, real, resolved, checkable against your own chart. Create a free account to save your spot, then upgrade whenever you're ready, live signals on your own coins.</p>
+            <a className="watch-cta-btn" href="/?signup=watch">Create a free account</a>
+            <a className="watch-cta-link" href="/#pricing">Or see plans and pricing →</a>
           </div>
         </>
       )}
@@ -152,6 +153,8 @@ const CSS = `
   .watch-cta h2{font-size:19px;margin:0 0 8px}
   .watch-cta p{color:var(--muted);font-size:13.5px;margin:0 auto 18px;max-width:400px;line-height:1.5}
   .watch-cta-btn{display:inline-block;background:var(--green);color:#03110B;font-weight:700;font-size:15px;padding:13px 26px;border-radius:10px;text-decoration:none}
+  .watch-cta-link{display:block;color:var(--muted);font-size:12.5px;margin-top:14px;text-decoration:none}
+  .watch-cta-link:hover{color:var(--text)}
   .watch-cta-btn:hover{background:#00e884}
   .watch-card{background:var(--panel);border:1px solid var(--border);border-left:3px solid var(--dim);border-radius:12px;padding:14px}
   .watch-card.win{border-left-color:var(--green)}

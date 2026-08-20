@@ -220,7 +220,7 @@ function Auth({ mode, plan, onBack }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const planName = { starter: "Starter, $9.99/mo", trader: "Trader, $19.99/mo", desk: "Pro, $49.99/mo" }[plan] || "Starter, $9.99/mo";
+  const planName = { starter: "Starter, $9.99/mo", trader: "Trader, $19.99/mo", desk: "Pro, $49.99/mo", watch: "Free account" }[plan] || "Starter, $9.99/mo";
 
   const ERR_MSG = {
     email_taken: "That email already has an account. Try signing in instead.",
@@ -280,7 +280,7 @@ function Auth({ mode, plan, onBack }) {
         {mode !== "signin" && <div className="plan-chip">{planName}</div>}
         <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" autoComplete="email" /></label>
         <label className="fld"><span>Password</span><input value={pw} onChange={(e) => setPw(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="••••••••" type="password" autoComplete={mode === "signin" ? "current-password" : "new-password"} /></label>
-        {mode !== "signin" && plan && (
+        {mode !== "signin" && plan && plan !== "watch" && (
           <div className="pay-note">You'll go to Stripe's real checkout next to complete payment, this creates your account first, nothing is charged until you finish there.</div>
         )}
         {err && <div className="auth-err">{err}</div>}
@@ -1235,6 +1235,63 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 }
 
 /* ================================= ROOT ================================= */
+/* ============================== UPGRADE GATE ============================= */
+// Shown to anyone signed in on the free "watch" plan instead of the real
+// dashboard. They already have a real account and a real session, so this
+// never asks them to register again, picking a tier here just goes
+// straight to Stripe checkout on the account that already exists.
+function UpgradeGate({ account, onSignOut }) {
+  const [busy, setBusy] = useState(null);
+  const [err, setErr] = useState("");
+  const tiers = [
+    { id: "starter", name: "Starter", price: "$9.99", per: "/mo", feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend"] },
+    { id: "trader", name: "Trader", price: "$19.99", per: "/mo", feats: ["3 coins", "Everything in Starter"] },
+    { id: "desk", name: "Pro", price: "$49.99", per: "/mo", feats: ["10 coins", "Everything in Trader"] },
+  ];
+
+  const upgrade = async (plan) => {
+    setErr("");
+    setBusy(plan);
+    try {
+      const res = await fetch("/api/checkout", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ plan }),
+      });
+      const json = await res.json();
+      if (res.ok && json.url) { window.location.href = json.url; return; }
+      setErr("Couldn't start checkout, try again.");
+    } catch {
+      setErr("Something went wrong, try again.");
+    }
+    setBusy(null);
+  };
+
+  return (
+    <div className="upgrade-gate">
+      <div className="ug-head">
+        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <button className="ghost sm" onClick={onSignOut}>Sign out</button>
+      </div>
+      <div className="ug-hero">
+        <h1>You're registered, {account.email}.</h1>
+        <p>Your free account gives you access to Watch It Live and nothing else yet. Pick a plan below to unlock the real dashboard, live signals on your own coins, entry, stop, and target on every alert.</p>
+      </div>
+      {err && <div className="ug-err">{err}</div>}
+      <div className="ug-tiers">
+        {tiers.map((t) => (
+          <div className="ug-tier" key={t.id}>
+            <div className="ug-tier-name">{t.name}</div>
+            <div className="ug-tier-price">{t.price}<span>{t.per}</span></div>
+            <ul>{t.feats.map((f) => <li key={f}>{f}</li>)}</ul>
+            <button className="solid full" onClick={() => upgrade(t.id)} disabled={busy !== null}>{busy === t.id ? "Please wait…" : `Get ${t.name}`}</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { data: session, status, update } = useSession(); // "loading" | "authenticated" | "unauthenticated"
   const [view, setView] = useState("landing"); // landing | auth
@@ -1244,6 +1301,20 @@ export default function App() {
 
   const isAuthed = status === "authenticated";
   const account = isAuthed ? { email: session.user.email, plan: session.user.plan, isAdmin: !!session.user.isAdmin } : null;
+
+  // A link from Watch It Live ("/?signup=watch") should open straight into
+  // free signup, not dump someone on the generic landing page they'd have
+  // to click through again. Only meaningful for a signed-out visitor,
+  // already-signed-in accounts route on their own further down.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("signup") === "watch" && !isAuthed) {
+      setAuthMode("signup");
+      setPlan("watch");
+      setView("auth");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed]);
 
   // Returning from a real Stripe checkout. A JWT session doesn't re-check
   // the database on its own, that's what makes it fast, so it still shows
@@ -1305,7 +1376,10 @@ export default function App() {
       {!account && view === "auth" && (
         <Auth mode={authMode} plan={plan} onBack={() => setView("landing")} />
       )}
-      {account && (
+      {account && account.plan === "watch" && (
+        <UpgradeGate account={account} onSignOut={handleSignOut} />
+      )}
+      {account && account.plan !== "watch" && (
         <Dashboard account={account} onSignOut={handleSignOut} justUpgraded={justUpgraded} />
       )}
     </div>
@@ -1396,6 +1470,22 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .tier-feats li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
 .pricing-foot{color:var(--muted);font-size:13.5px;margin-top:20px;text-align:center}
 .linkish{color:var(--green);font-weight:600;text-decoration:underline;text-underline-offset:2px;font-size:inherit}
+
+.upgrade-gate{max-width:900px;margin:0 auto;padding:0 22px 60px}
+.ug-head{display:flex;justify-content:space-between;align-items:center;padding:22px 0}
+.ug-hero{text-align:center;padding:20px 0 40px}
+.ug-hero h1{font-size:24px;margin:0 0 12px}
+.ug-hero p{color:var(--muted);font-size:14.5px;max-width:480px;margin:0 auto;line-height:1.5}
+.ug-err{background:var(--red-dim);color:var(--red-soft);border:1px solid rgba(255,92,108,.3);border-radius:10px;padding:10px 14px;font-size:13px;margin-bottom:20px;text-align:center}
+.ug-tiers{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.ug-tier{background:var(--panel);border:1px solid var(--border);border-radius:16px;padding:24px 20px;display:flex;flex-direction:column}
+.ug-tier-name{font-family:'Bricolage Grotesque';font-weight:700;font-size:17px}
+.ug-tier-price{margin:8px 0 16px;font-family:'Bricolage Grotesque';font-size:30px;font-weight:800}
+.ug-tier-price span{color:var(--muted);font-size:13px;font-weight:500}
+.ug-tier ul{list-style:none;padding:0;margin:0 0 18px;flex:1;display:flex;flex-direction:column;gap:9px}
+.ug-tier li{font-size:12.5px;color:var(--text);padding-left:20px;position:relative;line-height:1.4}
+.ug-tier li::before{content:"✓";position:absolute;left:0;color:var(--green);font-weight:700}
+@media(max-width:640px){.ug-tiers{grid-template-columns:1fr}}
 
 .testing-band{display:flex;align-items:center;gap:10px;background:var(--amber-dim);border:1px solid rgba(245,184,81,.28);color:var(--amber);font-size:13px;font-weight:500;padding:11px 16px;border-radius:11px;margin-bottom:6px}
 .tb-dot{width:8px;height:8px;border-radius:50%;background:var(--amber);box-shadow:0 0 10px var(--amber);flex-shrink:0}
