@@ -903,6 +903,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <span className={`mm-badge ${marketMeter.dir}`} title={`Market Meter: ${marketMeter.nearBottom} coin(s) near bottom, ${marketMeter.nearTop} near top, both sides weak`}>◆</span>
             )}
             <span className="plan-badge">{{ starter: "STARTER", watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
+            <a className="ghost sm" href="/watch" target="_blank" rel="noopener noreferrer">WATCH LIVE</a>
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
