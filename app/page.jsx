@@ -5,6 +5,7 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
+import WatchLiveContent from "./WatchLiveContent.jsx";
 
 /* =========================================================================
    SETPOINT — crypto market terminal
@@ -538,6 +539,7 @@ function AdminPanel({ onBack }) {
 function Dashboard({ account, onSignOut, justUpgraded }) {
   const maxCoins = maxCoinsForPlan(account.plan);
   const [showGuide, setShowGuide] = useState(false);
+  const [showWatchLive, setShowWatchLive] = useState(false);
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -872,6 +874,17 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     );
   }
 
+  if (showWatchLive) {
+    return (
+      <div className="dash">
+        <div className="topbar">
+          <div className="brand"><span className="logo-dot" />Setpoint</div>
+        </div>
+        <WatchLiveContent onBack={() => setShowWatchLive(false)} />
+      </div>
+    );
+  }
+
   if (showAdminPanel) {
     return (
       <div className="dash">
@@ -903,7 +916,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <span className={`mm-badge ${marketMeter.dir}`} title={`Market Meter: ${marketMeter.nearBottom} coin(s) near bottom, ${marketMeter.nearTop} near top, both sides weak`}>◆</span>
             )}
             <span className="plan-badge">{{ starter: "STARTER", watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
-            <a className="ghost sm" href="/watch" target="_blank" rel="noopener noreferrer">WATCH LIVE</a>
+            <button className="ghost sm" onClick={() => setShowWatchLive(true)}>WATCH LIVE</button>
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
