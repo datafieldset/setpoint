@@ -1027,7 +1027,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <span className="plan-badge">{{ starter: "STARTER", watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
             <button className="ghost sm" onClick={() => setShowWatchLive(true)}>WATCH LIVE</button>
             {pushStatus !== "unsupported" && pushStatus !== "checking" && (
-              <button className="ghost sm" onClick={togglePush} disabled={pushStatus === "busy"}>
+              <button className={`ghost sm ${pushStatus === "on" ? "alerts-on" : ""}`} onClick={togglePush} disabled={pushStatus === "busy"}>
                 {pushStatus === "on" ? "ALERTS ON" : pushStatus === "busy" ? "…" : "TURN ON ALERTS"}
               </button>
             )}
@@ -1639,6 +1639,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .icon-btn:hover{color:var(--text);border-color:var(--green)}
 .acct{display:flex;align-items:center;gap:9px}
 .plan-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--green);background:var(--green-dim);border:1px solid var(--green);padding:4px 9px;border-radius:6px}
+.alerts-on{color:var(--green) !important;background:var(--green-dim) !important;border:1px solid var(--green) !important}
 .admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
 .mm-badge{font-size:14px;cursor:help;animation:live-pulse-mm 1.6s ease-in-out infinite}
 .mm-badge.bottom{color:var(--green)}
