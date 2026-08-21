@@ -530,10 +530,23 @@ function AdminPanel({ onBack }) {
 /* =============================== DASHBOARD =============================== */
 // DEFAULT_TH now comes from lib/signals.js, imported above.
 
+// The Push API requires the VAPID public key as a Uint8Array, not the
+// base64url string it's actually stored and shared as. Standard, widely
+// documented conversion, not custom logic of our own.
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const raw = atob(base64);
+  const output = new Uint8Array(raw.length);
+  for (let i = 0; i < raw.length; i++) output[i] = raw.charCodeAt(i);
+  return output;
+}
+
 function Dashboard({ account, onSignOut, justUpgraded }) {
   const maxCoins = maxCoinsForPlan(account.plan);
   const [showGuide, setShowGuide] = useState(false);
   const [showWatchLive, setShowWatchLive] = useState(false);
+  const [pushStatus, setPushStatus] = useState("checking"); // checking | unsupported | off | on | busy
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -567,6 +580,55 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const fired = useRef({}); // key -> {firstFired, lastSeen}
 
   const th2 = useMemo(() => ({ ...th, pctMin: TF[tfKey].pctMin }), [th, tfKey]);
+
+  // Real, current subscription state, checked once on mount, not assumed.
+  // A browser can have push permission granted from a previous visit
+  // without this device's specific subscription still being valid, so
+  // this checks the actual registration, not just Notification.permission.
+  useEffect(() => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setPushStatus("unsupported");
+      return;
+    }
+    navigator.serviceWorker.getRegistration().then((reg) => {
+      if (!reg) { setPushStatus("off"); return; }
+      reg.pushManager.getSubscription().then((sub) => setPushStatus(sub ? "on" : "off"));
+    }).catch(() => setPushStatus("off"));
+  }, []);
+
+  const togglePush = async () => {
+    if (pushStatus === "on") {
+      setPushStatus("busy");
+      try {
+        const reg = await navigator.serviceWorker.getRegistration();
+        const sub = reg && await reg.pushManager.getSubscription();
+        if (sub) {
+          await fetch("/api/push/subscribe", { method: "DELETE", headers: { "content-type": "application/json" }, body: JSON.stringify({ endpoint: sub.endpoint }) }).catch(() => {});
+          await sub.unsubscribe();
+        }
+        setPushStatus("off");
+      } catch {
+        setPushStatus("on"); // real failure to unsubscribe, don't claim it's off when it might not be
+      }
+      return;
+    }
+
+    setPushStatus("busy");
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") { setPushStatus("off"); return; }
+      const reg = await navigator.serviceWorker.register("/sw.js");
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(vapidKey),
+      });
+      await fetch("/api/push/subscribe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subscription: sub }) });
+      setPushStatus("on");
+    } catch {
+      setPushStatus("off");
+    }
+  };
 
   const loadNews = useCallback(async () => {
     try {
@@ -713,6 +775,23 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ coin: c.sym, tf: tfKey, label: s.label, dir: s.dir, entry: s.entry, stop: s.stop, target: s.target, firedAt: t }),
             }).catch(() => {});
+            // Push notification, only for what's actually verified right
+            // now, both the static table AND the live recent-20 check,
+            // using the fresh liveGate just fetched this same call rather
+            // than one render-cycle-old state, so this can never fire on
+            // something that's already been quietly live-gated out.
+            // Genuinely follows the same list that decides what shows in
+            // Opportunities, no separate trigger list to keep in sync.
+            const gateKey = `${s.label}|${TF[tfKey].label}|${s.dir}`;
+            const gate = (json.liveGate || {})[gateKey];
+            const currentlyVerified = s.tier === "proven" && (!gate || gate.rate >= PROVEN_THRESHOLD);
+            if (currentlyVerified) {
+              fetch("/api/push/notify", {
+                method: "POST",
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ coin: c.sym, label: brandName(s.label), dir: s.dir, tf: TF[tfKey].label }),
+              }).catch(() => {});
+            }
           }
           return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key };
         });
@@ -911,6 +990,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             )}
             <span className="plan-badge">{{ starter: "STARTER", watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
             <button className="ghost sm" onClick={() => setShowWatchLive(true)}>WATCH LIVE</button>
+            {pushStatus !== "unsupported" && pushStatus !== "checking" && (
+              <button className="ghost sm" onClick={togglePush} disabled={pushStatus === "busy"}>
+                {pushStatus === "on" ? "ALERTS ON" : pushStatus === "busy" ? "…" : "TURN ON ALERTS"}
+              </button>
+            )}
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
