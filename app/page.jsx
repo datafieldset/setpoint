@@ -1024,7 +1024,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             {account.isAdmin && marketMeter && (
               <span className={`mm-badge ${marketMeter.dir}`} title={`Market Meter: ${marketMeter.nearBottom} coin(s) near bottom, ${marketMeter.nearTop} near top, both sides weak`}>◆</span>
             )}
-            <span className="plan-badge">{{ starter: "STARTER", watch: "WATCH", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
+            {!account.isAdmin && (
+              <span className="plan-badge">{{ starter: "STARTER", watch: "FREE", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
+            )}
             <button className="ghost sm" onClick={() => setShowWatchLive(true)}>WATCH LIVE</button>
             {pushStatus !== "unsupported" && pushStatus !== "checking" && (
               <button className={`ghost sm ${pushStatus === "on" ? "alerts-on" : ""}`} onClick={togglePush} disabled={pushStatus === "busy"}>
