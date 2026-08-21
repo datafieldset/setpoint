@@ -127,9 +127,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 function Landing({ onPickPlan, onSignIn }) {
   const demoSig = { label: "Quiet accumulation", dir: "bull", strength: 0.72, tierRate: 0.80, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = [
-    { id: "starter", name: "Starter", price: "$9.99", per: "/mo", pop: false, feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend", "Volatility meter & extreme-read alerts"], cta: "Get Starter" },
-    { id: "trader", name: "Trader", price: "$19.99", per: "/mo", pop: true, feats: ["3 coins", "Everything in Starter"], cta: "Get Trader" },
-    { id: "desk", name: "Pro", price: "$49.99", per: "/mo", pop: false, feats: ["10 coins", "Everything in Trader"], cta: "Get Pro" },
+    { id: "starter", name: "Starter", price: "$19.99", per: "/mo", pop: false, feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend", "Volatility meter & extreme-read alerts"], cta: "Get Starter" },
+    { id: "trader", name: "Trader", price: "$49.99", per: "/mo", pop: true, feats: ["3 coins", "Everything in Starter"], cta: "Get Trader" },
+    { id: "desk", name: "Pro", price: "$99.99", per: "/mo", pop: false, feats: ["10 coins", "Everything in Trader"], cta: "Get Pro" },
   ];
   return (
     <div className="landing">
@@ -150,7 +150,7 @@ function Landing({ onPickPlan, onSignIn }) {
           <h1>See the alert, the price, and where to get in, <em>all on one card.</em></h1>
           <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
-            <button className="solid lg" onClick={() => onPickPlan("starter")}>Get started, from $9.99/mo</button>
+            <button className="solid lg" onClick={() => onPickPlan("starter")}>Get started, from $19.99/mo</button>
             <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live</a>
           </div>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
@@ -222,7 +222,7 @@ function Auth({ mode, plan, onBack }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const planName = { starter: "Starter, $9.99/mo", trader: "Trader, $19.99/mo", desk: "Pro, $49.99/mo", watch: "Free account" }[plan] || "Starter, $9.99/mo";
+  const planName = { starter: "Starter, $19.99/mo", trader: "Trader, $49.99/mo", desk: "Pro, $99.99/mo", watch: "Free account" }[plan] || "Starter, $19.99/mo";
 
   const ERR_MSG = {
     email_taken: "That email already has an account. Try signing in instead.",
@@ -1261,9 +1261,9 @@ function UpgradeGate({ account, onSignOut }) {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
   const tiers = [
-    { id: "starter", name: "Starter", price: "$9.99", per: "/mo", feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend"] },
-    { id: "trader", name: "Trader", price: "$19.99", per: "/mo", feats: ["3 coins", "Everything in Starter"] },
-    { id: "desk", name: "Pro", price: "$49.99", per: "/mo", feats: ["10 coins", "Everything in Trader"] },
+    { id: "starter", name: "Starter", price: "$19.99", per: "/mo", feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend"] },
+    { id: "trader", name: "Trader", price: "$49.99", per: "/mo", feats: ["3 coins", "Everything in Starter"] },
+    { id: "desk", name: "Pro", price: "$99.99", per: "/mo", feats: ["10 coins", "Everything in Trader"] },
   ];
 
   const upgrade = async (plan) => {
