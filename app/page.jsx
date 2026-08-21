@@ -5,6 +5,7 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
+import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
 
 /* =========================================================================
@@ -127,11 +128,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 /* ============================== LANDING PAGE ============================= */
 function Landing({ onPickPlan, onSignIn }) {
   const demoSig = { label: "Quiet accumulation", dir: "bull", strength: 0.72, tierRate: 0.80, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
-  const tiers = [
-    { id: "starter", name: "Starter", price: "$19.99", per: "/mo", pop: false, feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend", "Volatility meter & extreme-read alerts"], cta: "Get Starter" },
-    { id: "trader", name: "Trader", price: "$49.99", per: "/mo", pop: true, feats: ["3 coins", "Everything in Starter"], cta: "Get Trader" },
-    { id: "desk", name: "Pro", price: "$99.99", per: "/mo", pop: false, feats: ["10 coins", "Everything in Trader"], cta: "Get Pro" },
-  ];
+  const tiers = PRICING_LIST.map((p) => ({ ...p, pop: p.id === "trader", cta: `Get ${p.name}` }));
   return (
     <div className="landing">
       <nav className="nav">
@@ -223,7 +220,7 @@ function Auth({ mode, plan, onBack }) {
   const [pw, setPw] = useState("");
   const [err, setErr] = useState("");
   const [busy, setBusy] = useState(false);
-  const planName = { starter: "Starter, $19.99/mo", trader: "Trader, $49.99/mo", desk: "Pro, $99.99/mo", watch: "Free account" }[plan] || "Starter, $19.99/mo";
+  const planName = plan === "watch" ? "Free account" : (planLabel(plan) || planLabel("starter"));
 
   const ERR_MSG = {
     email_taken: "That email already has an account. Try signing in instead.",
@@ -1337,11 +1334,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 function UpgradeGate({ account, onSignOut }) {
   const [busy, setBusy] = useState(null);
   const [err, setErr] = useState("");
-  const tiers = [
-    { id: "starter", name: "Starter", price: "$19.99", per: "/mo", feats: ["1 coin", "Every verified signal, checked live", "Locked entry / stop / target, never redrawn", "Full market context, whale flow, Fear & Greed, 200-week trend"] },
-    { id: "trader", name: "Trader", price: "$49.99", per: "/mo", feats: ["3 coins", "Everything in Starter"] },
-    { id: "desk", name: "Pro", price: "$99.99", per: "/mo", feats: ["10 coins", "Everything in Trader"] },
-  ];
+  const tiers = PRICING_LIST;
 
   const upgrade = async (plan) => {
     setErr("");
