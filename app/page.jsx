@@ -85,7 +85,8 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
       <div className="sig-top">
         <div className="sig-id">
           <span className="sym">{sym}</span>
-          <span className="sig-type">{s.dir === "bull" ? "Buy" : "Sell"} {brandName(s.label)} {Math.round((s.tierRate || 0) * 100)}%</span>
+          <span className="sig-type">{s.dir === "bull" ? "Buy" : "Sell"} {brandName(s.label)} {s.tierRate != null ? `${Math.round(s.tierRate * 100)}%` : ""}</span>
+          {s.tierRate == null && <span className="testing-tag">testing, not yet verified</span>}
           {s.isConfluence && <span className="confluence-tag">⚡ extreme read</span>}
           {isOpenPosition && <span className="open-pos-tag">still in motion</span>}
         </div>
@@ -340,7 +341,7 @@ function Guide({ onBack }) {
         {proven.length ? proven.map((s, i) => (
           <div className="guide-card" key={i}>
             <div className="guide-card-top">
-              <span className="guide-card-name">{s.label}</span>
+              <span className="guide-card-name">{brandName(s.label)}</span>
               <span className="guide-card-tier">{s.dir === "bull" ? "LONG" : "SHORT"} · {Math.round(s.rate * 100)}% · {TF[s.tf]?.label || s.tf}</span>
             </div>
             <div className="guide-card-desc">{GUIDE_DESC[s.label] || "A setup that's backtested well historically."}</div>
@@ -1692,6 +1693,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .sig-card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--border);border-left-width:3px;border-radius:14px;padding:16px}
 .sig-card.confluence{border-color:var(--amber);box-shadow:0 0 0 1px rgba(245,184,81,.35),0 0 18px rgba(245,184,81,.12)}
 .confluence-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:var(--amber);background:rgba(245,184,81,.14);border:1px solid rgba(245,184,81,.35)}
+.testing-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:var(--muted);background:var(--panel2);border:1px solid var(--border)}
 .sig-card.bull{border-left-color:var(--green)}
 .sig-card.bear{border-left-color:var(--red)}
 .sig-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
