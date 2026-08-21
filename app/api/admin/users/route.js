@@ -37,6 +37,39 @@ export async function DELETE(req) {
   }
 }
 
+const VALID_PLANS = ["starter", "trader", "desk", "watch"];
+
+export async function PATCH(req) {
+  const session = await auth();
+  if (!session?.user?.isAdmin) {
+    return Response.json({ error: "not_admin" }, { status: 403 });
+  }
+  const conn = process.env.DATABASE_URL;
+  if (!conn) return Response.json({ error: "no_database" }, { status: 500 });
+
+  let body;
+  try { body = await req.json(); } catch { return Response.json({ error: "bad_request" }, { status: 400 }); }
+  const email = (body.email || "").trim().toLowerCase();
+  const plan = (body.plan || "").trim();
+  if (!email) return Response.json({ error: "missing_email" }, { status: 400 });
+  // Real, exact allowlist, not just "any non-empty string" — a typo here
+  // would silently corrupt a real account's plan, worth being strict.
+  if (!VALID_PLANS.includes(plan)) return Response.json({ error: "invalid_plan" }, { status: 400 });
+
+  try {
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+    // Manual grant, no real Stripe subscription behind it, matches the
+    // exact same fields the real checkout webhook sets, so an account
+    // upgraded this way looks and works identically either way. Never
+    // touches stripe_subscription_id, there genuinely isn't one.
+    const result = await sql`UPDATE users SET plan = ${plan}, subscription_status = 'active' WHERE email = ${email} RETURNING id`;
+    if (!result.length) return Response.json({ error: "not_found" }, { status: 404 });
+    return Response.json({ ok: true, plan });
+  } catch (e) {
+    return Response.json({ error: "server_error", detail: String(e.message || e).slice(0, 200) }, { status: 500 });
+  }
+}
+
 export async function GET(req) {
   const session = await auth();
   if (!session?.user?.isAdmin) {

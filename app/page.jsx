@@ -406,6 +406,7 @@ function AdminPanel({ onBack }) {
   const [error, setError] = useState(null);
   const [confirmingEmail, setConfirmingEmail] = useState(null);
   const [deletingEmail, setDeletingEmail] = useState(null);
+  const [changingPlanEmail, setChangingPlanEmail] = useState(null);
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
 
@@ -441,6 +442,17 @@ function AdminPanel({ onBack }) {
     } catch { /* leave the row as-is, they can try again */ }
     setDeletingEmail(null);
     setConfirmingEmail(null);
+  };
+
+  const changePlan = async (email, plan) => {
+    setChangingPlanEmail(email);
+    try {
+      const res = await fetch("/api/admin/users", { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ email, plan }) });
+      if (res.ok) {
+        setUsers((prev) => prev.map((u) => (u.email === email ? { ...u, plan } : u)));
+      }
+    } catch { /* leave the row as-is, they can try again */ }
+    setChangingPlanEmail(null);
   };
 
   return (
@@ -483,7 +495,19 @@ function AdminPanel({ onBack }) {
               <span className="guide-card-tier">{u.plan}{u.isAdmin ? " · admin" : ""}</span>
             </div>
             <div className="guide-card-desc">Signed up {new Date(u.createdAt).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" })}</div>
-            <div style={{ marginTop: 10 }}>
+            <div style={{ marginTop: 10, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+              <select
+                className="admin-plan-select"
+                value={u.plan}
+                disabled={changingPlanEmail === u.email}
+                onChange={(e) => changePlan(u.email, e.target.value)}
+              >
+                <option value="watch">watch (free)</option>
+                <option value="starter">starter</option>
+                <option value="trader">trader</option>
+                <option value="desk">pro</option>
+              </select>
+              {changingPlanEmail === u.email && <span className="admin-plan-saving">Saving…</span>}
               {confirmingEmail === u.email ? (
                 <span className="admin-confirm-row">
                   <span className="admin-confirm-text">Delete this account? This can't be undone.</span>
@@ -1816,6 +1840,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .guide-news-body{color:var(--muted);font-size:12.5px;line-height:1.5}
 .guide-foot{padding:8px 4px 20px;text-align:center;color:var(--dim);font-size:11px;line-height:1.6}
 .admin-danger-link{background:none;border:none;color:var(--red-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0}
+.admin-plan-select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-size:12px;font-family:inherit;cursor:pointer}
+.admin-plan-select:disabled{opacity:.5;cursor:default}
+.admin-plan-saving{color:var(--muted);font-size:11.5px}
 .admin-confirm-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .admin-confirm-text{color:var(--red-soft);font-size:12px}
 .admin-danger-btn{background:var(--red-dim);border:1px solid var(--red);color:var(--red-soft);font-size:12px;font-weight:700;padding:6px 11px;border-radius:8px;cursor:pointer}
