@@ -569,7 +569,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [news, setNews] = useState({});         // sym -> [items]
   const [netFlow, setNetFlow] = useState(null);     // aggregate whale flow, not per-coin
   const [openPositions, setOpenPositions] = useState([]); // signals fired and still unresolved, from signal_track
-  const [dashTab, setDashTab] = useState("opps"); // "opps" | "open" — which panel shows in the main column
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -858,7 +857,24 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // all. This just controls what's actually shown, once a coin's removed
   // from the watchlist, its open trades stop showing here too, even
   // though they're still quietly tracking to a real win or loss.
-  const visibleOpenPositions = useMemo(() => openPositions.filter((p) => watchlist.includes(p.coin)), [openPositions, watchlist]);
+  const visibleOpenPositions = useMemo(
+    () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p)),
+    [openPositions, watchlist, isLiveVerified]
+  );
+  // One real, combined list, merging what's already server-confirmed open
+  // with anything that just fired locally and hasn't been picked up by
+  // the server's own poll yet (a brief, real timing gap, never longer
+  // than one refresh cycle). Server-confirmed entries are authoritative;
+  // a live signal only gets added if nothing open already represents the
+  // exact same real alert, so nothing ever shows twice.
+  const openAlerts = useMemo(() => {
+    const openKeys = new Set(visibleOpenPositions.map((p) => `${p.coin}:${p.tf}:${p.label}:${p.dir}`));
+    const freshOnly = visibleSignals.filter((s) => !openKeys.has(`${s.sym}:${s.tf}:${s.label}:${s.dir}`));
+    return [
+      ...visibleOpenPositions.map((p) => ({ kind: "open", data: p })),
+      ...freshOnly.map((s) => ({ kind: "fresh", data: s })),
+    ];
+  }, [visibleOpenPositions, visibleSignals]);
 
   // Market Meter (internal only, never shown to customers, no label on
   // the badge itself). The volatility meter (per-coin, price-based) and
@@ -1063,61 +1079,37 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
       <div className="dash-body">
         <div className="opps">
-          <div className="dash-tabs">
-            <button className={`dash-tab ${dashTab === "opps" ? "active" : ""}`} onClick={() => setDashTab("opps")}>
-              Opportunities <span className="dash-tab-n">{visibleSignals.length}</span>
-            </button>
-            <button className={`dash-tab ${dashTab === "open" ? "active" : ""}`} onClick={() => setDashTab("open")}>
-              Open positions {visibleOpenPositions.length > 0 && <span className="dash-tab-n">{visibleOpenPositions.length}</span>}
-            </button>
+          <div className="section-head">
+            <h2>Open Alerts</h2>
+            <span className="sh-sub">{openAlerts.length} active, verified only · {watchlist.length} coins · {TF[tfKey].label}</span>
           </div>
-
-          {dashTab === "opps" ? (
-            <>
-              <div className="section-head">
-                <span className="sh-sub">{visibleSignals.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
+          {openAlerts.length === 0 ? (
+            <div className="empty">
+              <div className="empty-h">{allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}</div>
+              <div className="empty-d">
+                {allSignals.length > 0
+                  ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
+                  : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
               </div>
-              {visibleSignals.length === 0 ? (
-                <div className="empty">
-                  <div className="empty-h">{allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}</div>
-                  <div className="empty-d">
-                    {allSignals.length > 0
-                      ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
-                      : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
-                  </div>
-                </div>
-              ) : (
-                <div className="cards-grid">
-                  {visibleSignals.map((s) => <SignalCard key={s.sym + s.key} s={s} sym={s.sym} price={s.price} firedAt={s.firedAt} now={now} read={assess[`${s.sym}:${s.key}`]} loading={assessing[`${s.sym}:${s.key}`]} onAssess={() => runAssess(s.sym, s)} />)}
-                </div>
-              )}
-            </>
+            </div>
           ) : (
-            <>
-              <div className="section-head">
-                <span className="sh-sub">{visibleOpenPositions.length} still in motion, not resolved yet</span>
-              </div>
-              {visibleOpenPositions.length === 0 ? (
-                <div className="empty">
-                  <div className="empty-h">Nothing open right now.</div>
-                  <div className="empty-d">Fires here stay visible until they actually hit target or stop, this fills in the moment something's live. Only shows coins on your current watchlist, if you've removed one, anything still open for it keeps tracking quietly in the background, it just won't show here anymore.</div>
-                </div>
-              ) : (
-                <div className="cards-grid">
-                  {visibleOpenPositions.map((p) => (
-                    <SignalCard
-                      key={`open:${p.coin}:${p.tf}:${p.label}:${p.dir}:${p.firedAt}`}
-                      s={{ dir: p.dir, label: p.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: p.entry, stop: p.stop, target: p.target, tf: p.tf, tier: p.tier, tierRate: p.tierRate }}
-                      sym={p.coin}
-                      price={data[p.coin]?.snap?.price}
-                      firedAt={p.firedAt}
-                      now={now}
-                      isOpenPosition
-                    />
-                  ))}
-                </div>
+            <div className="cards-grid">
+              {openAlerts.map((a) =>
+                a.kind === "open" ? (
+                  <SignalCard
+                    key={`open:${a.data.coin}:${a.data.tf}:${a.data.label}:${a.data.dir}:${a.data.firedAt}`}
+                    s={{ dir: a.data.dir, label: a.data.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate }}
+                    sym={a.data.coin}
+                    price={data[a.data.coin]?.snap?.price}
+                    firedAt={a.data.firedAt}
+                    now={now}
+                    isOpenPosition
+                  />
+                ) : (
+                  <SignalCard key={a.data.sym + a.data.key} s={a.data} sym={a.data.sym} price={a.data.price} firedAt={a.data.firedAt} now={now} read={assess[`${a.data.sym}:${a.data.key}`]} loading={assessing[`${a.data.sym}:${a.data.key}`]} onAssess={() => runAssess(a.data.sym, a.data)} />
+                )
               )}
-            </>
+            </div>
           )}
 
           <div className="signals-panel">
@@ -1668,11 +1660,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
 
-.dash-tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:14px}
-.dash-tab{background:none;border:none;padding:9px 4px;margin-right:22px;font-size:14px;font-weight:600;color:var(--dim);cursor:pointer;border-bottom:2px solid transparent}
-.dash-tab.active{color:var(--text);border-bottom-color:var(--green)}
-.dash-tab-n{color:var(--dim);font-weight:500;font-size:12px;margin-left:3px}
-.dash-tab.active .dash-tab-n{color:var(--green-soft)}
 
 .section-head h2{font-size:20px;font-weight:700}
 .sh-sub{color:var(--dim);font-size:12.5px}
