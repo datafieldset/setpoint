@@ -545,6 +545,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [showGuide, setShowGuide] = useState(false);
   const [showWatchLive, setShowWatchLive] = useState(false);
   const [pushStatus, setPushStatus] = useState("checking"); // checking | unsupported | off | on | busy
+  const [pushError, setPushError] = useState("");
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -594,6 +595,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, []);
 
   const togglePush = async () => {
+    setPushError("");
     if (pushStatus === "on") {
       setPushStatus("busy");
       try {
@@ -611,18 +613,38 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     }
 
     setPushStatus("busy");
+    // Checked directly, first, rather than letting a missing key surface
+    // as a generic subscribe failure. This was a real, silent failure
+    // mode, the button just quietly reverted to "off" with no
+    // explanation, exactly the confusing experience worth never
+    // repeating.
+    const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
+    if (!vapidKey) {
+      setPushError("Alerts aren't set up on the server yet. Try again once that's configured.");
+      setPushStatus("off");
+      return;
+    }
     try {
       const permission = await Notification.requestPermission();
-      if (permission !== "granted") { setPushStatus("off"); return; }
+      if (permission !== "granted") {
+        setPushError("Permission wasn't granted, browser notifications stay off until it is.");
+        setPushStatus("off");
+        return;
+      }
       const reg = await navigator.serviceWorker.register("/sw.js");
-      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
       const sub = await reg.pushManager.subscribe({
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey),
       });
-      await fetch("/api/push/subscribe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subscription: sub }) });
+      const res = await fetch("/api/push/subscribe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ subscription: sub }) });
+      if (!res.ok) {
+        setPushError("Couldn't save the subscription, try again in a moment.");
+        setPushStatus("off");
+        return;
+      }
       setPushStatus("on");
-    } catch {
+    } catch (e) {
+      setPushError(`Something went wrong turning alerts on${e?.message ? `: ${e.message}` : ""}.`);
       setPushStatus("off");
     }
   };
@@ -1076,6 +1098,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
       {globalError && <div className="banner">{globalError}</div>}
       {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ starter: "Starter", trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
+      {pushError && <div className="banner error">{pushError} <button className="banner-dismiss" onClick={() => setPushError("")}>×</button></div>}
 
       <div className="dash-body">
         <div className="opps">
@@ -1656,6 +1679,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 
 .banner{background:var(--red-dim);border:1px solid rgba(255,92,108,.3);color:var(--red-soft);font-size:13px;padding:11px 14px;border-radius:10px;margin-bottom:14px}
 .banner.success{background:var(--green-dim);border-color:rgba(0,209,121,.3);color:var(--green)}
+.banner.error{background:var(--red-dim);border-color:rgba(255,92,108,.3);color:var(--red-soft);display:flex;align-items:center;justify-content:space-between;gap:12px}
+.banner-dismiss{background:none;border:none;color:inherit;font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
 
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
