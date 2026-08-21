@@ -327,7 +327,7 @@ function Guide({ onBack }) {
       <div className="guide-hero">
         <div className="guide-mark">S</div>
         <h1>How Setpoint Works</h1>
-        <p>A plain-English guide to the three things you'll see on your dashboard: alerts, the lean meter, and the news read.</p>
+        <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, and the news read.</p>
       </div>
 
       <div className="guide-section">
@@ -348,7 +348,7 @@ function Guide({ onBack }) {
         )}
 
         <div className="guide-glossary">
-          <b>The percentage is a real batting average, not a guarantee.</b> It means this exact setup has actually happened many times before, and that share of the time it played out the way the alert expected. It doesn't mean this specific alert will win, just that the odds have leaned that way historically. Anything that hasn't verified itself yet stays hidden by default, you can still see it by tapping "show anyway," it just comes with an honest, lower number attached.
+          <b>The percentage is a real batting average, not a guarantee.</b> It means this exact setup has actually happened many times before, and that share of the time it played out the way the alert expected. It doesn't mean this specific alert will win, just that the odds have leaned that way historically. Anything that hasn't verified itself at 58% or higher, checked live against real, current results, never shows up here at all. That's deliberate, not a limitation, you're only ever seeing what's actually earning it right now.
         </div>
       </div>
 
