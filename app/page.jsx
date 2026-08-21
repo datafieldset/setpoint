@@ -248,11 +248,13 @@ function Auth({ mode, plan, onBack }) {
       const result = await signIn("credentials", { email, password: pw, redirect: false });
       if (result?.error) { setErr(ERR_MSG[result.error] || "Wrong email or password."); setBusy(false); return; }
 
-      // Every plan is a real paid plan now, no more free Watch tier, so
-      // signup always means real Stripe checkout next, never instant
-      // access. This used to only check trader/desk, a real bug once
-      // Starter stopped being free, it would have created an account
-      // with no payment ever collected.
+      // Only a real paid plan selection should trigger Stripe checkout.
+      // "watch" is real again (the free Watch-Live-registration tier, not
+      // the old free dashboard tier), and correctly should NOT check out,
+      // that account gets real access only once they pick a paid plan
+      // from UpgradeGate later. This condition once only checked
+      // trader/desk, a real bug once Starter also became paid, it would
+      // have created an account with no payment ever collected.
       if (mode !== "signin" && (plan === "starter" || plan === "trader" || plan === "desk")) {
         const co = await fetch("/api/checkout", {
           method: "POST",
