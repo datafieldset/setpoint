@@ -325,6 +325,24 @@ function Guide({ onBack }) {
     .filter((s) => s.rate != null && s.rate >= 0.58)
     .sort((a, b) => b.rate - a.rate);
 
+  // Grouped by real, customer-facing brand name, not by the raw
+  // (label,tf,dir) key. Surge alone covers four separate timeframes now,
+  // showing four cards that all just say "Surge" with the same
+  // description was genuinely confusing, indistinguishable at a glance.
+  // One real card per name, every verified variant listed inside it.
+  const grouped = [];
+  for (const s of proven) {
+    const name = brandName(s.label);
+    let g = grouped.find((x) => x.name === name);
+    if (!g) {
+      g = { name, label: s.label, best: s.rate, variants: [] };
+      grouped.push(g);
+    }
+    g.variants.push(s);
+    if (s.rate > g.best) g.best = s.rate;
+  }
+  grouped.sort((a, b) => b.best - a.best);
+
   return (
     <div className="dash">
       <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
@@ -340,13 +358,17 @@ function Guide({ onBack }) {
         <h2>Alerts you can actually trust</h2>
         <p className="guide-lede">Setpoint tests every alert type against real, historical price data before it ever shows up on your screen. Only setups that have verified themselves right more often than not, at least 58 times out of 100, show up by default. Here's what's currently verified, best track record first.</p>
 
-        {proven.length ? proven.map((s, i) => (
+        {grouped.length ? grouped.map((g, i) => (
           <div className="guide-card" key={i}>
             <div className="guide-card-top">
-              <span className="guide-card-name">{brandName(s.label)}</span>
-              <span className="guide-card-tier">{s.dir === "bull" ? "LONG" : "SHORT"} · {Math.round(s.rate * 100)}% · {TF[s.tf]?.label || s.tf}</span>
+              <span className="guide-card-name">{g.name}</span>
             </div>
-            <div className="guide-card-desc">{GUIDE_DESC[s.label] || "A setup that's backtested well historically."}</div>
+            <div className="guide-card-desc">{GUIDE_DESC[g.label] || "A setup that's backtested well historically."}</div>
+            <div className="guide-card-variants">
+              {g.variants.sort((a, b) => b.rate - a.rate).map((v, j) => (
+                <span className="guide-variant" key={j}>{v.dir === "bull" ? "LONG" : "SHORT"} · {Math.round(v.rate * 100)}% · {TF[v.tf]?.label || v.tf}</span>
+              ))}
+            </div>
           </div>
         )) : (
           <div className="guide-card"><div className="guide-card-desc">Nothing's currently verified at 58% or higher. This updates automatically as the data changes.</div></div>
@@ -418,8 +440,6 @@ function AdminPanel({ onBack }) {
   const [confirmingEmail, setConfirmingEmail] = useState(null);
   const [deletingEmail, setDeletingEmail] = useState(null);
   const [changingPlanEmail, setChangingPlanEmail] = useState(null);
-  const [testResult, setTestResult] = useState(null);
-  const [testing, setTesting] = useState(false);
   const [analytics, setAnalytics] = useState(null);
 
   const loadUsers = () => {
@@ -437,19 +457,6 @@ function AdminPanel({ onBack }) {
   };
 
   useEffect(() => { loadUsers(); loadAnalytics(); }, []);
-
-  const sendTest = async () => {
-    setTesting(true);
-    setTestResult(null);
-    try {
-      const res = await fetch("/api/admin/test-email", { method: "POST" });
-      const json = await res.json();
-      setTestResult(json);
-    } catch {
-      setTestResult({ ok: false, reason: "request_failed" });
-    }
-    setTesting(false);
-  };
 
   const doDelete = async (email) => {
     setDeletingEmail(email);
@@ -482,21 +489,6 @@ function AdminPanel({ onBack }) {
         <div className="guide-mark">S</div>
         <h1>Registrations</h1>
         <p>Everyone who's signed up, and what's actually captured today: email, plan, and signup date. Name and phone aren't collected yet, they're not asked for at signup.</p>
-      </div>
-
-      <div className="guide-section">
-        <h2 style={{ fontSize: 15 }}>Test the welcome email</h2>
-        <p className="guide-lede">Sends a real test email to your own address, {" "}and shows exactly what Resend says back, so a failed send doesn't have to stay a guess.</p>
-        <button className="ghost sm" onClick={sendTest} disabled={testing}>{testing ? "Sending…" : "Send test email"}</button>
-        {testResult && (
-          <div className="guide-glossary" style={{ marginTop: 12 }}>
-            {testResult.ok ? (
-              <span><b>Sent successfully.</b> Check your inbox (and spam folder).</span>
-            ) : (
-              <span><b>Failed: {testResult.reason}.</b> {testResult.detail || (testResult.reason === "no_api_key" ? "RESEND_API_KEY isn't set." : "")}</span>
-            )}
-          </div>
-        )}
       </div>
 
       {analytics && (
@@ -2012,6 +2004,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .guide-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
 .guide-card-name{font-weight:700;font-size:14px}
 .guide-card-tier{font-size:11px;font-weight:700;color:var(--green-soft);white-space:nowrap}
+.guide-card-variants{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+.guide-variant{font-size:11px;font-weight:600;color:var(--green-soft);background:var(--green-dim);border:1px solid rgba(0,209,121,.3);padding:3px 9px;border-radius:6px;white-space:nowrap}
 .guide-card-desc{color:var(--muted);font-size:12.5px;line-height:1.5}
 .guide-glossary{background:var(--panel3);border:1px solid var(--border);border-radius:11px;padding:13px 15px;margin-top:16px;font-size:12px;color:var(--dim);line-height:1.5}
 .guide-glossary b{color:var(--text)}
