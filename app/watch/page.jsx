@@ -11,11 +11,16 @@
 // The real content itself lives in WatchLiveContent.jsx, shared with the
 // in-dashboard view for already-signed-in paid accounts, this file's own
 // job is just the auth gate in front of it.
+import { useEffect } from "react";
 import { useSession } from "next-auth/react";
 import WatchLiveContent from "../WatchLiveContent.jsx";
 
 export default function WatchPage() {
   const { status } = useSession(); // "loading" | "authenticated" | "unauthenticated"
+
+  useEffect(() => {
+    fetch("/api/track-visit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: "/watch" }) }).catch(() => {});
+  }, []);
 
   if (status === "loading") {
     return (

@@ -129,6 +129,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 function Landing({ onPickPlan, onSignIn }) {
   const demoSig = { label: "Quiet accumulation", dir: "bull", strength: 0.72, tierRate: 0.80, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
   const tiers = PRICING_LIST.map((p) => ({ ...p, pop: p.id === "trader", cta: `Get ${p.name}` }));
+  useEffect(() => {
+    fetch("/api/track-visit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: "/" }) }).catch(() => {});
+  }, []);
   return (
     <div className="landing">
       <nav className="nav">
@@ -209,6 +212,7 @@ function Landing({ onPickPlan, onSignIn }) {
       <footer className="foot">
         <div className="brand sm"><span className="logo-dot" />Setpoint</div>
         <div className="disc">Setpoint sends informational alerts only. It is not a broker, does not execute trades, and does not provide financial advice. Levels shown are computed reference points, not recommendations. Crypto is volatile, so do your own research.</div>
+        <div className="foot-links"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/contact">Contact</a></div>
       </footer>
     </div>
   );
@@ -309,6 +313,7 @@ const GUIDE_DESC = {
   "Grind Up": "A sustained, steady climb, most of the recent bars moving the same direction, a real cumulative move, not a single dramatic bar.",
   "Grind Down": "A sustained, steady decline, most of the recent bars moving the same direction, a real cumulative move, not a single dramatic bar.",
   "Momentum": "Price moved a large amount in a single bar, a burst of one-sided pressure.",
+  "Whale Flow": "A real, unusually large trade just happened on a major exchange, the kind of size that can genuinely move a market on its own.",
 };
 
 function Guide({ onBack }) {
@@ -377,6 +382,14 @@ function Guide({ onBack }) {
       </div>
 
       <div className="guide-section">
+        <h2>Setpoint read</h2>
+        <p className="guide-lede">In the market context panel, this shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. It's a read on what's genuinely been working lately, not a prediction of what's coming next.</p>
+        <div className="guide-field"><div className="guide-field-k">Roughly even</div><div className="guide-field-v">Neither side has a real, meaningful edge right now.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Leaning long or leaning short</div><div className="guide-field-v">One side's real, recent win rate is genuinely pulling ahead of the other.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Both sides weak</div><div className="guide-field-v">Neither longs nor shorts have been working well lately, worth extra caution regardless of direction.</div></div>
+      </div>
+
+      <div className="guide-section">
         <div className="guide-eyebrow">Part 3</div>
         <h2>The news read</h2>
         <p className="guide-lede">Everything else on your dashboard comes purely from price. This one piece doesn't, it's an AI reading real, current crypto headlines and giving you a plain summary of the overall mood, refreshed every few hours.</p>
@@ -407,6 +420,7 @@ function AdminPanel({ onBack }) {
   const [changingPlanEmail, setChangingPlanEmail] = useState(null);
   const [testResult, setTestResult] = useState(null);
   const [testing, setTesting] = useState(false);
+  const [analytics, setAnalytics] = useState(null);
 
   const loadUsers = () => {
     fetch("/api/admin/users", { cache: "no-store" })
@@ -415,7 +429,14 @@ function AdminPanel({ onBack }) {
       .catch(() => setError("Couldn't load the registration list."));
   };
 
-  useEffect(() => { loadUsers(); }, []);
+  const loadAnalytics = () => {
+    fetch("/api/admin/analytics", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("failed")))
+      .then((json) => setAnalytics(json))
+      .catch(() => {}); // real, secondary panel, a load failure here shouldn't block the rest of the admin page
+  };
+
+  useEffect(() => { loadUsers(); loadAnalytics(); }, []);
 
   const sendTest = async () => {
     setTesting(true);
@@ -477,6 +498,30 @@ function AdminPanel({ onBack }) {
           </div>
         )}
       </div>
+
+      {analytics && (
+        <div className="guide-section">
+          <h2 style={{ fontSize: 15 }}>Real numbers, last 30 days</h2>
+          <div className="admin-stat-row">
+            <div className="admin-stat"><div className="admin-stat-n">{analytics.totalUsers}</div><div className="admin-stat-k">total accounts</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{analytics.totalPaid}</div><div className="admin-stat-k">paying now</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{analytics.viewsByDay.reduce((s, d) => s + d.n, 0)}</div><div className="admin-stat-k">real visits</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{analytics.signupsByDay.reduce((s, d) => s + d.n, 0)}</div><div className="admin-stat-k">new signups</div></div>
+          </div>
+          <div className="admin-plan-breakdown">
+            {analytics.planBreakdown.map((p) => (
+              <span key={p.plan} className="admin-plan-chip">{{ starter: "Starter", trader: "Trader", desk: "Pro", watch: "Free" }[p.plan] || p.plan}: {p.n}</span>
+            ))}
+          </div>
+          {analytics.totalUsers > 0 && (
+            <div className="admin-conv-note">
+              Real visit-to-signup rate: {analytics.viewsByDay.reduce((s, d) => s + d.n, 0) > 0
+                ? `${Math.round((analytics.signupsByDay.reduce((s, d) => s + d.n, 0) / analytics.viewsByDay.reduce((s, d) => s + d.n, 0)) * 100)}%`
+                : "not enough visit data yet"}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="guide-section">
         <div className="guide-card-top" style={{ marginBottom: 14 }}>
@@ -546,6 +591,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [showWatchLive, setShowWatchLive] = useState(false);
   const [pushStatus, setPushStatus] = useState("checking"); // checking | unsupported | off | on | busy
   const [pushError, setPushError] = useState("");
+  const [cancelState, setCancelState] = useState("idle"); // idle | confirming | busy | done
+  const [cancelInfo, setCancelInfo] = useState(null); // { endsAt } once real, confirmed
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -647,6 +694,22 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     } catch (e) {
       setPushError(`Something went wrong turning alerts on${e?.message ? `: ${e.message}` : ""}.`);
       setPushStatus("off");
+    }
+  };
+
+  const cancelSubscription = async () => {
+    setCancelState("busy");
+    try {
+      const res = await fetch("/api/cancel-subscription", { method: "POST" });
+      const json = await res.json();
+      if (res.ok && json.endsAt) {
+        setCancelInfo({ endsAt: json.endsAt });
+        setCancelState("done");
+      } else {
+        setCancelState("confirming"); // real failure, let them try again rather than silently drop it
+      }
+    } catch {
+      setCancelState("confirming");
     }
   };
 
@@ -1041,6 +1104,17 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             {!account.isAdmin && (
               <span className="plan-badge">{{ starter: "STARTER", watch: "FREE", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
             )}
+            {!account.isAdmin && account.plan !== "watch" && cancelState !== "done" && (
+              cancelState === "confirming" ? (
+                <span className="cancel-confirm-row">
+                  <span className="cancel-confirm-text">Cancel your plan?</span>
+                  <button className="admin-danger-btn" onClick={cancelSubscription} disabled={cancelState === "busy"}>{cancelState === "busy" ? "…" : "Yes, cancel"}</button>
+                  <button className="ghost sm" onClick={() => setCancelState("idle")}>Never mind</button>
+                </span>
+              ) : (
+                <button className="cancel-link" onClick={() => setCancelState("confirming")}>Cancel subscription</button>
+              )
+            )}
             <button className="ghost sm" onClick={() => setShowWatchLive(true)}>WATCH LIVE</button>
             {pushStatus !== "unsupported" && pushStatus !== "checking" && (
               <button className={`ghost sm ${pushStatus === "on" ? "alerts-on" : ""}`} onClick={togglePush} disabled={pushStatus === "busy"}>
@@ -1048,6 +1122,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </button>
             )}
             <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
+            <a className="ghost sm" href="/contact" target="_blank" rel="noopener noreferrer">CONTACT</a>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
         </div>
@@ -1115,6 +1190,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       {globalError && <div className="banner">{globalError}</div>}
       {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ starter: "Starter", trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
       {pushError && <div className="banner error">{pushError} <button className="banner-dismiss" onClick={() => setPushError("")}>×</button></div>}
+      {cancelState === "done" && cancelInfo && (
+        <div className="banner success">
+          Your subscription is canceled. You'll keep full access through {new Date(cancelInfo.endsAt).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}, no charge after that.
+        </div>
+      )}
 
       <div className="dash-body">
         <div className="opps">
@@ -1622,6 +1702,9 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 
 .foot{border-top:1px solid var(--hair);margin-top:40px;padding:28px 0 48px;display:flex;flex-direction:column;gap:14px}
 .disc{color:var(--dim);font-size:12px;line-height:1.6;max-width:760px}
+.foot-links{display:flex;gap:16px;margin-top:12px}
+.foot-links a{color:var(--muted);font-size:12px;text-decoration:none}
+.foot-links a:hover{color:var(--text)}
 
 /* ---- auth ---- */
 .auth-wrap{max-width:440px;margin:0 auto;padding:26px 22px;min-height:100vh;display:flex;flex-direction:column;justify-content:center}
@@ -1949,9 +2032,21 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .guide-foot{padding:8px 4px 20px;text-align:center;color:var(--dim);font-size:11px;line-height:1.6}
 .admin-danger-link{background:none;border:none;color:var(--red-soft);font-size:12px;font-weight:600;cursor:pointer;padding:0}
 .admin-plan-select{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:7px;padding:5px 8px;font-size:12px;font-family:inherit;cursor:pointer}
+.admin-stat-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.admin-stat{background:var(--panel2);border:1px solid var(--border);border-radius:10px;padding:14px}
+.admin-stat-n{font-size:24px;font-weight:800;font-family:'Bricolage Grotesque'}
+.admin-stat-k{font-size:11px;color:var(--muted);margin-top:2px}
+.admin-plan-breakdown{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.admin-plan-chip{font-size:11.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);padding:4px 10px;border-radius:20px}
+.admin-conv-note{font-size:12px;color:var(--dim)}
+@media(max-width:640px){.admin-stat-row{grid-template-columns:repeat(2,1fr)}}
 .admin-plan-select:disabled{opacity:.5;cursor:default}
 .admin-plan-saving{color:var(--muted);font-size:11.5px}
 .admin-confirm-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .admin-confirm-text{color:var(--red-soft);font-size:12px}
+.cancel-link{background:none;border:none;color:var(--dim);font-size:11px;cursor:pointer;padding:0;text-decoration:underline;text-underline-offset:2px}
+.cancel-link:hover{color:var(--muted)}
+.cancel-confirm-row{display:flex;align-items:center;gap:8px}
+.cancel-confirm-text{color:var(--red-soft);font-size:11px}
 .admin-danger-btn{background:var(--red-dim);border:1px solid var(--red);color:var(--red-soft);font-size:12px;font-weight:700;padding:6px 11px;border-radius:8px;cursor:pointer}
 `;
