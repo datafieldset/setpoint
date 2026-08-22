@@ -576,6 +576,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [coinNote, setCoinNote] = useState({}); // "sym:tf" -> read | {error}
   const [coinNoteLoading, setCoinNoteLoading] = useState({});
   const fired = useRef({}); // key -> {firstFired, lastSeen}
+  const openPositionsRef = useRef([]); // mirrors openPositions state, read inside the detection loop so a stale closure can never see old data
 
   const th2 = useMemo(() => ({ ...th, pctMin: TF[tfKey].pctMin }), [th, tfKey]);
 
@@ -671,6 +672,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       if (!res.ok) return;
       const json = await res.json();
       setOpenPositions(json.positions || []);
+      openPositionsRef.current = json.positions || [];
     } catch { /* non-fatal */ }
   }, []);
 
@@ -783,9 +785,21 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
-          const isNew = !rec || t - rec.lastSeen > TF[tfKey].cooldownMs;
+          // A real, persistent check, not just this session's own memory.
+          // fired.current resets on every reload and is keyed per
+          // timeframe, so switching tabs or refreshing the page used to
+          // make an alert that fired hours ago look brand new again,
+          // re-logging it to the scoreboard and re-firing a push
+          // notification for something already delivered. openPositions
+          // comes from the server and survives both, so it's checked
+          // first: if a real, already-open position for this exact
+          // coin/tf/label/dir already exists, this was never new.
+          const serverMatch = openPositionsRef.current.find(
+            (p) => p.coin === c.sym && p.tf === TF[tfKey].label && p.label === s.label && p.dir === s.dir
+          );
+          const isNew = !serverMatch && (!rec || t - rec.lastSeen > TF[tfKey].cooldownMs);
           if (isNew) fired.current[key] = { firstFired: t, lastSeen: t };
-          else fired.current[key] = { firstFired: rec.firstFired, lastSeen: t };
+          else fired.current[key] = { firstFired: rec?.firstFired || serverMatch?.firedAt || t, lastSeen: t };
           if (isNew) {
             // Log to the rolling scoreboard (now part of /api/backtest, the standalone /api/scoreboard page is retired). Fire-and-forget,
             // a logging hiccup should never block the dashboard from working.
@@ -880,8 +894,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // from the watchlist, its open trades stop showing here too, even
   // though they're still quietly tracking to a real win or loss.
   const visibleOpenPositions = useMemo(
-    () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p)),
-    [openPositions, watchlist, isLiveVerified]
+    () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p) && p.tf === TF[tfKey].label),
+    [openPositions, watchlist, isLiveVerified, tfKey]
   );
   // One real, combined list, merging what's already server-confirmed open
   // with anything that just fired locally and hasn't been picked up by
