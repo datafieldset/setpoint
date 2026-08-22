@@ -1,0 +1,27 @@
+name: Check signals cron
+
+# Runs on GitHub's own servers, on a real schedule, completely independent
+# of any browser being open anywhere. This is the real fix for push
+# notifications that used to only ever trigger from inside a customer's
+# own, actively-open dashboard tab, exactly the case that fails on a
+# phone the moment the OS suspends a background tab.
+#
+# Same pattern as close-alert-cron.yml, part of this repo, no third-party
+# service, no new signup.
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-signals:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Hit check-signals endpoint
+        run: |
+          curl -sS -f "https://setpointalerts.com/api/cron/check-signals?key=verified2026" \
+            -o response.json \
+            -w "\nHTTP status: %{http_code}\n" \
+            --max-time 55
+          cat response.json

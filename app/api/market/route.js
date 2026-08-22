@@ -8,23 +8,11 @@ export const revalidate = 0;
 
 import { TF, isValidTf } from "../../../lib/timeframes.js";
 import { marketBias, reversalRisk, getLiveVerifiedGate } from "../../../lib/signals.js";
-import { aggregate } from "../../../lib/resolve.js";
+import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleOutflow, HEADERS } from "../../../lib/marketContext.js";
 
-const HEADERS = { "User-Agent": "setpoint/1.0 (+https://setpoint.app)" };
-
-// Shared, in-memory cache, kept at module scope so it survives across
-// requests handled by the same warm serverless instance. If five users
-// are all watching BTC at the same moment, this means one real Coinbase
-// request instead of five redundant ones for the exact same data. Not a
-// perfect, guaranteed cache across every concurrent instance Vercel might
-// spin up under real load, that would need an external store (the
-// existing Neon database, or a dedicated cache service), but this is a
-// real, free, zero-new-infrastructure first layer that helps in the
-// common case right now. 25s TTL, comfortably under the 60s client
-// refresh interval, so cached data never gets meaningfully stale, it
-// just avoids re-fetching the same thing multiple times within one
-// refresh window.
-const CANDLE_CACHE = new Map();
+// Kept local, market/route.js-specific: 24h stats display and the
+// signal-drift bias panel aren't needed by the server-side signal
+// detector, so they stay here rather than in the shared module.
 const STATS_CACHE = new Map();
 const CACHE_TTL_MS = 25000;
 
@@ -33,28 +21,6 @@ function getCached(cache, key) {
   if (!hit) return null;
   if (Date.now() - hit.at > CACHE_TTL_MS) { cache.delete(key); return null; }
   return hit.data;
-}
-
-async function fetchCandles(sym, tf) {
-  const meta = TF[tf] || TF["15m"];
-  const cacheKey = `${sym}:${tf}`;
-  const cached = getCached(CANDLE_CACHE, cacheKey);
-  if (cached) return cached;
-
-  const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=${meta.gran}`;
-  const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-  if (!r.ok) throw new Error(r.status === 404 ? "not on Coinbase" : `feed ${r.status}`);
-  const raw = await r.json();
-  if (!Array.isArray(raw) || raw.length === 0) throw new Error("no data");
-  // Coinbase rows: [time, low, high, open, close, volume], newest first
-  const candles = raw
-    .slice()
-    .reverse()
-    .map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] }))
-    .filter((c) => c.close > 0);
-  const result = meta.aggFactor > 1 ? aggregate(candles, meta.gran, meta.aggFactor) : candles;
-  CANDLE_CACHE.set(cacheKey, { data: result, at: Date.now() });
-  return result;
 }
 
 async function fetchStats(sym) {
@@ -84,122 +50,6 @@ async function fetchStats(sym) {
 // several calls. That's expensive and this number barely moves day to day,
 // so the result is cached in Neon and only recomputed once it's a day old,
 // not on every dashboard refresh like everything else here.
-const MA_CACHE_HOURS = 24;
-const WEEKS_NEEDED = 210; // small buffer over 200 for a clean weekly close
-
-async function fetchDailyCandlesPaged(sym, totalDays) {
-  const dayMs = 86400 * 1000;
-  const chunks = [];
-  let end = new Date();
-  while (chunks.flat().length < totalDays) {
-    const start = new Date(end.getTime() - 299 * dayMs);
-    const url = `https://api.exchange.coinbase.com/products/${sym}-USD/candles?granularity=86400&start=${start.toISOString()}&end=${end.toISOString()}`;
-    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-    if (!r.ok) break;
-    const raw = await r.json();
-    if (!Array.isArray(raw) || raw.length === 0) break;
-    chunks.push(raw.map((x) => ({ time: x[0] * 1000, low: x[1], high: x[2], open: x[3], close: x[4], volumeto: x[5] })));
-    end = new Date(start.getTime() - dayMs);
-    if (chunks.length > 8) break; // hard cap so a bad response can't loop forever
-  }
-  return chunks.flat().sort((a, b) => a.time - b.time).filter((c) => c.close > 0);
-}
-
-function toWeeklyCloses(dailyCandles) {
-  const weekMs = 7 * 86400 * 1000;
-  const map = new Map();
-  for (const c of dailyCandles) {
-    const bucket = Math.floor(c.time / weekMs) * weekMs;
-    map.set(bucket, c.close); // ascending input, so the last write per week is that week's close
-  }
-  return [...map.entries()].sort((a, b) => a[0] - b[0]).map(([, close]) => close);
-}
-
-async function computeWeekly200MA() {
-  const daily = await fetchDailyCandlesPaged("BTC", WEEKS_NEEDED * 7);
-  const weeklyCloses = toWeeklyCloses(daily);
-  if (weeklyCloses.length < 50) return null; // not enough real history to trust this yet
-  const window = weeklyCloses.slice(-200);
-  const sma = window.reduce((a, b) => a + b, 0) / window.length;
-  const k = 2 / (window.length + 1);
-  let ema = window[0];
-  for (let i = 1; i < window.length; i++) ema = window[i] * k + ema * (1 - k);
-  return { sma, ema, weeksUsed: window.length, computedAt: Date.now() };
-}
-
-async function getWeekly200MA() {
-  const conn = process.env.DATABASE_URL;
-  if (!conn) {
-    try { return await computeWeekly200MA(); } catch { return null; }
-  }
-  try {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    await sql`
-      CREATE TABLE IF NOT EXISTS macro_cache (
-        key TEXT PRIMARY KEY,
-        value JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `;
-    const rows = await sql`SELECT value, updated_at FROM macro_cache WHERE key = 'weekly_200ma'`;
-    const fresh = rows.length && (Date.now() - new Date(rows[0].updated_at).getTime()) < MA_CACHE_HOURS * 3600 * 1000;
-    if (fresh) return rows[0].value;
-
-    const computed = await computeWeekly200MA();
-    if (!computed) return rows.length ? rows[0].value : null; // fetch failed, fall back to stale cache over nothing
-    await sql`
-      INSERT INTO macro_cache (key, value, updated_at) VALUES ('weekly_200ma', ${JSON.stringify(computed)}::jsonb, now())
-      ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(computed)}::jsonb, updated_at = now()
-    `;
-    return computed;
-  } catch {
-    try { return await computeWeekly200MA(); } catch { return null; }
-  }
-}
-
-async function fetchFng() {
-  try {
-    const r = await fetch("https://api.alternative.me/fng/?limit=1", { cache: "no-store" });
-    const j = await r.json();
-    const d = j.data && j.data[0];
-    return d ? { value: parseInt(d.value, 10), label: d.value_classification } : null;
-  } catch {
-    return null;
-  }
-}
-
-// Market-wide bias, computed from an independent top-100 basket via
-// CoinGecko's free, keyless public API, not from whatever the user happens
-// to be watching. That independence matters: a bias built only from a
-// 3-6 coin watchlist can be partly shaped by one of those same coins' own
-// move, a mild circularity. A broad, external basket removes that, and is
-// closer to an honest "how is the crypto market doing" read. Requests a
-// fast 1h change per coin; falls back to 24h if that field isn't present,
-// so a CoinGecko response-shape change degrades gracefully instead of
-// silently returning nothing. No key, no signup, ~30 req/min is far more
-// than this needs at one call per dashboard refresh.
-async function fetchBroadMarketBias() {
-  try {
-    const url = "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=1&price_change_percentage=1h&sparkline=false";
-    const r = await fetch(url, { headers: HEADERS, cache: "no-store" });
-    if (!r.ok) return null;
-    const raw = await r.json();
-    if (!Array.isArray(raw) || raw.length === 0) return null;
-    const readings = raw
-      .map((c) => {
-        const pct = c.price_change_percentage_1h_in_currency ?? c.price_change_percentage_24h ?? null;
-        const sym = (c.symbol || "").toUpperCase();
-        return { sym, pct, isBTC: sym === "BTC" };
-      })
-      .filter((c) => c.pct != null && c.sym);
-    if (!readings.length) return null;
-    return marketBias(readings);
-  } catch {
-    return null;
-  }
-}
-
 function withTimeout(promise, ms, fallback) {
   return Promise.race([
     promise,
@@ -251,38 +101,6 @@ async function getSignalBias() {
     return { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length, bothWeak };
   } catch {
     return null;
-  }
-}
-
-// Real, recent whale outflow within roughly the last 4 hours, feeds the
-// new Quiet Build + Whale Confirmation signal. Same proven burst-
-// detection technique already live for the whale flow panel: an
-// unusually high-volume 1-minute bar (≥4x its own trailing-20 average)
-// stands in for a large trade, direction from whether that bar closed up
-// (buy, outflow, per the standard buying=bullish framing this app uses)
-// or down. A single fetch of BTC's own 1-minute candles naturally covers
-// about 5 hours of history, more than enough to check the last 4.
-const WHALE_OUTFLOW_WINDOW_MS = 4 * 60 * 60 * 1000;
-
-async function getRecentWhaleOutflow() {
-  try {
-    const r = await fetch("https://api.exchange.coinbase.com/products/BTC-USD/candles?granularity=60", { headers: HEADERS, cache: "no-store" });
-    if (!r.ok) return false;
-    const raw = await r.json();
-    if (!Array.isArray(raw) || raw.length < 30) return false;
-    const candles = raw.slice().reverse().map((x) => ({ time: x[0] * 1000, open: x[3], close: x[4], volume: x[5] }));
-    const cutoff = Date.now() - WHALE_OUTFLOW_WINDOW_MS;
-    for (let i = 20; i < candles.length; i++) {
-      const c = candles[i];
-      if (c.time < cutoff) continue;
-      const window = candles.slice(Math.max(0, i - 20), i);
-      const avgVol = window.reduce((s, x) => s + x.volume, 0) / window.length;
-      if (avgVol <= 0 || c.volume < avgVol * 4) continue;
-      if (c.close >= c.open) return true; // a real, recent buy-side burst
-    }
-    return false;
-  } catch {
-    return false;
   }
 }
 
