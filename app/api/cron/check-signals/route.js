@@ -105,26 +105,52 @@ export async function GET(req) {
     let sent = 0;
     const deadEndpoints = [];
 
-    // One real signal computation per (coin, timeframe) actually needed,
-    // not once per account, an account watching the same coin as another
-    // account reuses the same real result instead of a redundant
-    // recomputation.
+    // The real, structural fix, not a special case for fast timeframes.
+    // Checking only "what does the current bar look like right now" is a
+    // pure snapshot, and a bar whose entire real lifetime is close to how
+    // often anything checks (a 5m bar closing every 5 minutes, the same
+    // interval this cron runs on) can become true and revert back to
+    // false between two checks, with nothing ever noticing. That's not a
+    // one-off bug in one signal, it's the same real gap for every fast
+    // timeframe, on every signal type that depends on a single bar
+    // (Momentum, Volume spike, RSI). The real fix: replay every real bar
+    // that closed since a safe, generous lookback window, not just
+    // whichever one happens to be current at this exact instant. This
+    // treats every timeframe identically, on a slow timeframe like 4h
+    // there's naturally only ever one real bar in this window anyway, so
+    // nothing changes there, this only adds real coverage where the gap
+    // actually exists.
+    const LOOKBACK_MS = 30 * 60 * 1000; // generous, real buffer over the cron's own 5-minute interval and GitHub's documented possible delay
+
     const neededCoins = new Set();
     for (const s of subs) for (const c of s.watchlist || []) neededCoins.add(c);
     const timeframes = Object.keys(TF);
 
-    const computed = new Map(); // "COIN:tf" -> signals[]
-    const fetchErrors = []; // real, visible record of what actually failed and why, not silently swallowed
+    // "coin:tf" -> real candidate signals from every bar in the lookback
+    // window, oldest first, so the earliest real occurrence of a given
+    // (label,dir) is the one that gets logged if more than one bar in
+    // this window happened to trigger it.
+    const computed = new Map();
+    const fetchErrors = [];
     for (const coin of neededCoins) {
       for (const tf of timeframes) {
         checked++;
         try {
           const candles = await fetchCandles(coin, tf);
           const th2 = { ...DEFAULT_TH, pctMin: TF[tf].pctMin };
-          const { signals } = computeSignals(candles, tf, th2, {
-            now, marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow,
-          });
-          computed.set(`${coin}:${tf}`, signals || []);
+          const barMsLen = TF[tf].gran * TF[tf].aggFactor * 1000;
+          const cutoff = now - LOOKBACK_MS;
+          const results = [];
+          for (let i = 30; i < candles.length; i++) {
+            if (candles[i].time < cutoff) continue; // outside the real lookback window
+            const slice = candles.slice(0, i + 1);
+            const { signals } = computeSignals(slice, tf, th2, {
+              now: slice[slice.length - 1].time + barMsLen,
+              marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow,
+            });
+            for (const s of signals) results.push(s);
+          }
+          computed.set(`${coin}:${tf}`, results);
         } catch (e) {
           computed.set(`${coin}:${tf}`, []);
           fetchErrors.push(`${coin}:${tf}: ${String(e.message || e).slice(0, 100)}`);
@@ -134,11 +160,7 @@ export async function GET(req) {
         // and every timeframe, easily faster than Coinbase's own
         // confirmed 3-requests-per-second sustained limit, especially
         // early in the run before the shared cache has anything to
-        // reuse. A silent rate-limit failure here would fail the exact
-        // same way every run, for whichever timeframes happen to be
-        // processed earliest, which looks identical to "only some
-        // timeframes ever work" from the outside, worth ruling out
-        // directly rather than guessing.
+        // reuse.
         await new Promise((r) => setTimeout(r, 200));
       }
     }
