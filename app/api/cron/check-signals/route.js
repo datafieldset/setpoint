@@ -86,12 +86,19 @@ export async function GET(req) {
     ]);
     const risk = reversalRisk(bias, fng?.value);
 
-    // Every real open position right now, checked once, reused for every
-    // account and coin below, the exact same "was this already logged"
-    // check the dashboard's own client-side fix uses, so the cron and a
-    // real, active browser tab can never both log or notify about the
-    // same real fire twice.
-    const openRows = await sql`SELECT coin, tf, label, dir, fired_at FROM signal_track WHERE outcome = 'open'`;
+    // Real, database-level protection, not an application-level guess.
+    // The exact same partial unique index /api/track already relies on:
+    // only one 'open' row allowed per (coin, tf, label, dir) at a time,
+    // enforced by Postgres itself. This means the cron and a real,
+    // actively-open browser tab can genuinely never both log or notify
+    // about the same real fire, even if they both attempt it in the same
+    // instant, the database itself is the single source of truth, not a
+    // snapshot either side happened to read a moment earlier.
+    await sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS signal_track_open_unique
+      ON signal_track (coin, tf, label, dir)
+      WHERE outcome = 'open'
+    `;
 
     const now = Date.now();
     let checked = 0;
@@ -123,10 +130,12 @@ export async function GET(req) {
       }
     }
 
-    // For each real, currently-verified signal found, log it once (same
-    // real table the dashboard already writes to) and push it to every
-    // real account whose real watchlist actually includes that coin.
-    const newlyLogged = new Set(); // avoids double-logging within this same run if two accounts share a coin
+    // For each real, currently-verified signal found, the database
+    // itself decides whether this is genuinely new. RETURNING id comes
+    // back empty on a real conflict, meaning something else, the client
+    // or a prior tick of this same cron, already logged this exact
+    // alert, so it's correctly skipped, no duplicate log, no duplicate
+    // push, no race window at all.
     for (const coin of neededCoins) {
       for (const tf of timeframes) {
         const signals = computed.get(`${coin}:${tf}`) || [];
@@ -137,19 +146,19 @@ export async function GET(req) {
           const currentlyVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
           if (!currentlyVerified) continue;
 
-          const alreadyOpen = openRows.some((r) => r.coin === coin && r.tf === TF[tf].label && r.label === s.label && r.dir === s.dir);
-          const dedupeKey = `${coin}:${TF[tf].label}:${s.label}:${s.dir}`;
-          if (alreadyOpen || newlyLogged.has(dedupeKey)) continue;
-
-          newlyLogged.add(dedupeKey);
+          let inserted;
           try {
-            await sql`
-              INSERT INTO signal_track (coin, tf, label, dir, entry, stop, target, fired_at, outcome)
-              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, ${s.entry}, ${s.stop}, ${s.target}, now(), 'open')
+            const result = await sql`
+              INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target)
+              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target})
+              ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
+              RETURNING id
             `;
+            inserted = result.length > 0;
           } catch {
             continue; // a real logging failure here should never crash the whole run
           }
+          if (!inserted) continue; // the database itself says this isn't actually new
 
           const verb = s.dir === "bull" ? "Buy" : "Sell";
           const payload = JSON.stringify({
