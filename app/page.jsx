@@ -586,6 +586,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [cancelState, setCancelState] = useState("idle"); // idle | confirming | busy | done
   const [cancelInfo, setCancelInfo] = useState(null); // { endsAt } once real, confirmed
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
   const [watchlist, setWatchlist] = useState(["BTC"]); // safe starting point for every plan, including Starter's 1-coin limit — grows from real saved data once it loads
@@ -1084,9 +1085,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="top-r">
           <div className="refresh">{loading ? <span className="dot-pulse" /> : <span className="dot-ok" />}<span className="refresh-t">{secsToRefresh != null ? `refresh ${secsToRefresh}s` : "…"}</span></div>
           <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
-          <div className="acct">
+          <button className="hamburger-btn" onClick={() => setShowMobileMenu((v) => !v)} aria-label="Menu">☰</button>
+          <div className={`acct ${showMobileMenu ? "acct-open" : ""}`}>
             {account.isAdmin && (
-              <button className="admin-badge" onClick={() => setShowAdminPanel(true)}>
+              <button className="admin-badge" onClick={() => { setShowAdminPanel(true); setShowMobileMenu(false); }}>
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
               </button>
             )}
@@ -1107,13 +1109,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <button className="cancel-link" onClick={() => setCancelState("confirming")}>Cancel subscription</button>
               )
             )}
-            <button className="ghost sm" onClick={() => setShowWatchLive(true)}>WATCH LIVE</button>
+            <button className="ghost sm" onClick={() => { setShowWatchLive(true); setShowMobileMenu(false); }}>WATCH LIVE</button>
             {pushStatus !== "unsupported" && pushStatus !== "checking" && (
               <button className={`ghost sm ${pushStatus === "on" ? "alerts-on" : ""}`} onClick={togglePush} disabled={pushStatus === "busy"}>
                 {pushStatus === "on" ? "ALERTS ON" : pushStatus === "busy" ? "…" : "TURN ON ALERTS"}
               </button>
             )}
-            <button className="ghost sm" onClick={() => setShowGuide(true)}>GUIDE</button>
+            <button className="ghost sm" onClick={() => { setShowGuide(true); setShowMobileMenu(false); }}>GUIDE</button>
             <a className="ghost sm" href="/contact" target="_blank" rel="noopener noreferrer">CONTACT</a>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
@@ -1729,6 +1731,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .icon-btn{font-size:17px;color:var(--muted);width:32px;height:32px;border-radius:8px;border:1px solid var(--border)}
 .icon-btn:hover{color:var(--text);border-color:var(--green)}
 .acct{display:flex;align-items:center;gap:9px}
+.hamburger-btn{display:none;background:none;border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:16px;width:34px;height:34px;align-items:center;justify-content:center;cursor:pointer}
 .plan-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--green);background:var(--green-dim);border:1px solid var(--green);padding:4px 9px;border-radius:6px}
 .alerts-on{color:var(--green) !important;background:var(--green-dim) !important;border:1px solid var(--green) !important}
 .admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
@@ -1977,11 +1980,20 @@ button:disabled{opacity:.6;cursor:not-allowed}
   .onchain{position:static}
 }
 @media(max-width:640px){
-  .topbar{flex-wrap:wrap;gap:10px;padding:12px 0}
+  .topbar{flex-wrap:wrap;gap:10px;padding:12px 0;position:relative}
   .tf-toggle{order:3;width:100%;justify-content:space-between}
   .tf-toggle button{flex:1;text-align:center}
   .top-r{gap:10px}
-  .plan-badge{display:none}
+  .hamburger-btn{display:flex}
+  .acct{display:none}
+  .acct.acct-open{
+    display:flex;flex-direction:column;align-items:stretch;gap:8px;
+    position:absolute;top:100%;right:0;margin-top:8px;z-index:50;
+    background:var(--panel);border:1px solid var(--border);border-radius:12px;
+    padding:12px;min-width:220px;box-shadow:0 12px 32px rgba(0,0,0,.4);
+  }
+  .acct.acct-open .ghost.sm,.acct.acct-open .admin-badge,.acct.acct-open .cancel-link{width:100%;text-align:left}
+  .acct.acct-open .plan-badge{display:inline-block;width:fit-content}
   .dash{padding:0 12px 40px}
   .cards-grid,.sig-grid{grid-template-columns:1fr}
   .landing,.dash{overflow-x:hidden}
