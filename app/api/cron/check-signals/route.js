@@ -114,6 +114,7 @@ export async function GET(req) {
     const timeframes = Object.keys(TF);
 
     const computed = new Map(); // "COIN:tf" -> signals[]
+    const fetchErrors = []; // real, visible record of what actually failed and why, not silently swallowed
     for (const coin of neededCoins) {
       for (const tf of timeframes) {
         checked++;
@@ -124,9 +125,21 @@ export async function GET(req) {
             now, marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow,
           });
           computed.set(`${coin}:${tf}`, signals || []);
-        } catch {
-          computed.set(`${coin}:${tf}`, []); // a single feed hiccup shouldn't sink the whole run
+        } catch (e) {
+          computed.set(`${coin}:${tf}`, []);
+          fetchErrors.push(`${coin}:${tf}: ${String(e.message || e).slice(0, 100)}`);
         }
+        // A real, deliberate pause between real Coinbase requests. This
+        // loop can fire many requests back to back across several coins
+        // and every timeframe, easily faster than Coinbase's own
+        // confirmed 3-requests-per-second sustained limit, especially
+        // early in the run before the shared cache has anything to
+        // reuse. A silent rate-limit failure here would fail the exact
+        // same way every run, for whichever timeframes happen to be
+        // processed earliest, which looks identical to "only some
+        // timeframes ever work" from the outside, worth ruling out
+        // directly rather than guessing.
+        await new Promise((r) => setTimeout(r, 200));
       }
     }
 
@@ -185,7 +198,7 @@ export async function GET(req) {
       await sql`DELETE FROM push_subscriptions WHERE endpoint = ANY(${deadEndpoints})`;
     }
 
-    return Response.json({ checked, sent, coinsChecked: neededCoins.size, accountsWithAlerts: subs.length });
+    return Response.json({ checked, sent, coinsChecked: neededCoins.size, accountsWithAlerts: subs.length, fetchErrors: fetchErrors.slice(0, 20) });
   } catch (e) {
     return Response.json({ error: "server_error", detail: String(e.message || e).slice(0, 200) }, { status: 500 });
   }
