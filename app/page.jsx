@@ -587,6 +587,31 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [cancelInfo, setCancelInfo] = useState(null); // { endsAt } once real, confirmed
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
+
+  // Guide, Watch Live, and the admin panel are all pure React state, no
+  // URL ever changes, which means the browser's own back button had
+  // nothing real to go back to within the app at all, it just fell
+  // through to whatever page was open before Setpoint was ever loaded,
+  // sometimes days earlier. Opening one of these now pushes a real
+  // history entry; the browser's back button closes it and returns to
+  // the dashboard, exactly like a real page would.
+  const openSubView = useCallback((setter) => {
+    window.history.pushState({ setpointSubView: true }, "");
+    setter(true);
+  }, []);
+  const closeSubView = useCallback((setter) => {
+    setter(false);
+    if (window.history.state?.setpointSubView) window.history.back();
+  }, []);
+  useEffect(() => {
+    const onPopState = () => {
+      setShowGuide(false);
+      setShowWatchLive(false);
+      setShowAdminPanel(false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
   const [watchlist, setWatchlist] = useState(["BTC"]); // safe starting point for every plan, including Starter's 1-coin limit — grows from real saved data once it loads
@@ -1048,7 +1073,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
-        <Guide onBack={() => setShowGuide(false)} />
+        <Guide onBack={() => closeSubView(setShowGuide)} />
       </div>
     );
   }
@@ -1059,7 +1084,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
-        <WatchLiveContent onBack={() => setShowWatchLive(false)} />
+        <WatchLiveContent onBack={() => closeSubView(setShowWatchLive)} />
       </div>
     );
   }
@@ -1070,7 +1095,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
-        <AdminPanel onBack={() => setShowAdminPanel(false)} />
+        <AdminPanel onBack={() => closeSubView(setShowAdminPanel)} />
       </div>
     );
   }
@@ -1088,7 +1113,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           <button className="hamburger-btn" onClick={() => setShowMobileMenu((v) => !v)} aria-label="Menu">☰</button>
           <div className={`acct ${showMobileMenu ? "acct-open" : ""}`}>
             {account.isAdmin && (
-              <button className="admin-badge" onClick={() => { setShowAdminPanel(true); setShowMobileMenu(false); }}>
+              <button className="admin-badge" onClick={() => { openSubView(setShowAdminPanel); setShowMobileMenu(false); }}>
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
               </button>
             )}
@@ -1109,13 +1134,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <button className="cancel-link" onClick={() => setCancelState("confirming")}>Cancel subscription</button>
               )
             )}
-            <button className="ghost sm" onClick={() => { setShowWatchLive(true); setShowMobileMenu(false); }}>WATCH LIVE</button>
+            <button className="ghost sm" onClick={() => { openSubView(setShowWatchLive); setShowMobileMenu(false); }}>WATCH LIVE</button>
             {pushStatus !== "unsupported" && pushStatus !== "checking" && (
               <button className={`ghost sm ${pushStatus === "on" ? "alerts-on" : ""}`} onClick={togglePush} disabled={pushStatus === "busy"}>
                 {pushStatus === "on" ? "ALERTS ON" : pushStatus === "busy" ? "…" : "TURN ON ALERTS"}
               </button>
             )}
-            <button className="ghost sm" onClick={() => { setShowGuide(true); setShowMobileMenu(false); }}>GUIDE</button>
+            <button className="ghost sm" onClick={() => { openSubView(setShowGuide); setShowMobileMenu(false); }}>GUIDE</button>
             <a className="ghost sm" href="/contact" target="_blank" rel="noopener noreferrer">CONTACT</a>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
