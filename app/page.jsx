@@ -1264,9 +1264,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               const loadingNote = coinNoteLoading[id];
               return (
                 <div className="coin-note">
-                  <div className="cn-head">AI note on {selectedCoin} · {TF[tfKey].label}</div>
+                  <div className="cn-head">Note on {selectedCoin} · {TF[tfKey].label}</div>
                   {note && note.error ? (
-                    <div className="ai-err">{note.error === "no_key" ? "Add ANTHROPIC_API_KEY in Vercel to enable AI notes." : "AI note unavailable right now."}</div>
+                    <div className="ai-err">{note.error === "no_key" ? "This feature isn't configured yet." : "Note unavailable right now."}</div>
                   ) : note ? (
                     <div className={`ai-read ${note.stance || "neutral"}`}>
                       <div className="ai-head"><span className="ai-stance">{note.stance}</span><span className="ai-conf">{note.confidence} confidence</span></div>
@@ -1277,7 +1277,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   ) : loadingNote ? (
                     <div className="ai-loading"><span className="dot-pulse" /> Reading the chatter on {selectedCoin}…</div>
                   ) : (
-                    <button className="ai-btn" onClick={() => runCoinNote(selectedCoin)}>Write AI note</button>
+                    <button className="ai-btn" onClick={() => runCoinNote(selectedCoin)}>Write note</button>
                   )}
                 </div>
               );
@@ -1289,10 +1289,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
               flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
               const top = flat.slice(0, selectedCoin ? 12 : 10);
-              if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Tap a coin above for its AI note. Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
+              if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Tap a coin above for its note. Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
               return (
                 <>
-                  {!selectedCoin && <div className="sig-hint">Tap a coin above for an AI note on just that coin.</div>}
+                  {!selectedCoin && <div className="sig-hint">Tap a coin above for a note on just that coin.</div>}
                   <div className="sig-grid">
                     {top.map((n, i) => (
                       <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
@@ -1531,6 +1531,23 @@ export default function App() {
       setView("auth");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isAuthed]);
+
+  // Real, deeper version of the same fix Guide/Watch Live/Admin already
+  // got. Signing in and landing on the dashboard is itself pure React
+  // state, no URL ever changes, so even without opening a sub-view, the
+  // browser's back button had nothing real from inside the app to land
+  // on, it fell straight through to whatever page was open before
+  // Setpoint was ever loaded. This pushes one real, genuine anchor the
+  // moment someone actually becomes authenticated, so back from anywhere
+  // on the dashboard has somewhere real of its own to go.
+  const historyAnchored = useRef(false);
+  useEffect(() => {
+    if (isAuthed && !historyAnchored.current) {
+      window.history.pushState({ setpointDashboardAnchor: true }, "");
+      historyAnchored.current = true;
+    }
+    if (!isAuthed) historyAnchored.current = false;
   }, [isAuthed]);
 
   // Returning from a real Stripe checkout. A JWT session doesn't re-check
