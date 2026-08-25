@@ -635,6 +635,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [news, setNews] = useState({});         // sym -> [items]
   const [netFlow, setNetFlow] = useState(null);     // aggregate whale flow, not per-coin
   const [openPositions, setOpenPositions] = useState([]); // signals fired and still unresolved, from signal_track
+  const [recentlyResolved, setRecentlyResolved] = useState([]); // real, honest closure — a position that leaves Open Alerts shouldn't just vanish without a trace
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
@@ -754,6 +755,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       const json = await res.json();
       setOpenPositions(json.positions || []);
       openPositionsRef.current = json.positions || [];
+      setRecentlyResolved(json.recentlyResolved || []);
     } catch { /* non-fatal */ }
   }, []);
 
@@ -977,6 +979,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const visibleOpenPositions = useMemo(
     () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p) && p.tf === TF[tfKey].label),
     [openPositions, watchlist, isLiveVerified, tfKey]
+  );
+  // Real, simple closure, not scoped to whichever timeframe tab happens to
+  // be selected right now, the whole point is catching something that
+  // resolved on a different one than the one currently open. Capped at 5,
+  // a quiet, small list, not a full trade history.
+  const visibleRecentlyResolved = useMemo(
+    () => recentlyResolved.filter((p) => watchlist.includes(p.coin)).slice(0, 5),
+    [recentlyResolved, watchlist]
   );
   // One real, combined list, merging what's already server-confirmed open
   // with anything that just fired locally and hasn't been picked up by
@@ -1247,6 +1257,21 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   <SignalCard key={a.data.sym + a.data.key} s={a.data} sym={a.data.sym} price={a.data.price} firedAt={a.data.firedAt} now={now} read={assess[`${a.data.sym}:${a.data.key}`]} loading={assessing[`${a.data.sym}:${a.data.key}`]} onAssess={() => runAssess(a.data.sym, a.data)} />
                 )
               )}
+            </div>
+          )}
+
+          {visibleRecentlyResolved.length > 0 && (
+            <div className="recently-resolved">
+              <div className="rr-head">Recently resolved</div>
+              {visibleRecentlyResolved.map((r, i) => (
+                <div className={`rr-row ${r.outcome}`} key={i}>
+                  <span className="rr-coin">{r.coin}</span>
+                  <span className="rr-name">{r.dir === "bull" ? "Buy" : "Sell"} {brandName(r.label)}</span>
+                  <span className={`rr-outcome ${r.outcome}`}>{r.outcome === "win" ? "WIN" : "LOSS"}</span>
+                  <span className={`rr-pct ${r.outcome}`}>{r.pctMove >= 0 ? "+" : ""}{r.pctMove.toFixed(2)}%</span>
+                  <span className="rr-when">resolved {new Date(r.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -1821,6 +1846,19 @@ button:disabled{opacity:.6;cursor:not-allowed}
 
 .dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
+.recently-resolved{margin-top:20px;padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px}
+.rr-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+.rr-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px;flex-wrap:wrap}
+.rr-row:first-of-type{border-top:none;padding-top:0}
+.rr-coin{font-weight:800;color:var(--text)}
+.rr-name{color:var(--muted)}
+.rr-outcome{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:5px}
+.rr-outcome.win{color:var(--green);background:var(--green-dim)}
+.rr-outcome.loss{color:var(--red-soft);background:var(--red-dim)}
+.rr-pct{font-weight:700;margin-left:auto}
+.rr-pct.win{color:var(--green)}
+.rr-pct.loss{color:var(--red-soft)}
+.rr-when{color:var(--dim);font-size:11px;width:100%}
 
 
 .section-head h2{font-size:20px;font-weight:700}
