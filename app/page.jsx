@@ -1167,6 +1167,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         {watchlist.map((sym) => {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
           const meter = data[sym]?.meter;
+          const regime = data[sym]?.regime;
           const up = snap && snap.pct >= 0;
           const tr = snap?.trend;
           const trendState = !tr || tr.adx < 20 ? { label: "RANGE", cls: "range" } : tr.plusDI > tr.minusDI ? { label: "UP", cls: "up" } : { label: "DOWN", cls: "down" };
