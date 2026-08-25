@@ -864,7 +864,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           return;
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow });
-        const meter = volatilityMeter(c.candles);
+        const meter = volatilityMeter(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
