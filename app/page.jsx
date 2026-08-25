@@ -1266,6 +1266,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               {visibleRecentlyResolved.map((r, i) => (
                 <div className={`rr-row ${r.outcome}`} key={i}>
                   <span className="rr-coin">{r.coin}</span>
+                  <span className="rr-tf">{r.tf}</span>
                   <span className="rr-name">{r.dir === "bull" ? "Buy" : "Sell"} {brandName(r.label)}</span>
                   <span className={`rr-outcome ${r.outcome}`}>{r.outcome === "win" ? "WIN" : "LOSS"}</span>
                   <span className={`rr-pct ${r.outcome}`}>{r.pctMove >= 0 ? "+" : ""}{r.pctMove.toFixed(2)}%</span>
@@ -1851,6 +1852,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .rr-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border);font-size:12.5px;flex-wrap:wrap}
 .rr-row:first-of-type{border-top:none;padding-top:0}
 .rr-coin{font-weight:800;color:var(--text)}
+.rr-tf{font-size:10px;color:var(--dim);background:var(--panel3);border:1px solid var(--border);padding:1px 6px;border-radius:5px}
 .rr-name{color:var(--muted)}
 .rr-outcome{font-size:10px;font-weight:700;letter-spacing:.03em;padding:2px 7px;border-radius:5px}
 .rr-outcome.win{color:var(--green);background:var(--green-dim)}
