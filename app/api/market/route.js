@@ -92,12 +92,19 @@ async function getSignalBias() {
     const bullRate = bull.filter((r) => r.outcome === "win").length / bull.length;
     const bearRate = bear.filter((r) => r.outcome === "win").length / bear.length;
     const score = Math.round(Math.max(0, Math.min(100, 50 + (bullRate - bearRate) * 50)));
-    const label = score >= 60 ? "Longs winning more" : score >= 55 ? "Leaning long" : score <= 40 ? "Shorts winning more" : score <= 45 ? "Leaning short" : "Roughly even";
     // A close gap between two weak numbers (30% vs 33%, neither side working)
     // reads almost identically to a close gap between two strong ones (65%
     // vs 68%) if all you look at is the gap. Those are opposite situations,
     // this flags the real one: both sides genuinely struggling at once.
     const bothWeak = bullRate < 0.45 && bearRate < 0.45;
+    // The label used to only look at the relative score, so "Longs winning
+    // more" could show up even when longs were only relatively better, not
+    // actually good, real, current example: 43% vs 13%, neither side
+    // winning, longs just less bad. Checked first, before the normal
+    // relative labels, so it never gets papered over by a wide gap alone.
+    const label = bothWeak
+      ? (score >= 55 ? "Both weak, longs relatively better" : score <= 45 ? "Both weak, shorts relatively better" : "Both sides struggling")
+      : score >= 60 ? "Longs winning more" : score >= 55 ? "Leaning long" : score <= 40 ? "Shorts winning more" : score <= 45 ? "Leaning short" : "Roughly even";
     return { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length, bothWeak };
   } catch {
     return null;
