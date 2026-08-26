@@ -983,10 +983,15 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // Real, simple closure, not scoped to whichever timeframe tab happens to
   // be selected right now, the whole point is catching something that
   // resolved on a different one than the one currently open. Capped at 5,
-  // a quiet, small list, not a full trade history.
+  // a quiet, small list, not a full trade history. Verified-only, same
+  // exact check Open Alerts itself uses — this used to show every real
+  // resolved trade regardless of verified status, meaning genuinely
+  // unverified, testing-tier fires (things that should never have been
+  // shown as a real alert in the first place) were appearing in what's
+  // supposed to be closure for something the customer actually saw.
   const visibleRecentlyResolved = useMemo(
-    () => recentlyResolved.filter((p) => watchlist.includes(p.coin)).slice(0, 5),
-    [recentlyResolved, watchlist]
+    () => recentlyResolved.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p)).slice(0, 5),
+    [recentlyResolved, watchlist, isLiveVerified]
   );
   // One real, combined list, merging what's already server-confirmed open
   // with anything that just fired locally and hasn't been picked up by
