@@ -1378,6 +1378,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   <span key={n} className={`mm-dot ${n <= marketMeter.level ? "on" : ""} ${n === 5 ? "extreme" : ""}`} />
                 ))}
               </div>
+              <div className="mm-level-text">Level {marketMeter.level} of 5</div>
               <div className="mm-stage">{marketMeter.label}</div>
               <div className={`mm-phase ${marketMeter.phase}`}>
                 {marketMeter.phase === "ending" ? "Looks like it's stretched, may be ending" : "Still building, no real exhaustion yet"}
@@ -1993,6 +1994,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}
 .mm-dot.on{background:var(--green-soft)}
 .mm-dot.on.extreme{background:var(--amber)}
+.mm-level-text{font-family:'Bricolage Grotesque';font-weight:700;font-size:20px;margin-bottom:6px}
 .mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:4px}
 .mm-phase{font-size:12.5px;color:var(--muted)}
 .mm-phase.ending{color:var(--amber)}
