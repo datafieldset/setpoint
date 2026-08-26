@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -860,11 +860,12 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       const t = Date.now();
       coins.forEach((c) => {
         if (c.error || !c.candles || !c.candles.length) {
-          next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null };
+          next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null, regime: null };
           return;
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow });
         const meter = volatilityMeter(c.candles, tfKey);
+        const regime = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -911,7 +912,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           }
           return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key };
         });
-        next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null, meter };
+        next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null, meter, regime };
         anyOk = true;
       });
       setData(next);
@@ -1171,6 +1172,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         {watchlist.map((sym) => {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
           const meter = data[sym]?.meter;
+          const regime = data[sym]?.regime;
           const up = snap && snap.pct >= 0;
           const tr = snap?.trend;
           const trendState = !tr || tr.adx < 20 ? { label: "RANGE", cls: "range" } : tr.plusDI > tr.minusDI ? { label: "UP", cls: "up" } : { label: "DOWN", cls: "down" };
@@ -1202,6 +1204,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                       <span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span>
                     </div>
                     <span className="tk-meter-label">{meter.label} <span className="tk-meter-value mono">{signed > 0 ? "+" : ""}{signed}</span></span>
+                    {regime && (
+                      <div className={`tk-regime ${regime.phase}`} title="Real trend/volatility read, combined with the same exhaustion check above">
+                        {regime.label} · {regime.phase === "ending" ? "looks like it's ending" : "still building"}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
