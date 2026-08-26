@@ -618,6 +618,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
+  const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, powers the combined Market Meter below
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -839,7 +840,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     // quietly retry next cycle if it fails.
     fetch("/api/close-alert?key=verified2026", { cache: "no-store" }).catch(() => {});
     try {
-      const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=${tfKey}`, { cache: "no-store" });
+      // BTC is always included here now, even for an account whose own
+      // watchlist doesn't have it, since the real Market Meter needs a
+      // reliable, always-available BTC read regardless of what any one
+      // customer happens to be tracking. Deduped so it's never fetched
+      // twice for someone who already has it.
+      const fetchSymbols = watchlist.includes("BTC") ? watchlist : [...watchlist, "BTC"];
+      const res = await fetch(`/api/market?symbols=${fetchSymbols.join(",")}&tf=${tfKey}`, { cache: "no-store" });
       if (!res.ok) throw new Error("api " + res.status);
       const json = await res.json();
       const coins = json.coins || [];
@@ -857,15 +864,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
       const next = {};
       let anyOk = false;
+      let btcRegimeThisTick = null;
       const t = Date.now();
       coins.forEach((c) => {
         if (c.error || !c.candles || !c.candles.length) {
-          next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null, regime: null };
+          next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null };
           return;
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow });
         const meter = volatilityMeter(c.candles, tfKey);
-        const regime = marketRegime(c.candles, tfKey);
+        if (c.sym === "BTC") btcRegimeThisTick = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -912,10 +920,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           }
           return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key };
         });
-        next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null, meter, regime };
+        next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null, meter };
         anyOk = true;
       });
       setData(next);
+      setBtcRegime(btcRegimeThisTick);
       setFng(json.fng || null);
       setLastUpdate(Date.now());
       if (!anyOk && watchlist.length) setGlobalError("The server returned no usable price data. Check your server logs and that these symbols exist on Coinbase.");
@@ -1018,20 +1027,27 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // ahead by a little. That combination is a stronger, more specific
   // signal than either read alone, the same idea as the per-alert
   // confluence flag, applied to the whole market instead of one trade.
+  // Combined Market Meter (Aug 25): the real, primary read is BTC's own
+  // trend/exhaustion stage, since BTC tends to lead the broader market.
+  // The confirmation check below is the exact same logic the old,
+  // admin-only diamond used, kept as a real, extra layer, not replaced —
+  // when several of your own watchlist coins are independently also
+  // showing genuine exhaustion at the same moment the bias scale agrees
+  // both sides are weak, that's a stronger, more specific read than the
+  // BTC stage alone, worth surfacing as a real boost rather than losing
+  // it entirely.
   const marketMeter = useMemo(() => {
-    if (!signalBias?.bothWeak) return null;
-    // Matches the meter's own "Near bottom"/"Near top" label thresholds
-    // exactly (score<=20 / >=80, see lib/signals.js volatilityMeter).
-    // Using a stricter cutoff here than what's visibly labeled on the coin
-    // chip would mean a coin could show "Near bottom" on screen and still
-    // not count toward this.
-    const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 20).length;
-    const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 80).length;
-    const needed = watchlist.length <= 2 ? 1 : watchlist.length <= 4 ? 2 : Math.ceil(watchlist.length / 3);
-    if (nearBottom >= needed) return { dir: "bottom", nearBottom, nearTop, needed };
-    if (nearTop >= needed) return { dir: "top", nearBottom, nearTop, needed };
-    return null;
-  }, [signalBias, data, watchlist]);
+    if (!btcRegime) return null;
+
+    const confirmed = !!signalBias?.bothWeak && (() => {
+      const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 20).length;
+      const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 80).length;
+      const needed = watchlist.length <= 2 ? 1 : watchlist.length <= 4 ? 2 : Math.ceil(watchlist.length / 3);
+      return nearBottom >= needed || nearTop >= needed;
+    })();
+
+    return { ...btcRegime, confirmed };
+  }, [btcRegime, signalBias, data, watchlist]);
 
 
   const saveWatchlist = useCallback((list) => {
@@ -1133,9 +1149,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
               </button>
             )}
-            {account.isAdmin && marketMeter && (
-              <span className={`mm-badge ${marketMeter.dir}`} title={`Market Meter: ${marketMeter.nearBottom} coin(s) near bottom, ${marketMeter.nearTop} near top, both sides weak`}>◆</span>
-            )}
             {!account.isAdmin && (
               <span className="plan-badge">{{ starter: "STARTER", watch: "FREE", trader: "TRADER", desk: "PRO" }[account.plan] || "STARTER"}</span>
             )}
@@ -1172,7 +1185,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         {watchlist.map((sym) => {
           const snap = data[sym]?.snap; const err = data[sym]?.error;
           const meter = data[sym]?.meter;
-          const regime = data[sym]?.regime;
           const up = snap && snap.pct >= 0;
           const tr = snap?.trend;
           const trendState = !tr || tr.adx < 20 ? { label: "RANGE", cls: "range" } : tr.plusDI > tr.minusDI ? { label: "UP", cls: "up" } : { label: "DOWN", cls: "down" };
@@ -1204,11 +1216,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                       <span>-50</span><span>-25</span><span>0</span><span>+25</span><span>+50</span>
                     </div>
                     <span className="tk-meter-label">{meter.label} <span className="tk-meter-value mono">{signed > 0 ? "+" : ""}{signed}</span></span>
-                    {regime && (
-                      <div className={`tk-regime ${regime.phase}`} title="Real trend/volatility read, combined with the same exhaustion check above">
-                        {regime.label} · {regime.phase === "ending" ? "looks like it's ending" : "still building"}
-                      </div>
-                    )}
                   </div>
                 );
               })()}
@@ -1368,6 +1375,22 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
                   : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
               </div>
+            </div>
+          )}
+
+          {marketMeter && (
+            <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
+              <div className="mm-head">
+                <span className="mm-title">Market Meter</span>
+                <span className="mm-sub">BTC · {tfKey}</span>
+              </div>
+              <div className="mm-stage">{marketMeter.label}</div>
+              <div className={`mm-phase ${marketMeter.phase}`}>
+                {marketMeter.phase === "ending" ? "Looks like it's stretched, may be ending" : "Still building, no real exhaustion yet"}
+              </div>
+              {marketMeter.confirmed && (
+                <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
+              )}
             </div>
           )}
 
@@ -1815,10 +1838,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .plan-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--green);background:var(--green-dim);border:1px solid var(--green);padding:4px 9px;border-radius:6px}
 .alerts-on{color:var(--green) !important;background:var(--green-dim) !important;border:1px solid var(--green) !important}
 .admin-badge{font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--amber);background:var(--amber-dim);border:1px solid var(--amber);padding:4px 9px;border-radius:6px;cursor:pointer;font-family:inherit}
-.mm-badge{font-size:14px;cursor:help;animation:live-pulse-mm 1.6s ease-in-out infinite}
-.mm-badge.bottom{color:var(--green)}
-.mm-badge.top{color:var(--red)}
-@keyframes live-pulse-mm{0%,100%{opacity:1}50%{opacity:.4}}
 
 .ticker{display:flex;gap:10px;flex-wrap:wrap;padding:16px 0}
 .tk{background:var(--panel);border:1px solid var(--border);border-radius:11px;padding:10px 14px;display:flex;flex-direction:column;gap:5px;min-width:180px;flex:1}
@@ -1972,6 +1991,15 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
 .sb-panel{padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
+.mm-panel{padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
+.mm-panel.confirmed{border-color:rgba(245,184,81,.5);background:linear-gradient(180deg,rgba(245,184,81,.08),var(--panel2))}
+.mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
+.mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mm-sub{font-size:11px;color:var(--dim)}
+.mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:4px}
+.mm-phase{font-size:12.5px;color:var(--muted)}
+.mm-phase.ending{color:var(--amber)}
+.mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
 .sb-score{color:var(--dim);font-weight:400;margin-left:2px}
