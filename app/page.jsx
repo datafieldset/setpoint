@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -618,6 +618,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
+  const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, powers the combined Market Meter below
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -839,7 +840,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     // quietly retry next cycle if it fails.
     fetch("/api/close-alert?key=verified2026", { cache: "no-store" }).catch(() => {});
     try {
-      const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=${tfKey}`, { cache: "no-store" });
+      // BTC is always included here now, even for an account whose own
+      // watchlist doesn't have it, since the real Market Meter needs a
+      // reliable, always-available BTC read regardless of what any one
+      // customer happens to be tracking. Deduped so it's never fetched
+      // twice for someone who already has it.
+      const fetchSymbols = watchlist.includes("BTC") ? watchlist : [...watchlist, "BTC"];
+      const res = await fetch(`/api/market?symbols=${fetchSymbols.join(",")}&tf=${tfKey}`, { cache: "no-store" });
       if (!res.ok) throw new Error("api " + res.status);
       const json = await res.json();
       const coins = json.coins || [];
@@ -857,6 +864,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
       const next = {};
       let anyOk = false;
+      let btcRegimeThisTick = null;
       const t = Date.now();
       coins.forEach((c) => {
         if (c.error || !c.candles || !c.candles.length) {
@@ -865,6 +873,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow });
         const meter = volatilityMeter(c.candles, tfKey);
+        if (c.sym === "BTC") btcRegimeThisTick = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -915,6 +924,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         anyOk = true;
       });
       setData(next);
+      setBtcRegime(btcRegimeThisTick);
       setFng(json.fng || null);
       setLastUpdate(Date.now());
       if (!anyOk && watchlist.length) setGlobalError("The server returned no usable price data. Check your server logs and that these symbols exist on Coinbase.");
@@ -1017,46 +1027,27 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // ahead by a little. That combination is a stronger, more specific
   // signal than either read alone, the same idea as the per-alert
   // confluence flag, applied to the whole market instead of one trade.
-  // Real, market-wide stretch read, 1 through 5, not tied to any one
-  // coin. Built entirely from two things already proven elsewhere in
-  // this file: the bias scale's own real lean (or its real "both sides
-  // weak" uncertainty), and the exact same watchlist-exhaustion check
-  // the old confirmation logic already used. Level 5 IS that same
-  // confirmation, just expressed as the top of a real scale instead of a
-  // separate yes/no flag.
+  // Combined Market Meter (Aug 25): the real, primary read is BTC's own
+  // trend/exhaustion stage, since BTC tends to lead the broader market.
+  // The confirmation check below is the exact same logic the old,
+  // admin-only diamond used, kept as a real, extra layer, not replaced —
+  // when several of your own watchlist coins are independently also
+  // showing genuine exhaustion at the same moment the bias scale agrees
+  // both sides are weak, that's a stronger, more specific read than the
+  // BTC stage alone, worth surfacing as a real boost rather than losing
+  // it entirely.
   const marketMeter = useMemo(() => {
-    if (!signalBias) return null;
-    const leanMag = Math.abs(signalBias.score - 50);
-    const bothWeak = !!signalBias.bothWeak;
+    if (!btcRegime) return null;
 
-    const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 20).length;
-    const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 80).length;
-    const anyExhaustion = nearBottom + nearTop >= 1;
-    const needed = watchlist.length <= 2 ? 1 : watchlist.length <= 4 ? 2 : Math.ceil(watchlist.length / 3);
-    const confirmed = nearBottom >= needed || nearTop >= needed;
+    const confirmed = !!signalBias?.bothWeak && (() => {
+      const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 20).length;
+      const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 80).length;
+      const needed = watchlist.length <= 2 ? 1 : watchlist.length <= 4 ? 2 : Math.ceil(watchlist.length / 3);
+      return nearBottom >= needed || nearTop >= needed;
+    })();
 
-    const realSignal = leanMag >= 15 || bothWeak;
-
-    let level, label;
-    if (confirmed && realSignal) {
-      level = 5;
-      label = bothWeak ? "Extreme: both sides weak, confirmed by your own coins" : "Extreme: strong lean, confirmed by your own coins";
-    } else if (realSignal && anyExhaustion) {
-      level = 4;
-      label = bothWeak ? "Real uncertainty, early exhaustion showing" : "Real lean, early exhaustion showing";
-    } else if (realSignal) {
-      level = 3;
-      label = bothWeak ? "Both sides weak, real uncertainty" : "Real lean building";
-    } else if (leanMag >= 5) {
-      level = 2;
-      label = "Mild lean";
-    } else {
-      level = 1;
-      label = "Calm, no real lean";
-    }
-
-    return { level, label, confirmed: confirmed && realSignal };
-  }, [signalBias, data, watchlist]);
+    return { ...btcRegime, confirmed };
+  }, [btcRegime, signalBias, data, watchlist]);
 
 
   const saveWatchlist = useCallback((list) => {
@@ -1368,12 +1359,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <aside className="onchain">
           <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
 
-          {signalBias && marketMeter && (
-            <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
-              <div className="mm-head">
-                <span className="mm-title">Market Meter</span>
-                <span className="mm-sub">market-wide</span>
-              </div>
+          {signalBias && (
+            <div className="sb-panel">
               <div className="sb-head">
                 <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
               </div>
@@ -1388,13 +1375,19 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
                   : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
               </div>
-              <div className="mm-levels">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <span key={n} className={`mm-dot ${n <= marketMeter.level ? "on" : ""} ${n === 5 ? "extreme" : ""}`} />
-                ))}
+            </div>
+          )}
+
+          {marketMeter && (
+            <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
+              <div className="mm-head">
+                <span className="mm-title">Market Meter</span>
+                <span className="mm-sub">BTC · {tfKey}</span>
               </div>
-              <div className="mm-stage">Level {marketMeter.level} of 5</div>
-              <div className="mm-label">{marketMeter.label}</div>
+              <div className="mm-stage">{marketMeter.label}</div>
+              <div className={`mm-phase ${marketMeter.phase}`}>
+                {marketMeter.phase === "ending" ? "Looks like it's stretched, may be ending" : "Still building, no real exhaustion yet"}
+              </div>
               {marketMeter.confirmed && (
                 <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
               )}
@@ -1997,17 +1990,15 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.sb-panel{padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mm-panel{padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
 .mm-panel.confirmed{border-color:rgba(245,184,81,.5);background:linear-gradient(180deg,rgba(245,184,81,.08),var(--panel2))}
-.mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
+.mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mm-sub{font-size:11px;color:var(--dim)}
-.mm-levels{display:flex;gap:6px;margin-bottom:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
-.mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}
-.mm-dot.on{background:var(--green-soft)}
-.mm-dot.on.extreme{background:var(--amber)}
-.mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:2px}
-.mm-label{font-size:12.5px;color:var(--muted)}
+.mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:4px}
+.mm-phase{font-size:12.5px;color:var(--muted)}
+.mm-phase.ending{color:var(--amber)}
 .mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
