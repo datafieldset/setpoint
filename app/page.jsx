@@ -1368,8 +1368,12 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <aside className="onchain">
           <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
 
-          {signalBias && (
-            <div className="sb-panel">
+          {signalBias && marketMeter && (
+            <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
+              <div className="mm-head">
+                <span className="mm-title">Market Meter</span>
+                <span className="mm-sub">market-wide</span>
+              </div>
               <div className="sb-head">
                 <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
               </div>
@@ -1383,15 +1387,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 {signalBias.bullRate != null
                   ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
                   : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
-              </div>
-            </div>
-          )}
-
-          {marketMeter && (
-            <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
-              <div className="mm-head">
-                <span className="mm-title">Market Meter</span>
-                <span className="mm-sub">market-wide</span>
               </div>
               <div className="mm-levels">
                 {[1, 2, 3, 4, 5].map((n) => (
@@ -2002,13 +1997,12 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
-.sb-panel{padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mm-panel{padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
 .mm-panel.confirmed{border-color:rgba(245,184,81,.5);background:linear-gradient(180deg,rgba(245,184,81,.08),var(--panel2))}
 .mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:10px}
 .mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mm-sub{font-size:11px;color:var(--dim)}
-.mm-levels{display:flex;gap:6px;margin-bottom:8px}
+.mm-levels{display:flex;gap:6px;margin-bottom:8px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
 .mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}
 .mm-dot.on{background:var(--green-soft)}
 .mm-dot.on.extreme{background:var(--amber)}
