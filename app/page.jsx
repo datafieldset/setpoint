@@ -618,7 +618,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [tfKey, setTfKey] = useState("15m");
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
-  const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, powers the combined Market Meter below
+  const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 15m regardless of the selected alerts tab, powers the Market Meter below
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -864,7 +864,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
       const next = {};
       let anyOk = false;
-      let btcRegimeThisTick = null;
       const t = Date.now();
       coins.forEach((c) => {
         if (c.error || !c.candles || !c.candles.length) {
@@ -873,7 +872,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow });
         const meter = volatilityMeter(c.candles, tfKey);
-        if (c.sym === "BTC") btcRegimeThisTick = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -924,7 +922,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         anyOk = true;
       });
       setData(next);
-      setBtcRegime(btcRegimeThisTick);
       setFng(json.fng || null);
       setLastUpdate(Date.now());
       if (!anyOk && watchlist.length) setGlobalError("The server returned no usable price data. Check your server logs and that these symbols exist on Coinbase.");
@@ -935,6 +932,24 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     }
   }, [watchlist, tfKey, th2]);
 
+  // Real, independent of whichever timeframe tab is selected for alerts.
+  // Market Meter is meant to be a consistent, reliable "where's the
+  // market right now" anchor, not something that silently changes
+  // meaning depending on an unrelated choice you made for your own
+  // alerts. Locked to 15m specifically — fast enough to react to
+  // something genuinely shifting today, not so fast it's just tracking
+  // noise (discussed directly, real tradeoff, not arbitrary).
+  const loadBtcRegime = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/market?symbols=BTC&tf=15m`, { cache: "no-store" });
+      if (!res.ok) return;
+      const json = await res.json();
+      const btc = (json.coins || []).find((c) => c.sym === "BTC");
+      if (!btc || btc.error || !btc.candles?.length) return;
+      setBtcRegime(marketRegime(btc.candles, "15m"));
+    } catch { /* non-fatal, next tick tries again */ }
+  }, []);
+
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadNews(); }, [loadNews]);
   useEffect(() => { loadOpenPositions(); }, [loadOpenPositions]);
@@ -943,6 +958,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   useEffect(() => { const id = setInterval(loadNews, 300000); return () => clearInterval(id); }, [loadNews]);
   useEffect(() => { const id = setInterval(loadMacro, 300000); return () => clearInterval(id); }, [loadMacro]);
   useEffect(() => { const id = setInterval(load, 60000); return () => clearInterval(id); }, [load]);
+  useEffect(() => { loadBtcRegime(); const id = setInterval(loadBtcRegime, 60000); return () => clearInterval(id); }, [loadBtcRegime]);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
 
   const secsToRefresh = lastUpdate ? Math.max(0, 60 - Math.floor((now - lastUpdate) / 1000)) : null;
@@ -1363,7 +1379,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
               <div className="mm-head">
                 <span className="mm-title">Market Meter</span>
-                <span className="mm-sub">BTC · {tfKey}</span>
+                <span className="mm-sub">BTC · 15m</span>
               </div>
               <div className="sb-head">
                 <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
