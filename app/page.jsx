@@ -640,6 +640,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [assess, setAssess] = useState({});     // "sym:key" -> read | {error}
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
+  const [dashboardTab, setDashboardTab] = useState("coins"); // "coins" | "market" | "news" — real, top-level layout tabs, replacing the single, long scroll
   const [coinNote, setCoinNote] = useState({}); // "sym:tf" -> read | {error}
   const [coinNoteLoading, setCoinNoteLoading] = useState({});
   const fired = useRef({}); // key -> {firstFired, lastSeen}
@@ -1192,7 +1193,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         </div>
       </div>
 
+      <div className="dash-tabs">
+        <button className={`dash-tab-btn ${dashboardTab === "coins" ? "active" : ""}`} onClick={() => setDashboardTab("coins")}>Coins</button>
+        <button className={`dash-tab-btn ${dashboardTab === "market" ? "active" : ""}`} onClick={() => setDashboardTab("market")}>Market</button>
+        <button className={`dash-tab-btn ${dashboardTab === "news" ? "active" : ""}`} onClick={() => setDashboardTab("news")}>News</button>
+      </div>
+
       {/* ticker row */}
+      {dashboardTab === "coins" && (
       <div className="ticker">
         <div className={`tk-all ${!selectedCoin ? "sel" : ""}`} onClick={() => setSelectedCoin(null)} role="button" tabIndex={0} title="Show all coins">
           <span className="tk-all-icon">▦</span>
@@ -1250,6 +1258,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           ) : <button className="tk-add-btn" onClick={() => setShowAdd(true)}>+ add coin</button>
         )}
       </div>
+      )}
 
       {globalError && <div className="banner">{globalError}</div>}
       {justUpgraded && <div className="banner success">Payment confirmed. Your plan is now {{ starter: "Starter", trader: "Trader", desk: "Pro" }[account.plan] || account.plan}.</div>}
@@ -1261,6 +1270,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       )}
 
       <div className="dash-body">
+        {dashboardTab === "coins" && (
         <div className="opps">
           <div className="section-head">
             <h2>Open Alerts</h2>
@@ -1295,31 +1305,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           )}
 
-          {visibleRecentlyResolved.length > 0 && (
-            <div className="recently-resolved">
-              <div className="rr-head">Recently resolved</div>
-              {visibleRecentlyResolved.map((r, i) => (
-                <div className={`rr-row ${r.outcome}`} key={i}>
-                  <span className="rr-coin">{r.coin}</span>
-                  <span className="rr-tf">{r.tf}</span>
-                  <span className="rr-name">{r.dir === "bull" ? "Buy" : "Sell"} {brandName(r.label)}</span>
-                  <span className={`rr-outcome ${r.outcome}`}>{r.outcome === "win" ? "WIN" : "LOSS"}</span>
-                  <span className={`rr-pct ${r.outcome}`}>{r.pctMove >= 0 ? "+" : ""}{r.pctMove.toFixed(2)}%</span>
-                  <span className="rr-when">resolved {new Date(r.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
           <div className="signals-panel">
             <div className="section-head">
               <h2>Early signals</h2>
-              {selectedCoin
-                ? <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>
-                : <span className="sh-sub">news &amp; social</span>}
+              {selectedCoin && <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>}
             </div>
 
-            {selectedCoin && (() => {
+            {selectedCoin ? (() => {
               const id = noteId(selectedCoin);
               const note = coinNote[id];
               const loadingNote = coinNoteLoading[id];
@@ -1342,38 +1334,65 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   )}
                 </div>
               );
-            })()}
-
-            {(() => {
-              const flat = [];
-              const coins = selectedCoin ? [selectedCoin] : watchlist;
-              coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
-              flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
-              const top = flat.slice(0, selectedCoin ? 12 : 10);
-              if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Tap a coin above for its note. Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
-              return (
-                <>
-                  {!selectedCoin && <div className="sig-hint">Tap a coin above for a note on just that coin.</div>}
-                  <div className="sig-grid">
-                    {top.map((n, i) => (
-                      <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
-                        <div className="sig-item-top">
-                          <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
-                          <span className="sig-src">{n.source}</span>
-                          <span className="sig-when">{timeAgo(n.when, now)}</span>
-                        </div>
-                        <div className="sig-title">{n.title}</div>
-                      </a>
-                    ))}
-                  </div>
-                </>
-              );
-            })()}
+            })() : (
+              <div className="sig-empty">Tap a coin above for a note on just that coin.</div>
+            )}
           </div>
-        </div>
 
+          {visibleRecentlyResolved.length > 0 && (
+            <div className="recently-resolved">
+              <div className="rr-head">Recently resolved</div>
+              {visibleRecentlyResolved.map((r, i) => (
+                <div className={`rr-row ${r.outcome}`} key={i}>
+                  <span className="rr-coin">{r.coin}</span>
+                  <span className="rr-tf">{r.tf}</span>
+                  <span className="rr-name">{r.dir === "bull" ? "Buy" : "Sell"} {brandName(r.label)}</span>
+                  <span className={`rr-outcome ${r.outcome}`}>{r.outcome === "win" ? "WIN" : "LOSS"}</span>
+                  <span className={`rr-pct ${r.outcome}`}>{r.pctMove >= 0 ? "+" : ""}{r.pctMove.toFixed(2)}%</span>
+                  <span className="rr-when">resolved {new Date(r.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        )}
+
+        {dashboardTab === "news" && (
+        <div className="opps">
+          <div className="section-head">
+            <h2>News</h2>
+            {selectedCoin
+              ? <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>
+              : <span className="sh-sub">news &amp; social</span>}
+          </div>
+          {(() => {
+            const flat = [];
+            const coins = selectedCoin ? [selectedCoin] : watchlist;
+            coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
+            flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
+            const top = flat.slice(0, selectedCoin ? 12 : 10);
+            if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
+            return (
+              <div className="sig-grid">
+                {top.map((n, i) => (
+                  <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
+                    <div className="sig-item-top">
+                      <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
+                      <span className="sig-src">{n.source}</span>
+                      <span className="sig-when">{timeAgo(n.when, now)}</span>
+                    </div>
+                    <div className="sig-title">{n.title}</div>
+                  </a>
+                ))}
+              </div>
+            );
+          })()}
+        </div>
+        )}
+
+        {dashboardTab === "market" && (
         <aside className="onchain">
-          <div className="section-head"><h2>Market context</h2><span className="sh-sub">live</span></div>
+          <div className="section-head"><h2>Market</h2><span className="sh-sub">live</span></div>
 
           {signalBias && marketMeter && (
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
@@ -1502,6 +1521,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           )}
         </aside>
+        )}
       </div>
 
       <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (1.5x ATR stop, 2R target), not recommendations.</div>
@@ -1887,7 +1907,11 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .banner.error{background:var(--red-dim);border-color:rgba(255,92,108,.3);color:var(--red-soft);display:flex;align-items:center;justify-content:space-between;gap:12px}
 .banner-dismiss{background:none;border:none;color:inherit;font-size:16px;cursor:pointer;padding:0 4px;line-height:1}
 
-.dash-body{display:grid;grid-template-columns:1fr 300px;gap:20px;margin-top:6px}
+.dash-body{margin-top:6px}
+.dash-tabs{display:flex;gap:4px;margin-top:16px;border-bottom:1px solid var(--border)}
+.dash-tab-btn{background:none;border:none;padding:10px 18px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent}
+.dash-tab-btn.active{color:var(--text);border-bottom-color:var(--green)}
+.dash-tab-btn:hover{color:var(--text)}
 .section-head{display:flex;align-items:baseline;gap:12px;margin-bottom:16px}
 .recently-resolved{margin-top:20px;padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px}
 .rr-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
