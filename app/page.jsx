@@ -662,6 +662,22 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [assessing, setAssessing] = useState({});
   const [selectedCoin, setSelectedCoin] = useState(null);
   const [dashboardTab, setDashboardTab] = useState("coins"); // "coins" | "market" | "news" — real, top-level layout tabs, replacing the single, long scroll
+
+  // Real, persisted across a genuine page refresh (pull-to-refresh on
+  // mobile is common and reloads the whole page), so a real browser
+  // reload doesn't silently bounce someone back to the Coins tab from
+  // wherever they actually were. Read only inside a real, client-only
+  // effect, never during server-side rendering, where localStorage
+  // doesn't exist at all.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("setpoint-dashboard-tab");
+      if (saved === "coins" || saved === "market" || saved === "news") setDashboardTab(saved);
+    } catch { /* localStorage unavailable, safe to just keep the default */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("setpoint-dashboard-tab", dashboardTab); } catch { /* non-fatal */ }
+  }, [dashboardTab]);
   const [coinNote, setCoinNote] = useState({}); // "sym:tf" -> read | {error}
   const [coinNoteLoading, setCoinNoteLoading] = useState({});
   const fired = useRef({}); // key -> {firstFired, lastSeen}
