@@ -103,10 +103,10 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <span className="tf-pill">{s.tf}</span>
         <span className="fired">{demo ? "triggered 3m ago" : isOpenPosition ? "fired " + timeAgo(firedAt, now) + " · still open" : "triggered " + timeAgo(firedAt, now)}</span>
       </div>
-      {!demo && !isOpenPosition && (
+      {!demo && (
         <div className="ai-take">
           {read && read.error ? (
-            <div className="ai-err">{read.error === "no_key" ? "Add ANTHROPIC_API_KEY in Vercel to enable AI reads." : "AI read unavailable right now."}</div>
+            <div className="ai-err">{read.error === "no_key" ? "This feature isn't configured yet." : "Read unavailable right now."}</div>
           ) : read ? (
             <div className={`ai-read ${read.stance || "neutral"}`}>
               <div className="ai-head"><span className="ai-stance">{read.stance}</span><span className="ai-conf">{read.confidence} confidence</span></div>
@@ -117,7 +117,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
           ) : loading ? (
             <div className="ai-loading"><span className="dot-pulse" /> Reading the setup and headlines…</div>
           ) : (
-            <button className="ai-btn" onClick={onAssess}>AI take on this signal</button>
+            <button className="ai-btn" onClick={onAssess}>Details on this signal</button>
           )}
         </div>
       )}
@@ -1307,12 +1307,15 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 a.kind === "open" ? (
                   <SignalCard
                     key={`open:${a.data.coin}:${a.data.tf}:${a.data.label}:${a.data.dir}:${a.data.firedAt}`}
-                    s={{ dir: a.data.dir, label: a.data.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate }}
+                    s={{ dir: a.data.dir, label: a.data.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate, key: `${a.data.tf}:${a.data.label}:${a.data.dir}` }}
                     sym={a.data.coin}
                     price={data[a.data.coin]?.snap?.price}
                     firedAt={a.data.firedAt}
                     now={now}
                     isOpenPosition
+                    read={assess[`${a.data.coin}:${a.data.tf}:${a.data.label}:${a.data.dir}`]}
+                    loading={assessing[`${a.data.coin}:${a.data.tf}:${a.data.label}:${a.data.dir}`]}
+                    onAssess={() => runAssess(a.data.coin, { dir: a.data.dir, label: a.data.label, tf: a.data.tf, key: `${a.data.tf}:${a.data.label}:${a.data.dir}` })}
                   />
                 ) : (
                   <SignalCard key={a.data.sym + a.data.key} s={a.data} sym={a.data.sym} price={a.data.price} firedAt={a.data.firedAt} now={now} read={assess[`${a.data.sym}:${a.data.key}`]} loading={assessing[`${a.data.sym}:${a.data.key}`]} onAssess={() => runAssess(a.data.sym, a.data)} />
