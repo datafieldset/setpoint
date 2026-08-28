@@ -91,6 +91,30 @@ function Ladder({ entry, stop, target, price, dir }) {
 // moment is something you can see happen, not just infer from two
 // separate numbers. Marks the real, most recent point where the lines
 // actually crossed, when one exists inside this window.
+// Real price history plotted as an actual line, with the MA itself
+// drawn as a flat, horizontal reference across it — replaces a single,
+// static gauge with something that shows how price has actually
+// approached and moved away from this level over real time.
+function PriceVsMaChart({ series, maValue }) {
+  if (!series || series.length < 2 || maValue == null) return null;
+  const W = 300, H = 110, PAD = 6;
+  const allVals = [...series, maValue];
+  const min = Math.min(...allVals), max = Math.max(...allVals);
+  const span = max - min || 1;
+  const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
+  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
+  const priceLine = series.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const maY = y(maValue);
+  const above = series[series.length - 1] >= maValue;
+
+  return (
+    <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <line x1={PAD} y1={maY} x2={W - PAD} y2={maY} stroke="var(--amber)" strokeWidth="1.25" strokeDasharray="4,3" />
+      <polyline points={priceLine} fill="none" stroke={above ? "var(--green-soft)" : "var(--red-soft)"} strokeWidth="1.5" />
+    </svg>
+  );
+}
+
 function CrossoverChart({ series }) {
   if (!series || series.length < 2) return null;
   const W = 300, H = 110, PAD = 6;
@@ -119,27 +143,6 @@ function CrossoverChart({ series }) {
         <circle cx={x(crossIdx)} cy={y(series[crossIdx].sma50)} r="3.5" fill="var(--amber)" />
       )}
     </svg>
-  );
-}
-
-function MaGauge({ distPct, range }) {
-  if (distPct == null) return null;
-  const clamped = Math.max(-range, Math.min(range, distPct));
-  const posPct = 50 - (clamped / range) * 50; // 0% = top (furthest above), 100% = bottom (furthest below)
-  const above = distPct >= 0;
-  // Fill spans from the center line (50%) out to the dot's real
-  // position, so the actual magnitude reads visually too, not just a
-  // dot floating at some height you have to judge by eye.
-  const fillTop = above ? posPct : 50;
-  const fillHeight = Math.abs(50 - posPct);
-  return (
-    <div className="ma-gauge">
-      <div className="ma-gauge-track">
-        <div className="ma-gauge-center" />
-        <div className={`ma-gauge-fill ${above ? "up" : "down"}`} style={{ top: `${fillTop}%`, height: `${fillHeight}%` }} />
-        <div className={`ma-gauge-dot ${above ? "up" : "down"}`} style={{ top: `${posPct}%` }} />
-      </div>
-    </div>
   );
 }
 
@@ -1554,7 +1557,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className={`w200-panel ${near ? "near" : ""}`}>
                 <div className="w200-head">BTC 200-week MA</div>
                 <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
-                <MaGauge distPct={distPct} range={60} />
+                <PriceVsMaChart series={weekly200.priceSeries} maValue={weekly200.sma} />
                 <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
               </div>
             );
@@ -2124,15 +2127,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .w200-dist.down{color:var(--amber)}
 .w200-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
 .w200-val.sm{font-size:12.5px}
-.ma-gauge{display:flex;justify-content:center;margin:8px 0}
-.ma-gauge-track{position:relative;width:4px;height:64px;background:var(--panel3);border-radius:3px}
-.ma-gauge-center{position:absolute;top:50%;left:-4px;right:-4px;height:2px;background:var(--border);transform:translateY(-1px)}
-.ma-gauge-fill{position:absolute;left:-2px;width:8px;border-radius:3px}
-.ma-gauge-fill.up{background:rgba(0,209,121,.65)}
-.ma-gauge-fill.down{background:rgba(255,92,108,.65)}
-.ma-gauge-dot{position:absolute;left:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 6px rgba(0,0,0,.5)}
-.ma-gauge-dot.up{background:var(--green-soft)}
-.ma-gauge-dot.down{background:var(--red-soft)}
 .w200-panel.dual{padding-bottom:12px}
 .cross-tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;display:inline-block;margin-bottom:10px}
 .cross-chart{width:100%;height:90px;display:block;margin-bottom:10px}
