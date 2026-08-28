@@ -1414,10 +1414,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 ))}
               </div>
               <div className="mm-level-text">Level {marketMeter.level} of 5</div>
-              <div className="mm-stage">{marketMeter.label}</div>
-              <div className={`mm-phase ${marketMeter.phase}`}>
-                {marketMeter.phase === "ending" ? "Looks like it's stretched, may be ending" : "Still building, no real exhaustion yet"}
-              </div>
+              <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{marketMeter.label}</div>
               {marketMeter.confirmed && (
                 <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
               )}
@@ -2036,8 +2033,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-dot.on.extreme{background:var(--amber)}
 .mm-level-text{font-family:'Bricolage Grotesque';font-weight:700;font-size:20px;margin-bottom:6px}
 .mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:4px}
-.mm-phase{font-size:12.5px;color:var(--muted)}
-.mm-phase.ending{color:var(--amber)}
+.mm-stage.ending{color:var(--amber)}
 .mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
