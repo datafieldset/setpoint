@@ -90,11 +90,18 @@ function MaGauge({ distPct, range }) {
   if (distPct == null) return null;
   const clamped = Math.max(-range, Math.min(range, distPct));
   const posPct = 50 - (clamped / range) * 50; // 0% = top (furthest above), 100% = bottom (furthest below)
+  const above = distPct >= 0;
+  // Fill spans from the center line (50%) out to the dot's real
+  // position, so the actual magnitude reads visually too, not just a
+  // dot floating at some height you have to judge by eye.
+  const fillTop = above ? posPct : 50;
+  const fillHeight = Math.abs(50 - posPct);
   return (
     <div className="ma-gauge">
       <div className="ma-gauge-track">
         <div className="ma-gauge-center" />
-        <div className={`ma-gauge-dot ${distPct >= 0 ? "up" : "down"}`} style={{ top: `${posPct}%` }} />
+        <div className={`ma-gauge-fill ${above ? "up" : "down"}`} style={{ top: `${fillTop}%`, height: `${fillHeight}%` }} />
+        <div className={`ma-gauge-dot ${above ? "up" : "down"}`} style={{ top: `${posPct}%` }} />
       </div>
     </div>
   );
@@ -2093,6 +2100,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .ma-gauge{display:flex;justify-content:center;margin:8px 0}
 .ma-gauge-track{position:relative;width:4px;height:64px;background:var(--panel3);border-radius:3px}
 .ma-gauge-center{position:absolute;top:50%;left:-4px;right:-4px;height:2px;background:var(--border);transform:translateY(-1px)}
+.ma-gauge-fill{position:absolute;left:-2px;width:8px;border-radius:3px}
+.ma-gauge-fill.up{background:rgba(0,209,121,.4)}
+.ma-gauge-fill.down{background:rgba(255,92,108,.4)}
 .ma-gauge-dot{position:absolute;left:50%;width:10px;height:10px;border-radius:50%;transform:translate(-50%,-50%)}
 .ma-gauge-dot.up{background:var(--green-soft)}
 .ma-gauge-dot.down{background:var(--red-soft)}
