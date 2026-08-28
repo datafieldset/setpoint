@@ -80,6 +80,26 @@ function Ladder({ entry, stop, target, price, dir }) {
   );
 }
 
+// A real, deliberately different visual from the horizontal volatility
+// meter used everywhere else, this is vertical, and the center of the
+// track IS the MA line itself, not a neutral midpoint of some abstract
+// score. The dot moves up when price is genuinely above the line,
+// down when it's genuinely below, clamped at the real, given range so
+// an extreme reading doesn't run off the track.
+function MaGauge({ distPct, range }) {
+  if (distPct == null) return null;
+  const clamped = Math.max(-range, Math.min(range, distPct));
+  const posPct = 50 - (clamped / range) * 50; // 0% = top (furthest above), 100% = bottom (furthest below)
+  return (
+    <div className="ma-gauge">
+      <div className="ma-gauge-track">
+        <div className="ma-gauge-center" />
+        <div className={`ma-gauge-dot ${distPct >= 0 ? "up" : "down"}`} style={{ top: `${posPct}%` }} />
+      </div>
+    </div>
+  );
+}
+
 function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess, isOpenPosition }) {
   return (
     <div className={`sig-card ${s.dir} ${s.isConfluence ? "confluence" : ""}`}>
@@ -1475,7 +1495,36 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className={`w200-panel ${near ? "near" : ""}`}>
                 <div className="w200-head">BTC 200-week MA</div>
                 <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
+                <MaGauge distPct={distPct} range={120} />
                 <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
+              </div>
+            );
+          })()}
+
+          {weekly200 && weekly200.daily50 != null && weekly200.daily200 != null && (() => {
+            const btcPrice = data.BTC?.snap?.price;
+            const dist50 = btcPrice ? ((btcPrice - weekly200.daily50) / weekly200.daily50) * 100 : null;
+            const dist200 = btcPrice ? ((btcPrice - weekly200.daily200) / weekly200.daily200) * 100 : null;
+            const golden = weekly200.daily50 >= weekly200.daily200;
+            return (
+              <div className="w200-panel dual">
+                <div className="w200-head">BTC 50 / 200-day SMA</div>
+                <div className={`cross-tag ${golden ? "golden" : "death"}`}>{golden ? "Golden cross, 50 above 200" : "Death cross, 50 below 200"}</div>
+                <div className="ma-pair-row">
+                  <div className="ma-pair-col">
+                    <div className="ma-pair-label">50-day</div>
+                    <div className="w200-val mono sm">${fmtPrice(weekly200.daily50)}</div>
+                    {dist50 != null && <span className={`w200-dist ${dist50 >= 0 ? "up" : "down"}`}>{dist50 >= 0 ? "+" : ""}{dist50.toFixed(1)}%</span>}
+                    <MaGauge distPct={dist50} range={20} />
+                  </div>
+                  <div className="ma-pair-col">
+                    <div className="ma-pair-label">200-day</div>
+                    <div className="w200-val mono sm">${fmtPrice(weekly200.daily200)}</div>
+                    {dist200 != null && <span className={`w200-dist ${dist200 >= 0 ? "up" : "down"}`}>{dist200 >= 0 ? "+" : ""}{dist200.toFixed(1)}%</span>}
+                    <MaGauge distPct={dist200} range={30} />
+                  </div>
+                </div>
+                <div className="w200-note">Faster, daily basis, a real, different read from the weekly line above. When the 50 crosses above the 200, traders call that a golden cross, real bullish structure. Below, a death cross. Not a trading signal on its own, background context only.</div>
               </div>
             );
           })()}
@@ -2024,6 +2073,20 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .w200-dist.up{color:var(--muted)}
 .w200-dist.down{color:var(--amber)}
 .w200-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
+.w200-val.sm{font-size:12.5px}
+.ma-gauge{display:flex;justify-content:center;margin:8px 0}
+.ma-gauge-track{position:relative;width:4px;height:64px;background:var(--panel3);border-radius:3px}
+.ma-gauge-center{position:absolute;top:50%;left:-4px;right:-4px;height:2px;background:var(--border);transform:translateY(-1px)}
+.ma-gauge-dot{position:absolute;left:50%;width:10px;height:10px;border-radius:50%;transform:translate(-50%,-50%)}
+.ma-gauge-dot.up{background:var(--green-soft)}
+.ma-gauge-dot.down{background:var(--red-soft)}
+.w200-panel.dual{padding-bottom:12px}
+.cross-tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;display:inline-block;margin-bottom:10px}
+.cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
+.cross-tag.death{color:var(--red-soft);background:var(--red-dim)}
+.ma-pair-row{display:flex;gap:16px}
+.ma-pair-col{flex:1;text-align:center}
+.ma-pair-label{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
 .macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .macro-panel.bullish{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .macro-panel.bearish{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
