@@ -86,6 +86,42 @@ function Ladder({ entry, stop, target, price, dir }) {
 // score. The dot moves up when price is genuinely above the line,
 // down when it's genuinely below, clamped at the real, given range so
 // an extreme reading doesn't run off the track.
+// A real, simple line chart, no charting library, just plain SVG — two
+// real lines over the last 120 real days, so the actual crossover
+// moment is something you can see happen, not just infer from two
+// separate numbers. Marks the real, most recent point where the lines
+// actually crossed, when one exists inside this window.
+function CrossoverChart({ series }) {
+  if (!series || series.length < 2) return null;
+  const W = 300, H = 110, PAD = 6;
+  const allVals = series.flatMap((p) => [p.sma50, p.sma200]);
+  const min = Math.min(...allVals), max = Math.max(...allVals);
+  const span = max - min || 1;
+  const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
+  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
+  const line50 = series.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ");
+  const line200 = series.map((p, i) => `${x(i)},${y(p.sma200)}`).join(" ");
+
+  // Real, most recent crossover inside this window, walking backward so
+  // the marker lands on the latest real cross, not the earliest.
+  let crossIdx = null;
+  for (let i = series.length - 1; i > 0; i--) {
+    const prevDiff = series[i - 1].sma50 - series[i - 1].sma200;
+    const currDiff = series[i].sma50 - series[i].sma200;
+    if ((prevDiff <= 0 && currDiff > 0) || (prevDiff >= 0 && currDiff < 0)) { crossIdx = i; break; }
+  }
+
+  return (
+    <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+      <polyline points={line200} fill="none" stroke="var(--muted)" strokeWidth="1.5" />
+      <polyline points={line50} fill="none" stroke="var(--green-soft)" strokeWidth="1.5" />
+      {crossIdx != null && (
+        <circle cx={x(crossIdx)} cy={y(series[crossIdx].sma50)} r="3.5" fill="var(--amber)" />
+      )}
+    </svg>
+  );
+}
+
 function MaGauge({ distPct, range }) {
   if (distPct == null) return null;
   const clamped = Math.max(-range, Math.min(range, distPct));
@@ -1518,7 +1554,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className={`w200-panel ${near ? "near" : ""}`}>
                 <div className="w200-head">BTC 200-week MA</div>
                 <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
-                <MaGauge distPct={distPct} range={120} />
+                <MaGauge distPct={distPct} range={60} />
                 <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
               </div>
             );
@@ -1533,19 +1569,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className="w200-panel dual">
                 <div className="w200-head">BTC 50 / 200-day SMA</div>
                 <div className={`cross-tag ${golden ? "golden" : "death"}`}>{golden ? "Golden cross, 50 above 200" : "Death cross, 50 below 200"}</div>
-                <div className="ma-pair-row">
-                  <div className="ma-pair-col">
-                    <div className="ma-pair-label">50-day</div>
-                    <div className="w200-val mono sm">${fmtPrice(weekly200.daily50)}</div>
-                    {dist50 != null && <span className={`w200-dist ${dist50 >= 0 ? "up" : "down"}`}>{dist50 >= 0 ? "+" : ""}{dist50.toFixed(1)}%</span>}
-                    <MaGauge distPct={dist50} range={20} />
-                  </div>
-                  <div className="ma-pair-col">
-                    <div className="ma-pair-label">200-day</div>
-                    <div className="w200-val mono sm">${fmtPrice(weekly200.daily200)}</div>
-                    {dist200 != null && <span className={`w200-dist ${dist200 >= 0 ? "up" : "down"}`}>{dist200 >= 0 ? "+" : ""}{dist200.toFixed(1)}%</span>}
-                    <MaGauge distPct={dist200} range={30} />
-                  </div>
+                <CrossoverChart series={weekly200.dailySeries} />
+                <div className="cross-legend">
+                  <span className="cross-legend-item"><span className="cross-dot fifty" /> 50-day, ${fmtPrice(weekly200.daily50)}{dist50 != null && ` (${dist50 >= 0 ? "+" : ""}${dist50.toFixed(1)}%)`}</span>
+                  <span className="cross-legend-item"><span className="cross-dot twohundred" /> 200-day, ${fmtPrice(weekly200.daily200)}{dist200 != null && ` (${dist200 >= 0 ? "+" : ""}${dist200.toFixed(1)}%)`}</span>
                 </div>
                 <div className="w200-note">Faster, daily basis, a real, different read from the weekly line above. When the 50 crosses above the 200, traders call that a golden cross, real bullish structure. Below, a death cross. Not a trading signal on its own, background context only.</div>
               </div>
@@ -2101,18 +2128,21 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .ma-gauge-track{position:relative;width:4px;height:64px;background:var(--panel3);border-radius:3px}
 .ma-gauge-center{position:absolute;top:50%;left:-4px;right:-4px;height:2px;background:var(--border);transform:translateY(-1px)}
 .ma-gauge-fill{position:absolute;left:-2px;width:8px;border-radius:3px}
-.ma-gauge-fill.up{background:rgba(0,209,121,.4)}
-.ma-gauge-fill.down{background:rgba(255,92,108,.4)}
-.ma-gauge-dot{position:absolute;left:50%;width:10px;height:10px;border-radius:50%;transform:translate(-50%,-50%)}
+.ma-gauge-fill.up{background:rgba(0,209,121,.65)}
+.ma-gauge-fill.down{background:rgba(255,92,108,.65)}
+.ma-gauge-dot{position:absolute;left:50%;width:12px;height:12px;border-radius:50%;transform:translate(-50%,-50%);box-shadow:0 0 6px rgba(0,0,0,.5)}
 .ma-gauge-dot.up{background:var(--green-soft)}
 .ma-gauge-dot.down{background:var(--red-soft)}
 .w200-panel.dual{padding-bottom:12px}
 .cross-tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;display:inline-block;margin-bottom:10px}
+.cross-chart{width:100%;height:90px;display:block;margin-bottom:10px}
+.cross-legend{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
+.cross-legend-item{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
+.cross-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.cross-dot.fifty{background:var(--green-soft)}
+.cross-dot.twohundred{background:var(--muted)}
 .cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
 .cross-tag.death{color:var(--red-soft);background:var(--red-dim)}
-.ma-pair-row{display:flex;gap:16px}
-.ma-pair-col{flex:1;text-align:center}
-.ma-pair-label{font-size:9.5px;color:var(--dim);text-transform:uppercase;letter-spacing:.04em;margin-bottom:4px}
 .macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .macro-panel.bullish{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .macro-panel.bearish{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
