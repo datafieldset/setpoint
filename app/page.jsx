@@ -619,6 +619,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
   const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 15m regardless of the selected alerts tab, powers the Market Meter below
+  const [watchlistMeters15m, setWatchlistMeters15m] = useState({}); // sym -> real meter score, always 15m, powers the Market Meter's confirmation check specifically
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [now, setNow] = useState(Date.now());
@@ -942,14 +943,29 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // noise (discussed directly, real tradeoff, not arbitrary).
   const loadBtcRegime = useCallback(async () => {
     try {
-      const res = await fetch(`/api/market?symbols=BTC&tf=15m`, { cache: "no-store" });
+      const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=15m`, { cache: "no-store" });
       if (!res.ok) return;
       const json = await res.json();
-      const btc = (json.coins || []).find((c) => c.sym === "BTC");
-      if (!btc || btc.error || !btc.candles?.length) return;
-      setBtcRegime(marketRegime(btc.candles, "15m"));
+      const coins = json.coins || [];
+      const btc = coins.find((c) => c.sym === "BTC");
+      if (btc && !btc.error && btc.candles?.length) setBtcRegime(marketRegime(btc.candles, "15m"));
+
+      // Real, same real fix, this time for the confirmation check's own
+      // watchlist-exhaustion half, not just the BTC stage/level. That
+      // check used to silently read data[sym]?.meter, which is computed
+      // on whichever timeframe the alerts tab happens to be on, meaning
+      // the "Confirmed" callout could appear or disappear just from
+      // switching tabs, even though nothing about the real 15m read had
+      // changed. Locked to 15m here, same as everything else in this
+      // panel.
+      const meters = {};
+      for (const c of coins) {
+        if (c.error || !c.candles?.length) continue;
+        meters[c.sym] = volatilityMeter(c.candles, "15m");
+      }
+      setWatchlistMeters15m(meters);
     } catch { /* non-fatal, next tick tries again */ }
-  }, []);
+  }, [watchlist]);
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadNews(); }, [loadNews]);
@@ -1057,14 +1073,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     if (!btcRegime) return null;
 
     const confirmed = !!signalBias?.bothWeak && (() => {
-      const nearBottom = watchlist.filter((sym) => data[sym]?.meter?.score <= 20).length;
-      const nearTop = watchlist.filter((sym) => data[sym]?.meter?.score >= 80).length;
+      const nearBottom = watchlist.filter((sym) => watchlistMeters15m[sym]?.score <= 20).length;
+      const nearTop = watchlist.filter((sym) => watchlistMeters15m[sym]?.score >= 80).length;
       const needed = watchlist.length <= 2 ? 1 : watchlist.length <= 4 ? 2 : Math.ceil(watchlist.length / 3);
       return nearBottom >= needed || nearTop >= needed;
     })();
 
     return { ...btcRegime, confirmed };
-  }, [btcRegime, signalBias, data, watchlist]);
+  }, [btcRegime, signalBias, watchlistMeters15m, watchlist]);
 
 
   const saveWatchlist = useCallback((list) => {
