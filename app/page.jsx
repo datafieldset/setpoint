@@ -754,7 +754,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   useEffect(() => {
     try {
       const saved = localStorage.getItem("setpoint-dashboard-tab");
-      if (saved === "coins" || saved === "market" || saved === "news") setDashboardTab(saved);
+      if (saved === "coins" || saved === "market") setDashboardTab(saved);
     } catch { /* localStorage unavailable, safe to just keep the default */ }
   }, []);
   useEffect(() => {
@@ -1330,7 +1330,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       <div className="dash-tabs">
         <button className={`dash-tab-btn ${dashboardTab === "coins" ? "active" : ""}`} onClick={() => setDashboardTab("coins")}>Coins</button>
         <button className={`dash-tab-btn ${dashboardTab === "market" ? "active" : ""}`} onClick={() => setDashboardTab("market")}>Market</button>
-        <button className={`dash-tab-btn ${dashboardTab === "news" ? "active" : ""}`} onClick={() => setDashboardTab("news")}>News</button>
       </div>
 
       {/* ticker row */}
@@ -1494,41 +1493,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         </div>
         )}
 
-        {dashboardTab === "news" && (
-        <div className="opps">
-          <div className="section-head">
-            <h2>News</h2>
-            {selectedCoin
-              ? <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>
-              : <span className="sh-sub">news &amp; social</span>}
-          </div>
-          {(() => {
-            const flat = [];
-            const coins = selectedCoin ? [selectedCoin] : watchlist;
-            coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
-            flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
-            const top = flat.slice(0, selectedCoin ? 12 : 10);
-            if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
-            return (
-              <div className="sig-grid">
-                {top.map((n, i) => (
-                  <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
-                    <div className="sig-item-top">
-                      <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
-                      <span className="sig-src">{n.source}</span>
-                      <span className="sig-when">{timeAgo(n.when, now)}</span>
-                    </div>
-                    <div className="sig-title">{n.title}</div>
-                  </a>
-                ))}
-              </div>
-            );
-          })()}
-        </div>
-        )}
-
         {dashboardTab === "market" && (
-        <aside className="onchain">
+        <div className="market-cols">
+        <aside className="onchain market-col-left">
           <div className="section-head"><h2>Market</h2><span className="sh-sub">live</span></div>
 
           {signalBias && marketMeter && (
@@ -1627,7 +1594,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               {macroRead.read.catalyst && <div className="macro-catalyst">⏳ {macroRead.read.catalyst}</div>}
             </div>
           )}
+        </aside>
 
+        <aside className="onchain market-col-right">
           {bias && bias.dir && (() => {
             // pctUp is always "percent of the basket currently up," regardless
             // of direction. That's correct for a bullish reading, backwards for
@@ -1674,7 +1643,39 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className="netflow-note">No unusually large trades detected right now. This reads directly from Coinbase's own trade feed, the same source every signal on this dashboard already depends on.</div>
             </div>
           )}
+
+          <div className="market-news">
+            <div className="section-head">
+              <h2>News</h2>
+              {selectedCoin
+                ? <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>
+                : <span className="sh-sub">news &amp; social</span>}
+            </div>
+            {(() => {
+              const flat = [];
+              const coins = selectedCoin ? [selectedCoin] : watchlist;
+              coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
+              flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
+              const top = flat.slice(0, selectedCoin ? 12 : 10);
+              if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
+              return (
+                <div className="sig-grid">
+                  {top.map((n, i) => (
+                    <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
+                      <div className="sig-item-top">
+                        <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
+                        <span className="sig-src">{n.source}</span>
+                        <span className="sig-when">{timeAgo(n.when, now)}</span>
+                      </div>
+                      <div className="sig-title">{n.title}</div>
+                    </a>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
         </aside>
+        </div>
         )}
       </div>
 
@@ -2142,6 +2143,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .fired{font-size:11px;color:var(--dim)}
 
 .onchain{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;align-self:start;position:sticky;top:70px}
+.market-cols{display:grid;grid-template-columns:7fr 3fr;gap:20px;align-items:start}
+.market-col-right{display:flex;flex-direction:column;gap:16px}
+.market-news{margin-top:2px}
 .bias-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .bias-panel.bull{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .bias-panel.bear{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
@@ -2305,6 +2309,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
   .feat-grid,.how-grid,.tiers{grid-template-columns:1fr}
   .dash-body{grid-template-columns:1fr}
   .onchain{position:static}
+  .market-cols{grid-template-columns:1fr}
 }
 @media(max-width:640px){
   .topbar{flex-wrap:wrap;gap:10px;padding:12px 0;position:relative}
