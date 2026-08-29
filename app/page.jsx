@@ -680,7 +680,7 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 function Dashboard({ account, onSignOut, justUpgraded }) {
-  const maxCoins = maxCoinsForPlan(account.plan);
+  const maxCoins = account.isAdmin ? Infinity : maxCoinsForPlan(account.plan);
   const [showGuide, setShowGuide] = useState(false);
   const [showWatchLive, setShowWatchLive] = useState(false);
   const [pushStatus, setPushStatus] = useState("checking"); // checking | unsupported | off | on | busy
