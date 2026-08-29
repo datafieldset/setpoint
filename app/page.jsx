@@ -95,23 +95,56 @@ function Ladder({ entry, stop, target, price, dir }) {
 // drawn as a flat, horizontal reference across it — replaces a single,
 // static gauge with something that shows how price has actually
 // approached and moved away from this level over real time.
+// Real, evenly-spaced date labels pulled directly from a series' own
+// real timestamps, shared by both charts below rather than two separate
+// copies of the same real logic. Positioned by percentage, not pixels,
+// so they line up correctly regardless of how wide the chart actually
+// renders.
+function buildAxisLabels(series, count, withYear) {
+  if (!series || series.length < 2) return [];
+  const labels = [];
+  const step = (series.length - 1) / (count - 1);
+  for (let i = 0; i < count; i++) {
+    const idx = Math.round(i * step);
+    const d = new Date(series[idx].time);
+    const text = withYear ? d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }) : d.toLocaleDateString(undefined, { month: "short" });
+    labels.push({ pct: (idx / (series.length - 1)) * 100, text });
+  }
+  return labels;
+}
+
+function ChartAxis({ labels }) {
+  if (!labels.length) return null;
+  return (
+    <div className="chart-axis">
+      {labels.map((l, i) => (
+        <span key={i} className="chart-axis-label" style={{ left: `${l.pct}%` }}>{l.text}</span>
+      ))}
+    </div>
+  );
+}
+
 function PriceVsMaChart({ series, maValue }) {
   if (!series || series.length < 2 || maValue == null) return null;
   const W = 300, H = 110, PAD = 6;
-  const allVals = [...series, maValue];
+  const closes = series.map((p) => p.close);
+  const allVals = [...closes, maValue];
   const min = Math.min(...allVals), max = Math.max(...allVals);
   const span = max - min || 1;
   const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
   const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const priceLine = series.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+  const priceLine = closes.map((v, i) => `${x(i)},${y(v)}`).join(" ");
   const maY = y(maValue);
-  const above = series[series.length - 1] >= maValue;
+  const above = closes[closes.length - 1] >= maValue;
 
   return (
-    <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-      <line x1={PAD} y1={maY} x2={W - PAD} y2={maY} stroke="var(--amber)" strokeWidth="1.25" strokeDasharray="4,3" />
-      <polyline points={priceLine} fill="none" stroke={above ? "var(--green-soft)" : "var(--red-soft)"} strokeWidth="1.5" />
-    </svg>
+    <div className="chart-wrap">
+      <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        <line x1={PAD} y1={maY} x2={W - PAD} y2={maY} stroke="var(--amber)" strokeWidth="1.25" strokeDasharray="4,3" />
+        <polyline points={priceLine} fill="none" stroke={above ? "var(--green-soft)" : "var(--red-soft)"} strokeWidth="1.5" />
+      </svg>
+      <ChartAxis labels={buildAxisLabels(series, 4, true)} />
+    </div>
   );
 }
 
@@ -136,13 +169,16 @@ function CrossoverChart({ series }) {
   }
 
   return (
-    <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-      <polyline points={line200} fill="none" stroke="var(--muted)" strokeWidth="1.5" />
-      <polyline points={line50} fill="none" stroke="var(--green-soft)" strokeWidth="1.5" />
-      {crossIdx != null && (
-        <circle cx={x(crossIdx)} cy={y(series[crossIdx].sma50)} r="3.5" fill="var(--amber)" />
-      )}
-    </svg>
+    <div className="chart-wrap">
+      <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        <polyline points={line200} fill="none" stroke="var(--muted)" strokeWidth="1.5" />
+        <polyline points={line50} fill="none" stroke="var(--green-soft)" strokeWidth="1.5" />
+        {crossIdx != null && (
+          <circle cx={x(crossIdx)} cy={y(series[crossIdx].sma50)} r="3.5" fill="var(--amber)" />
+        )}
+      </svg>
+      <ChartAxis labels={buildAxisLabels(series, 4, false)} />
+    </div>
   );
 }
 
@@ -2129,7 +2165,12 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .w200-val.sm{font-size:12.5px}
 .w200-panel.dual{padding-bottom:12px}
 .cross-tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;display:inline-block;margin-bottom:10px}
-.cross-chart{width:100%;height:90px;display:block;margin-bottom:10px}
+.chart-wrap{position:relative}
+.cross-chart{width:100%;height:90px;display:block;margin-bottom:2px}
+.chart-axis{position:relative;height:16px;margin-bottom:8px}
+.chart-axis-label{position:absolute;top:0;transform:translateX(-50%);font-size:9.5px;color:var(--dim);white-space:nowrap}
+.chart-axis-label:first-child{transform:translateX(0)}
+.chart-axis-label:last-child{transform:translateX(-100%)}
 .cross-legend{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
 .cross-legend-item{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
 .cross-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
