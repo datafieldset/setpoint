@@ -1424,16 +1424,18 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <span className="sh-sub">{openAlerts.length} active, verified only · {watchlist.length} coins · {TF[tfKey].label}</span>
           </div>
           {openAlerts.length === 0 ? (
-            <div className="empty">
+            <div className={`empty ${!anyVerifiedThisTf ? "dead" : ""}`}>
               <div className="empty-h">
-                {!anyVerifiedThisTf ? `Nothing verified on ${TF[tfKey].label} right now.` : allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}
+                {!anyVerifiedThisTf
+                  ? `Nothing to watch on ${TF[tfKey].label} yet`
+                  : <><span className="dot-ok" /> Watching {TF[tfKey].label}</>}
               </div>
               <div className="empty-d">
                 {!anyVerifiedThisTf
-                  ? `Nothing's cleared the bar on ${TF[tfKey].label} right now. It'll show up here the moment something does.`
+                  ? `Nothing's cleared the bar on this timeframe right now. It'll show up here the moment something does, no need to keep checking.`
                   : allSignals.length > 0
                   ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
-                  : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
+                  : `Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}.`}
               </div>
             </div>
           ) : (
@@ -2107,7 +2109,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .sh-sub.sample{color:var(--amber)}
 
 .empty{background:var(--panel);border:1px dashed var(--border);border-radius:14px;padding:44px 26px;text-align:center}
-.empty-h{font-family:'Bricolage Grotesque';font-weight:600;font-size:18px;margin-bottom:8px}
+.empty.dead{opacity:.7}
+.empty-h{font-family:'Bricolage Grotesque';font-weight:600;font-size:18px;margin-bottom:8px;display:flex;align-items:center;justify-content:center;gap:9px}
 .empty-d{color:var(--muted);font-size:14px;line-height:1.55;max-width:420px;margin:0 auto}
 
 .cards-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(288px,1fr));gap:14px}
