@@ -18,13 +18,10 @@ export default function PrivacyPage() {
         <p>Your email address and password (stored securely, never in plain text) when you create an account. Your watchlist and coin preferences. If you turn on browser alerts, a real device subscription token so we can send them. Payment is handled entirely by Stripe, we never see or store your card details ourselves.</p>
 
         <h2>How we use it</h2>
-        <p>To run your account, show your dashboard, process billing through Stripe, send real account emails (welcome, billing confirmations), and, if you've turned them on, browser push notifications for your own verified alerts.</p>
+        <p>To run your account, show your dashboard, process billing through Stripe, and, if you've turned them on, browser push notifications for your own verified alerts.</p>
 
         <h2>What we don't do</h2>
         <p>We don't sell your data. We don't share it with advertisers. We don't use it for anything beyond running the actual product.</p>
-
-        <h2>Third parties involved</h2>
-        <p>Stripe (payments), Neon (database hosting), Vercel (site hosting), Coinbase (public market data, no account data ever shared with them). Each handles data under their own privacy policies.</p>
 
         <h2>Your data, your control</h2>
         <p>Want your account and data deleted? <a href="/contact">Reach out</a> and we'll take care of it.</p>
