@@ -1430,7 +1430,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </div>
               <div className="empty-d">
                 {!anyVerifiedThisTf
-                  ? `Real, honest state, not a bug, nothing has earned verified status on this specific timeframe right now. No need to keep watching this tab, it'll pick back up here automatically the moment something does, and you don't need to do anything to catch it.`
+                  ? `Nothing's cleared the bar on ${TF[tfKey].label} right now. It'll show up here the moment something does.`
                   : allSignals.length > 0
                   ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
                   : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
