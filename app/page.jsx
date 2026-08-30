@@ -1131,6 +1131,20 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return gate.rate >= PROVEN_THRESHOLD;
   }, [liveGate]);
 
+  // Real, direct check for whether anything is even currently verified on
+  // this specific timeframe, not just whether something has fired. These
+  // are genuinely different states, and the empty-state message below
+  // needs to tell them apart honestly, "nothing verified here right now,
+  // don't wait for it" versus "verified and actively watching, just
+  // hasn't fired yet."
+  const anyVerifiedThisTf = useMemo(() => {
+    const tfLabel = TF[tfKey].label;
+    return Object.keys(SIGNAL_RATES).some((key) => {
+      const [label, tf, dir] = key.split("|");
+      return tf === tfLabel && isLiveVerified({ label, tf, dir });
+    });
+  }, [tfKey, isLiveVerified]);
+
   const visibleSignals = useMemo(() => allSignals.filter((s) => s.tier === "proven" && isLiveVerified(s)), [allSignals, isLiveVerified]);
   // Open positions still resolve correctly in the background for any coin,
   // watchlisted or not, close-alert doesn't care about the watchlist at
@@ -1411,9 +1425,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           </div>
           {openAlerts.length === 0 ? (
             <div className="empty">
-              <div className="empty-h">{allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}</div>
+              <div className="empty-h">
+                {!anyVerifiedThisTf ? `Nothing verified on ${TF[tfKey].label} right now.` : allSignals.length > 0 ? "Nothing verified right now." : "Nothing firing right now."}
+              </div>
               <div className="empty-d">
-                {allSignals.length > 0
+                {!anyVerifiedThisTf
+                  ? `Real, honest state, not a bug, nothing has earned verified status on this specific timeframe right now. No need to keep watching this tab, it'll pick back up here automatically the moment something does, and you don't need to do anything to catch it.`
+                  : allSignals.length > 0
                   ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
                   : `This is normal. Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}. Currently watching on the ${TF[tfKey].label}.`}
               </div>
