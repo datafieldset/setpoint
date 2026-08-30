@@ -23,6 +23,9 @@ export default function PrivacyPage() {
         <h2>What we don't do</h2>
         <p>We don't sell your data. We don't share it with advertisers. We don't use it for anything beyond running the actual product.</p>
 
+        <h2>Third parties involved</h2>
+        <p>We use real, established third parties for payment processing, hosting and infrastructure, and market data. Each handles data under their own privacy policies.</p>
+
         <h2>Your data, your control</h2>
         <p>Want your account and data deleted? <a href="/contact">Reach out</a> and we'll take care of it.</p>
 
