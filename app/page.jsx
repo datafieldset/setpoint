@@ -718,6 +718,20 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [adminUsers, setAdminUsers] = useState(null);
   const [watchlist, setWatchlist] = useState(["BTC"]); // safe starting point for every plan, including Starter's 1-coin limit — grows from real saved data once it loads
   const [tfKey, setTfKey] = useState("15m");
+
+  // Real, persisted across a genuine page refresh, same real pattern
+  // already proven for the dashboard tab — a real reload shouldn't
+  // silently bounce someone back to 15m from whichever timeframe they
+  // actually had selected.
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("setpoint-tf");
+      if (saved && TF[saved]) setTfKey(saved);
+    } catch { /* localStorage unavailable, safe to just keep the default */ }
+  }, []);
+  useEffect(() => {
+    try { localStorage.setItem("setpoint-tf", tfKey); } catch { /* non-fatal */ }
+  }, [tfKey]);
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
   const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 15m regardless of the selected alerts tab, powers the Market Meter below
