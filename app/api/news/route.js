@@ -96,10 +96,11 @@ export async function getRss() {
 
 export async function getReddit() {
   const subs = ["CryptoCurrency", "CryptoMarkets"];
+  const debug = [];
   const results = await Promise.all(subs.map(async (sub) => {
     try {
       const r = await fetch(`https://www.reddit.com/r/${sub}/new.json?limit=25`, { headers: UA, cache: "no-store" });
-      if (!r.ok) return [];
+      if (!r.ok) { debug.push({ sub, status: r.status }); return []; }
       const j = await r.json();
       return (j.data?.children || []).map((c) => ({
         title: clean(c.data.title),
@@ -108,9 +109,9 @@ export async function getReddit() {
         source: "r/" + sub,
         kind: "reddit",
       }));
-    } catch { return []; }
+    } catch (e) { debug.push({ sub, error: String(e) }); return []; }
   }));
-  return results.flat();
+  return { items: results.flat(), debug };
 }
 
 export async function getTelegram(channels) {
@@ -158,11 +159,12 @@ export async function getTelegram(channels) {
 async function getBluesky(symbols) {
   const queries = [];
   symbols.forEach((s) => { queries.push("$" + s); queries.push(NAME[s] || s); });
+  const debug = [];
   const results = await Promise.all(queries.map(async (q) => {
     try {
       const url = `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=12&sort=latest`;
       const r = await fetch(url, { headers: UA, cache: "no-store" });
-      if (!r.ok) return [];
+      if (!r.ok) { debug.push({ q, status: r.status }); return []; }
       const j = await r.json();
       return (j.posts || []).map((p) => {
         const handle = p.author?.handle || "";
@@ -175,9 +177,9 @@ async function getBluesky(symbols) {
           watched: TRADERS.includes(handle),
         };
       });
-    } catch { return []; }
+    } catch (e) { debug.push({ q, error: String(e) }); return []; }
   }));
-  return results.flat();
+  return { items: results.flat(), debug };
 }
 
 function matches(text, sym) {
@@ -193,9 +195,10 @@ export async function GET(req) {
   const symbols = (searchParams.get("symbols") || "BTC,SOL,XLM")
     .split(",").map((s) => s.trim().toUpperCase()).filter(Boolean).slice(0, 6);
 
-  const [rss, reddit, bsky, tg] = await Promise.all([
+  const [rss, redditR, bskyR, tg] = await Promise.all([
     getRss(), getReddit(), getBluesky(symbols), getTelegram(TELEGRAM_CHANNELS),
   ]);
+  const reddit = redditR.items, bsky = bskyR.items;
   const all = [...rss, ...reddit, ...bsky, ...tg]
     .filter((x) => x.title && x.title.length > 4);
 
@@ -228,7 +231,7 @@ export async function GET(req) {
   const netFlow = await getLargeTradeFlow();
 
   return Response.json(
-    { coins, netFlow, at: Date.now() },
+    { coins, netFlow, at: Date.now(), _debug: { reddit: redditR.debug, bsky: bskyR.debug } },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }
