@@ -1325,9 +1325,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     <div className="dash">
       <div className="topbar">
         <div className="brand"><span className="logo-dot" />Setpoint</div>
+        {dashboardTab === "coins" && (
         <div className="tf-toggle">
           {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
         </div>
+        )}
         <div className="top-r">
           <div className="refresh">{loading ? <span className="dot-pulse" /> : <span className="dot-ok" />}<span className="refresh-t">{secsToRefresh != null ? `refresh ${secsToRefresh}s` : "…"}</span></div>
           <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">⚙</button>

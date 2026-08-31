@@ -231,7 +231,7 @@ export async function GET(req) {
   const netFlow = await getLargeTradeFlow();
 
   return Response.json(
-    { coins, netFlow, at: Date.now(), _debug: { reddit: redditR.debug, bsky: bskyR.debug } },
+    { coins, netFlow, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }
