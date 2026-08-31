@@ -271,15 +271,10 @@ function Landing({ onPickPlan, onSignIn }) {
       <section className="feat">
         <h2>What fires an alert</h2>
         <div className="feat-grid">
-          {[["Momentum", "A real percentage move inside a 15m or 1h bar, instead of a fixed price line you set weeks ago and forgot about."],
-            ["Volume spike", "Volume jumps well past its recent average, which often happens right before price makes its move."],
-            ["Early pace", "Volume on the bar that is still forming already running hot for how far in we are, so you see it before the bar even closes."],
-            ["Quiet accumulation", "Volume climbing while price holds flat, the kind of quiet build-up that often comes before a real move."],
-            ["RSI stretch", "Overbought or oversold readings, on the timeframe you actually trade, weighed against whether volume actually backs it."],
-            ["Breakout / Breakdown", "A market that was genuinely coiled tight just broke, real expansion after real compression, not a passive read."],
-            ["Grind Up / Down", "A sustained, steady move, most of the recent bars agreeing on direction, a real cumulative move, not one dramatic bar."],
-            ["Whale flow", "A real, standalone buy signal on large Coinbase trades, backtested edge, not just a context panel."],
-            ["AI read", "An LLM weighs the signal against live headlines and tells you what's actually driving it, not just a ping."]].map(([t, d]) => (
+          {[["Real price action", "The classics, but checked, not blind. Volume surges, momentum, RSI extremes, real breakouts, real trend structure. Every one of them tested against the broader market before it ever reaches you."],
+            ["Real trade activity", "Large, real trades on the exchange, big enough to matter. A genuine, standalone signal with its own real, backtested edge, not just a chart annotation."],
+            ["Advanced intel", "Setpoint uses AI to weigh every signal against actual, current headlines before it's shown, not to chat with you or guess. Real intelligence, quietly built into the system, not a bot pretending to trade for you."],
+            ["Real verification, live", "Nothing shows up here just because an indicator crossed a line. It has to have backtested well, and that status is checked continuously, not earned once and forgotten."]].map(([t, d]) => (
             <div className="feat-item" key={t}><div className="feat-h">{t}</div><div className="feat-d">{d}</div></div>
           ))}
         </div>
@@ -288,7 +283,7 @@ function Landing({ onPickPlan, onSignIn }) {
       <section className="how">
         <h2>How it works</h2>
         <div className="how-grid">
-          <div className="how-step"><div className="how-n">01</div><div className="how-h">Pick your coins</div><div className="how-d">Start with three. Swap or add more whenever you want.</div></div>
+          <div className="how-step"><div className="how-n">01</div><div className="how-h">Pick your coins</div><div className="how-d">Start with the coins you actually trade. Add more anytime.</div></div>
           <div className="how-step"><div className="how-n">02</div><div className="how-h">Setpoint watches</div><div className="how-d">It runs in the background with cooldowns that keep it from spamming you, so you won't want to mute it by day two.</div></div>
           <div className="how-step"><div className="how-n">03</div><div className="how-h">You get the card</div><div className="how-d">Each alert arrives with the trigger, the current price, and the levels. You make the call.</div></div>
         </div>
@@ -1957,7 +1952,7 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 
 .feat{padding:56px 0}
 .feat h2,.how h2,.pricing h2{font-size:30px;font-weight:700;margin-bottom:6px}
-.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:26px}
+.feat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:26px}
 .feat-item{background:var(--panel);border:1px solid var(--border);border-radius:13px;padding:18px}
 .feat-h{font-weight:600;font-size:15px;margin-bottom:7px}
 .feat-h::before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:8px;vertical-align:middle}
