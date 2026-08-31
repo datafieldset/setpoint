@@ -447,7 +447,7 @@ function Guide({ onBack }) {
       <div className="guide-hero">
         <div className="guide-mark">S</div>
         <h1>How Setpoint Works</h1>
-        <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, and the news read.</p>
+        <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, the Market tab, and the news read.</p>
       </div>
 
       <div className="guide-section">
@@ -482,7 +482,7 @@ function Guide({ onBack }) {
         <p className="guide-lede">Under each coin's price, you'll see a small bar with a dot on it. This isn't an alert, it never fires or logs anything. Think of it like a mood thermometer: it's just telling you how stretched a coin's recent move looks right now.</p>
 
         <div className="guide-meter-row">
-          <div className="guide-meter-label"><b>Near bottom</b>−40 or lower</div>
+          <div className="guide-meter-label"><b>Near bottom</b>−30 or lower</div>
           <div className="guide-meter-track"><div className="guide-meter-dot" style={{ left: "15%" }} /></div>
         </div>
         <div className="guide-meter-row">
@@ -490,28 +490,35 @@ function Guide({ onBack }) {
           <div className="guide-meter-track"><div className="guide-meter-dot" style={{ left: "50%" }} /></div>
         </div>
         <div className="guide-meter-row">
-          <div className="guide-meter-label"><b>Near top</b>+40 or higher</div>
+          <div className="guide-meter-label"><b>Near top</b>+30 or higher</div>
           <div className="guide-meter-track"><div className="guide-meter-dot" style={{ left: "85%" }} /></div>
         </div>
 
         <div className="guide-field"><div className="guide-field-k">Middle of the bar (0)</div><div className="guide-field-v">The coin's been quiet, moving sideways in a tight range. Nothing big happening either way yet.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Leaning green, toward +50</div><div className="guide-field-v">Price has been climbing, and that climb has real strength behind it, not just noise.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Leaning red, toward −50</div><div className="guide-field-v">Same idea, mirrored, price has been dropping with real force behind it.</div></div>
-        <div className="guide-field"><div className="guide-field-k">The important part: hitting a hard edge</div><div className="guide-field-v">The dot only swings all the way to an extreme when a move was strong <i>and</i> is now visibly running out of energy. A strong move by itself isn't the signal, a strong move that's fading is.</div></div>
-      </div>
-
-      <div className="guide-section">
-        <h2>Setpoint read</h2>
-        <p className="guide-lede">In the market context panel, this shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. It's a read on what's genuinely been working lately, not a prediction of what's coming next.</p>
-        <div className="guide-field"><div className="guide-field-k">Roughly even</div><div className="guide-field-v">Neither side has a real, meaningful edge right now.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Leaning long or leaning short</div><div className="guide-field-v">One side's real, recent win rate is genuinely pulling ahead of the other.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Both sides weak</div><div className="guide-field-v">Neither longs nor shorts have been working well lately, worth extra caution regardless of direction.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Leaning green, toward +30</div><div className="guide-field-v">Price has been climbing, and that climb has real strength behind it, not just noise.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Leaning red, toward −30</div><div className="guide-field-v">Same idea, mirrored, price has been dropping with real force behind it.</div></div>
+        <div className="guide-field"><div className="guide-field-k">The important part: hitting a hard edge</div><div className="guide-field-v">The dot only swings all the way to an extreme when a real move is genuinely losing steam, either the range itself has started shrinking after a real spike, or each new push is smaller than the one before it. A strong move by itself isn't the signal, a strong move that's fading is.</div></div>
       </div>
 
       <div className="guide-section">
         <div className="guide-eyebrow">Part 3</div>
+        <h2>The Market tab</h2>
+        <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
+
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 15m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Quiet range, may be about to break," says the same thing in words instead of just a number.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
+        <div className="guide-field"><div className="guide-field-k">BTC 200-week MA</div><div className="guide-field-v">The real, average closing price of Bitcoin over the last 200 weeks, close to four years. A genuine, long-run structural line, not something that moves in a day. Every prior Bitcoin bear market has bottomed at or near this level historically. The chart shows real, recent price plotted against it, so you can see how price has actually approached it over time, not just where things stand this exact moment.</div></div>
+        <div className="guide-field"><div className="guide-field-k">BTC 50 / 200-day SMA</div><div className="guide-field-v">Two real averages, the last 50 real trading days and the last 200, both plotted together. When the faster, 50-day line crosses above the slower, 200-day line, traders call that a golden cross, real bullish structure. Below it, a death cross. The real, most recent crossover, when there is one in view, gets marked directly on the chart.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
+        <div className="guide-field"><div className="guide-field-k">News</div><div className="guide-field-v">The raw, real headlines and posts behind the news read, not just the summary. Every item links out to the real, original source.</div></div>
+      </div>
+
+      <div className="guide-section">
+        <div className="guide-eyebrow">Part 4</div>
         <h2>The news read</h2>
-        <p className="guide-lede">Everything else on your dashboard comes purely from price. This one piece doesn't, it's an AI reading real, current crypto headlines and giving you a plain summary of the overall mood, refreshed every few hours.</p>
+        <p className="guide-lede">Everything else on your dashboard comes purely from price. This one piece doesn't. Setpoint uses AI to read real, current crypto headlines and weigh them against the setup, real intelligence built quietly into the system, not a chatbot guessing at an alert or chatting with you.</p>
 
         <div className="guide-news">
           <div className="guide-news-top"><span className="guide-news-stance">Bearish</span><span className="guide-news-conf">Medium confidence</span></div>
