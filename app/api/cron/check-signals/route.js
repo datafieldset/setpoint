@@ -146,7 +146,7 @@ export async function GET(req) {
             const slice = candles.slice(0, i + 1);
             const { signals } = computeSignals(slice, tf, th2, {
               now: slice[slice.length - 1].time + barMsLen,
-              marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow,
+              marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow, liveGate,
             });
             for (const s of signals) results.push(s);
           }

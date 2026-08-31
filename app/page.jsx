@@ -189,6 +189,11 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <div className="sig-id">
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.dir === "bull" ? "Buy" : "Sell"} {brandName(s.label)} {s.tierRate != null ? `${Math.round(s.tierRate * 100)}%` : ""}</span>
+          {s.tierRate != null && (
+            <span className={`rate-src ${s.tierIsLive ? "live" : "backtest"}`} title={s.tierIsLive ? "A real, current number, from recent, actual trades" : "The original backtest number, not enough recent trades yet to refresh it"}>
+              {s.tierIsLive ? "live" : "backtest"}
+            </span>
+          )}
           {s.tierRate == null && <span className="testing-tag">testing, not yet verified</span>}
           {s.isConfluence && <span className="confluence-tag">⚡ extreme read</span>}
           {isOpenPosition && <span className="open-pos-tag">still in motion</span>}
@@ -1021,7 +1026,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null };
           return;
         }
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow });
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow, liveGate: json.liveGate });
         const meter = volatilityMeter(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
@@ -2120,6 +2125,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .sig-card.confluence{border-color:var(--amber);box-shadow:0 0 0 1px rgba(245,184,81,.35),0 0 18px rgba(245,184,81,.12)}
 .confluence-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:var(--amber);background:rgba(245,184,81,.14);border:1px solid rgba(245,184,81,.35)}
 .testing-tag{font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 7px;border-radius:5px;color:var(--muted);background:var(--panel2);border:1px solid var(--border)}
+.rate-src{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;cursor:help}
+.rate-src.live{color:var(--green-soft);background:var(--green-dim)}
+.rate-src.backtest{color:var(--dim);background:var(--panel2)}
 .sig-card.bull{border-left-color:var(--green)}
 .sig-card.bear{border-left-color:var(--red)}
 .sig-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
