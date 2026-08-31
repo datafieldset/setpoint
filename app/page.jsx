@@ -692,15 +692,15 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [showAdminPanel, setShowAdminPanel] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
-  // Guide, Watch Live, and the admin panel are all pure React state, no
-  // URL ever changes, which means the browser's own back button had
-  // nothing real to go back to within the app at all, it just fell
-  // through to whatever page was open before Setpoint was ever loaded,
-  // sometimes days earlier. Opening one of these now pushes a real
-  // history entry; the browser's back button closes it and returns to
-  // the dashboard, exactly like a real page would.
-  const openSubView = useCallback((setter) => {
-    window.history.pushState({ setpointSubView: true }, "");
+  // Guide, Watch Live, and the admin panel now each get a real, actual
+  // URL (?view=guide etc), not just an empty history entry. The empty
+  // entry was enough to make the back button work, but a genuine page
+  // refresh has nothing to read from an unchanged URL, so it always
+  // fell back to the dashboard underneath. A real URL fixes both the
+  // back button and a real refresh at once, from the same mechanism.
+  const openSubView = useCallback((setter, view) => {
+    const url = `${window.location.pathname}?view=${view}`;
+    window.history.pushState({ setpointSubView: view }, "", url);
     setter(true);
   }, []);
   const closeSubView = useCallback((setter) => {
@@ -715,6 +715,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+  // Real, one-time check on initial load, restores whichever sub-view
+  // the URL says was open, the actual fix for the real refresh case.
+  useEffect(() => {
+    const view = new URLSearchParams(window.location.search).get("view");
+    if (view === "guide") setShowGuide(true);
+    else if (view === "watchlive") setShowWatchLive(true);
+    else if (view === "admin") setShowAdminPanel(true);
   }, []);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -1326,7 +1334,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           <button className="hamburger-btn" onClick={() => setShowMobileMenu((v) => !v)} aria-label="Menu">☰</button>
           <div className={`acct ${showMobileMenu ? "acct-open" : ""}`}>
             {account.isAdmin && (
-              <button className="admin-badge" onClick={() => { openSubView(setShowAdminPanel); setShowMobileMenu(false); }}>
+              <button className="admin-badge" onClick={() => { openSubView(setShowAdminPanel, "admin"); setShowMobileMenu(false); }}>
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
               </button>
             )}
@@ -1344,13 +1352,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <button className="cancel-link" onClick={() => setCancelState("confirming")}>Cancel subscription</button>
               )
             )}
-            <button className="ghost sm" onClick={() => { openSubView(setShowWatchLive); setShowMobileMenu(false); }}>WATCH LIVE</button>
+            <button className="ghost sm" onClick={() => { openSubView(setShowWatchLive, "watchlive"); setShowMobileMenu(false); }}>WATCH LIVE</button>
             {pushStatus !== "unsupported" && pushStatus !== "checking" && (
               <button className={`ghost sm ${pushStatus === "on" ? "alerts-on" : ""}`} onClick={togglePush} disabled={pushStatus === "busy"}>
                 {pushStatus === "on" ? "ALERTS ON" : pushStatus === "busy" ? "…" : "TURN ON ALERTS"}
               </button>
             )}
-            <button className="ghost sm" onClick={() => { openSubView(setShowGuide); setShowMobileMenu(false); }}>GUIDE</button>
+            <button className="ghost sm" onClick={() => { openSubView(setShowGuide, "guide"); setShowMobileMenu(false); }}>GUIDE</button>
             <a className="ghost sm" href="/contact" target="_blank" rel="noopener noreferrer">CONTACT</a>
             <button className="ghost sm" onClick={onSignOut}>Sign out</button>
           </div>
