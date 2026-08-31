@@ -512,7 +512,6 @@ function Guide({ onBack }) {
         <div className="guide-field"><div className="guide-field-k">BTC 200-week MA</div><div className="guide-field-v">The real, average closing price of Bitcoin over the last 200 weeks, close to four years. A genuine, long-run structural line, not something that moves in a day. Every prior Bitcoin bear market has bottomed at or near this level historically. The chart shows real, recent price plotted against it, so you can see how price has actually approached it over time, not just where things stand this exact moment.</div></div>
         <div className="guide-field"><div className="guide-field-k">BTC 50 / 200-day SMA</div><div className="guide-field-v">Two real averages, the last 50 real trading days and the last 200, both plotted together. When the faster, 50-day line crosses above the slower, 200-day line, traders call that a golden cross, real bullish structure. Below it, a death cross. The real, most recent crossover, when there is one in view, gets marked directly on the chart.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
-        <div className="guide-field"><div className="guide-field-k">News</div><div className="guide-field-v">The raw, real headlines and posts behind the news read, not just the summary. Every item links out to the real, original source.</div></div>
       </div>
 
       <div className="guide-section">
@@ -705,6 +704,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, []);
   const closeSubView = useCallback((setter) => {
     setter(false);
+    // Always, directly clear the real URL back to the base path, not
+    // just via history.back() — a real page refresh while a sub-view
+    // was open can leave the history state object without the marker
+    // this used to depend on, which silently left the URL stuck on the
+    // old view forever even after the view had visibly closed.
+    if (window.location.search.includes("view=")) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
     if (window.history.state?.setpointSubView) window.history.back();
   }, []);
   useEffect(() => {
@@ -1689,37 +1696,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className="netflow-note">No unusually large trades detected right now. This reads directly from Coinbase's own trade feed, the same source every signal on this dashboard already depends on.</div>
             </div>
           )}
-
-          <div className="market-news">
-            <div className="section-head">
-              <h2>News</h2>
-              {selectedCoin
-                ? <button className="sh-clear" onClick={() => setSelectedCoin(null)}>{selectedCoin} · show all ×</button>
-                : <span className="sh-sub">news &amp; social</span>}
-            </div>
-            {(() => {
-              const flat = [];
-              const coins = selectedCoin ? [selectedCoin] : watchlist;
-              coins.forEach((sym) => (news[sym] || []).forEach((n) => flat.push({ ...n, sym })));
-              flat.sort((a, b) => (b.watched ? 1 : 0) - (a.watched ? 1 : 0) || b.when - a.when);
-              const top = flat.slice(0, selectedCoin ? 12 : 10);
-              if (!top.length) return <div className="sig-empty">{selectedCoin ? `No recent chatter found for ${selectedCoin} yet.` : `Scanning news, Reddit, Bluesky, and Telegram…`}</div>;
-              return (
-                <div className="sig-grid">
-                  {top.map((n, i) => (
-                    <a className="sig-item" href={n.link} target="_blank" rel="noreferrer" key={i}>
-                      <div className="sig-item-top">
-                        <span className={`sig-coin ${n.watched ? "watched" : ""}`}>{n.sym}</span>
-                        <span className="sig-src">{n.source}</span>
-                        <span className="sig-when">{timeAgo(n.when, now)}</span>
-                      </div>
-                      <div className="sig-title">{n.title}</div>
-                    </a>
-                  ))}
-                </div>
-              );
-            })()}
-          </div>
         </aside>
         </div>
         )}
@@ -2192,7 +2168,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .onchain{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;align-self:start;position:sticky;top:70px}
 .market-cols{display:grid;grid-template-columns:7fr 3fr;gap:20px;align-items:start}
 .market-col-right{display:flex;flex-direction:column;gap:16px}
-.market-news{margin-top:2px}
 .bias-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .bias-panel.bull{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .bias-panel.bear{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
