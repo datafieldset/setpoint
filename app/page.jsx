@@ -1572,7 +1572,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </div>
               <div className="mm-levels">
                 {[1, 2, 3, 4, 5].map((n) => (
-                  <span key={n} className={`mm-dot ${n <= marketMeter.level ? "on" : ""} ${n === 5 ? "extreme" : ""}`} />
+                  <span key={n} className={`mm-dot ${n <= marketMeter.level ? "on" : ""} ${marketMeter.stage === "bullish-trending" ? "up" : marketMeter.stage === "bearish-trending" ? "down" : "neutral"} ${n === 5 ? "extreme" : ""}`} />
                 ))}
               </div>
               <div className="mm-level-text">Level {marketMeter.level} of 5</div>
@@ -2236,7 +2236,9 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-sub{font-size:11px;color:var(--dim)}
 .mm-levels{display:flex;gap:6px;margin-bottom:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
 .mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}
-.mm-dot.on{background:var(--green-soft)}
+.mm-dot.on.up{background:var(--green-soft)}
+.mm-dot.on.down{background:var(--red-soft)}
+.mm-dot.on.neutral{background:var(--muted)}
 .mm-dot.on.extreme{background:var(--amber)}
 .mm-level-text{font-family:'Bricolage Grotesque';font-weight:700;font-size:20px;margin-bottom:6px}
 .mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:4px}
