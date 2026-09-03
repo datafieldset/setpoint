@@ -510,7 +510,7 @@ function Guide({ onBack }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 15m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Quiet range, may be about to break," says the same thing in words instead of just a number.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 5m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Quiet range, may be about to break," says the same thing in words instead of just a number.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -756,7 +756,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey]);
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
-  const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 15m regardless of the selected alerts tab, powers the Market Meter below
+  const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 5m regardless of the selected alerts tab, powers the Market Meter below
   const [watchlistMeters15m, setWatchlistMeters15m] = useState({}); // sym -> real meter score, always 15m, powers the Market Meter's confirmation check specifically
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
@@ -1092,30 +1092,30 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // Market Meter is meant to be a consistent, reliable "where's the
   // market right now" anchor, not something that silently changes
   // meaning depending on an unrelated choice you made for your own
-  // alerts. Locked to 15m specifically — fast enough to react to
-  // something genuinely shifting today, not so fast it's just tracking
-  // noise (discussed directly, real tradeoff, not arbitrary).
+  // alerts. Locked to 5m, matching how Na actually trades, replacing
+  // the earlier 15m basis entirely (moved deliberately, real, direct
+  // request, not the original default anymore).
   const loadBtcRegime = useCallback(async () => {
     try {
-      const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=15m`, { cache: "no-store" });
+      const res = await fetch(`/api/market?symbols=${watchlist.join(",")}&tf=5m`, { cache: "no-store" });
       if (!res.ok) return;
       const json = await res.json();
       const coins = json.coins || [];
       const btc = coins.find((c) => c.sym === "BTC");
-      if (btc && !btc.error && btc.candles?.length) setBtcRegime(marketRegime(btc.candles, "15m"));
+      if (btc && !btc.error && btc.candles?.length) setBtcRegime(marketRegime(btc.candles, "5m"));
 
       // Real, same real fix, this time for the confirmation check's own
       // watchlist-exhaustion half, not just the BTC stage/level. That
       // check used to silently read data[sym]?.meter, which is computed
       // on whichever timeframe the alerts tab happens to be on, meaning
       // the "Confirmed" callout could appear or disappear just from
-      // switching tabs, even though nothing about the real 15m read had
-      // changed. Locked to 15m here, same as everything else in this
+      // switching tabs, even though nothing about the real 5m read had
+      // changed. Locked to 5m here, same as everything else in this
       // panel.
       const meters = {};
       for (const c of coins) {
         if (c.error || !c.candles?.length) continue;
-        meters[c.sym] = volatilityMeter(c.candles, "15m");
+        meters[c.sym] = volatilityMeter(c.candles, "5m");
       }
       setWatchlistMeters15m(meters);
     } catch { /* non-fatal, next tick tries again */ }
@@ -1560,7 +1560,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
               <div className="mm-head">
                 <span className="mm-title">Market Meter</span>
-                <span className="mm-sub">BTC · 15m</span>
+                <span className="mm-sub">BTC · 5m</span>
               </div>
               <div className="sb-head">
                 <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
