@@ -26,7 +26,7 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, PROVEN_THRESHOLD, reversalRisk } from "../../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleOutflow } from "../../../../lib/marketContext.js";
 
@@ -77,13 +77,14 @@ export async function GET(req) {
     // every account checked this run, same real inputs the dashboard
     // itself uses so a signal detected here matches what would have
     // shown there.
-    const [fng, bias, weekly200, recentWhaleOutflow, liveGate] = await Promise.all([
+    const [fng, bias, weekly200, recentWhaleOutflow, liveGateResult] = await Promise.all([
       fetchFng().catch(() => null),
       fetchBroadMarketBias().catch(() => null),
       getWeekly200MA().catch(() => null),
       getRecentWhaleOutflow().catch(() => false),
       getLiveVerifiedGate(),
     ]);
+    const { gate: liveGate, regimeGate } = liveGateResult;
     const risk = reversalRisk(bias, fng?.value);
 
     // Real, database-level protection, not an application-level guess.
@@ -148,7 +149,8 @@ export async function GET(req) {
               now: slice[slice.length - 1].time + barMsLen,
               marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow, liveGate,
             });
-            for (const s of signals) results.push(s);
+            const regimeHere = marketRegime(slice, tf);
+            for (const s of signals) results.push({ ...s, regimeStage: regimeHere?.stage || null });
           }
           computed.set(`${coin}:${tf}`, results);
         } catch (e) {
@@ -178,14 +180,25 @@ export async function GET(req) {
           if (s.tier !== "proven") continue; // not statically verified at all
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
           const gate = liveGate[gateKey];
-          const currentlyVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
+          const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
+          // Real, regime-specific check too — a signal can be genuinely
+          // weak overall (blended across every market condition it's
+          // ever fired in) while still earning a real, verified status
+          // specific to the one condition it's actually good at. Only
+          // trusted once it has the same, real minimum sample the
+          // overall gate already requires; a regime bucket with too
+          // little real, recent data defers to the overall number
+          // rather than guessing.
+          const rGate = s.regimeStage ? regimeGate[`${gateKey}|${s.regimeStage}`] : null;
+          const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
+          const currentlyVerified = overallVerified || regimeVerified;
           if (!currentlyVerified) continue;
 
           let inserted;
           try {
             const result = await sql`
-              INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target)
-              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target})
+              INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime)
+              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target}, ${s.regimeStage || null})
               ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
               RETURNING id
             `;

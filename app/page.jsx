@@ -189,7 +189,12 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <div className="sig-id">
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.dir === "bull" ? "Buy" : "Sell"} {brandName(s.label)} {s.tierRate != null ? `${Math.round(s.tierRate * 100)}%` : ""}</span>
-          {s.tierRate != null && (
+          {s.tierRate != null && s.verifiedVia === "regime" && (
+            <span className="rate-src regime" title={`Not verified overall right now, but genuinely earning it in the real, current market condition it just fired under: ${REGIME_LABELS[s.regimeStage] || s.regimeStage}`}>
+              verified: {REGIME_LABELS[s.regimeStage] || s.regimeStage}
+            </span>
+          )}
+          {s.tierRate != null && s.verifiedVia !== "regime" && (
             <span className={`rate-src ${s.tierIsLive ? "live" : "backtest"}`} title={s.tierIsLive ? "A real, current number, from recent, actual trades" : "The original backtest number, not enough recent trades yet to refresh it"}>
               {s.tierIsLive ? "live" : "backtest"}
             </span>
@@ -404,6 +409,17 @@ function Auth({ mode, plan, onBack }) {
 // real note templates in lib/signals.js, just simplified. The proven list
 // itself is never hardcoded, it's built live from SIGNAL_RATES below, so
 // this page can never drift out of sync with what's actually proven.
+// Real, plain-language names for the same, internal regime stages
+// Market Meter already computes, used on the card when a signal is
+// showing because of its regime-specific record, not its overall one.
+const REGIME_LABELS = {
+  "bullish-trending": "a real uptrend",
+  "bearish-trending": "a real downtrend",
+  "sideways-ranging": "a real range",
+  "high-volatility": "high volatility",
+  "low-volatility": "low volatility",
+};
+
 const GUIDE_DESC = {
   "Volume spike": "A sudden burst of trading, way more than usual, in the direction shown.",
   "Quiet accumulation": "Trading volume is quietly climbing while the price barely moves at all. Often the calm before a real move starts.",
@@ -769,6 +785,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [bias, setBias] = useState(null);
   const [signalBias, setSignalBias] = useState(null);
   const [liveGate, setLiveGate] = useState({});
+  const [regimeGate, setRegimeGate] = useState({});
   const [risk, setRisk] = useState(null);
   const [weekly200, setWeekly200] = useState(null);
   const [macroRead, setMacroRead] = useState(null);
@@ -1017,6 +1034,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       setWeekly200(json.weekly200 || null);
       setSignalBias(json.signalBias || null);
       setLiveGate(json.liveGate || {});
+      setRegimeGate(json.regimeGate || {});
 
       const next = {};
       let anyOk = false;
@@ -1028,6 +1046,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         }
         const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow, liveGate: json.liveGate });
         const meter = volatilityMeter(c.candles, tfKey);
+        const regimeHere = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
           const key = `${c.sym}:${tfKey}:${s.type}:${s.dir}`;
           const rec = fired.current[key];
@@ -1052,7 +1071,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             fetch("/api/track", {
               method: "POST",
               headers: { "content-type": "application/json" },
-              body: JSON.stringify({ coin: c.sym, tf: tfKey, label: s.label, dir: s.dir, entry: s.entry, stop: s.stop, target: s.target, firedAt: t }),
+              body: JSON.stringify({ coin: c.sym, tf: tfKey, label: s.label, dir: s.dir, entry: s.entry, stop: s.stop, target: s.target, firedAt: t, regime: regimeHere?.stage || null }),
             }).catch(() => {});
             // Push notification, only for what's actually verified right
             // now, both the static table AND the live recent-20 check,
@@ -1061,9 +1080,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             // something that's already been quietly live-gated out.
             // Genuinely follows the same list that decides what shows in
             // Opportunities, no separate trigger list to keep in sync.
+            // Real, regime-specific check too, same real reasoning as the
+            // cron: a signal can be genuinely verified for the market
+            // condition it's actually firing under, even while its
+            // blended, overall number stays weak.
             const gateKey = `${s.label}|${TF[tfKey].label}|${s.dir}`;
             const gate = (json.liveGate || {})[gateKey];
-            const currentlyVerified = s.tier === "proven" && (!gate || gate.rate >= PROVEN_THRESHOLD);
+            const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
+            const rGate = regimeHere?.stage ? (json.regimeGate || {})[`${gateKey}|${regimeHere.stage}`] : null;
+            const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
+            const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
             if (currentlyVerified) {
               fetch("/api/push/notify", {
                 method: "POST",
@@ -1072,7 +1098,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               }).catch(() => {});
             }
           }
-          return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key };
+          return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key, regimeStage: regimeHere?.stage || null };
         });
         next[c.sym] = { signals: tagged, snap, warming, error: null, stats: c.stats || null, meter };
         anyOk = true;
@@ -1163,9 +1189,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // fine, same principle Signal Drift already uses.
   const isLiveVerified = useCallback((s) => {
     const gate = liveGate[`${s.label}|${s.tf}|${s.dir}`];
-    if (!gate) return true; // not enough recent data yet, trust the backtested number
-    return gate.rate >= PROVEN_THRESHOLD;
-  }, [liveGate]);
+    const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD; // not enough recent data yet, trust the backtested number
+    if (overallVerified) return true;
+    // Real, regime-specific fallback — a signal genuinely verified for
+    // the real, current market condition it fired under counts too,
+    // even when its blended, overall number is weak.
+    const rGate = s.regimeStage ? regimeGate[`${s.label}|${s.tf}|${s.dir}|${s.regimeStage}`] : null;
+    return !!(rGate && rGate.rate >= PROVEN_THRESHOLD);
+  }, [liveGate, regimeGate]);
 
   // Real, direct check for whether anything is even currently verified on
   // this specific timeframe, not just whether something has fired. These
@@ -1181,7 +1212,19 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     });
   }, [tfKey, isLiveVerified]);
 
-  const visibleSignals = useMemo(() => allSignals.filter((s) => s.tier === "proven" && isLiveVerified(s)), [allSignals, isLiveVerified]);
+  const visibleSignals = useMemo(() => {
+    return allSignals
+      .filter((s) => s.tier === "proven")
+      .map((s) => {
+        const gate = liveGate[`${s.label}|${s.tf}|${s.dir}`];
+        const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
+        if (overallVerified) return { ...s, verifiedVia: "overall" };
+        const rGate = s.regimeStage ? regimeGate[`${s.label}|${s.tf}|${s.dir}|${s.regimeStage}`] : null;
+        const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
+        return regimeVerified ? { ...s, verifiedVia: "regime", tierRate: rGate.rate } : null;
+      })
+      .filter(Boolean);
+  }, [allSignals, liveGate, regimeGate]);
   // Open positions still resolve correctly in the background for any coin,
   // watchlisted or not, close-alert doesn't care about the watchlist at
   // all. This just controls what's actually shown, once a coin's removed
@@ -2128,6 +2171,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .rate-src{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;padding:2px 6px;border-radius:5px;cursor:help}
 .rate-src.live{color:var(--green-soft);background:var(--green-dim)}
 .rate-src.backtest{color:var(--dim);background:var(--panel2)}
+.rate-src.regime{color:var(--amber);background:var(--amber-dim)}
 .sig-card.bull{border-left-color:var(--green)}
 .sig-card.bear{border-left-color:var(--red)}
 .sig-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}

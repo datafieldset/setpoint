@@ -24,7 +24,7 @@ export async function POST(req) {
 
   let body;
   try { body = await req.json(); } catch { return Response.json({ error: "bad_request" }, { status: 400 }); }
-  const { coin, tf, label, dir, entry, stop, target, firedAt } = body || {};
+  const { coin, tf, label, dir, entry, stop, target, firedAt, regime } = body || {};
   if (!coin || !tf || !label || !dir || entry == null || stop == null || target == null) {
     return Response.json({ error: "missing_fields" }, { status: 400 });
   }
@@ -46,6 +46,12 @@ export async function POST(req) {
         resolved_at TIMESTAMPTZ
       )
     `;
+    // Real regime at the moment this fired (bullish-trending,
+    // sideways-ranging, etc, from the exact same marketRegime() the
+    // Market Meter panel already uses) — added after the fact, so a
+    // real ALTER TABLE, not just CREATE TABLE IF NOT EXISTS, which
+    // only ever helps a table that doesn't exist yet.
+    await sql`ALTER TABLE signal_track ADD COLUMN IF NOT EXISTS regime TEXT`;
     // Partial unique index: only enforced among rows still marked 'open',
     // so once a trade resolves, the same combo is free to fire again
     // later as a genuinely new trade.
@@ -55,8 +61,8 @@ export async function POST(req) {
       WHERE outcome = 'open'
     `;
     const result = await sql`
-      INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target)
-      VALUES (${coin}, ${tf}, ${label}, ${dir}, ${firedAt ? new Date(firedAt) : new Date()}, ${entry}, ${stop}, ${target})
+      INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime)
+      VALUES (${coin}, ${tf}, ${label}, ${dir}, ${firedAt ? new Date(firedAt) : new Date()}, ${entry}, ${stop}, ${target}, ${regime || null})
       ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
       RETURNING id
     `;
