@@ -53,12 +53,7 @@ export async function GET() {
 
     let wins = 0, losses = 0;
     const recent = [];
-    const _byLabel = {}; // temporary, real diagnostic — every resolved row, regardless of current verified status
     for (const r of rows) {
-      const dKey = `${r.label}|${r.tf}|${r.dir}`;
-      _byLabel[dKey] = _byLabel[dKey] || { win: 0, loss: 0 };
-      _byLabel[dKey][r.outcome]++;
-
       if (!isVerified(r.label, r.tf, r.dir, liveGate)) continue; // testing-tier or currently underperforming, never shown here
       r.outcome === "win" ? wins++ : losses++;
       const entry = parseFloat(r.entry);
@@ -82,7 +77,7 @@ export async function GET() {
     const verifiedTotal = wins + losses;
     const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
-    return Response.json({ verifiedWinRate, verifiedTotal, wins, losses, recent, _byLabel }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ verifiedWinRate, verifiedTotal, wins, losses, recent }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
   }
