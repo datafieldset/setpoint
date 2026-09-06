@@ -1090,11 +1090,18 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             const rGate = regimeHere?.stage ? (json.regimeGate || {})[`${gateKey}|${regimeHere.stage}`] : null;
             const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
             const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
-            if (currentlyVerified) {
+            // Real, temporary, named exception (Sep 6): Coil is brand
+            // new and unverified, but this call already only ever
+            // reaches whoever is currently signed in and has their own
+            // dashboard open, so gating it to the admin account keeps a
+            // real, paying customer from ever getting a confusing,
+            // experimental notification while it's still being tested.
+            const isCoilTest = s.label === "Coil" && account.isAdmin;
+            if (currentlyVerified || isCoilTest) {
               fetch("/api/push/notify", {
                 method: "POST",
                 headers: { "content-type": "application/json" },
-                body: JSON.stringify({ coin: c.sym, label: brandName(s.label), dir: s.dir, tf: TF[tfKey].label }),
+                body: JSON.stringify({ coin: c.sym, label: isCoilTest ? `${brandName(s.label)} (testing)` : brandName(s.label), dir: s.dir, tf: TF[tfKey].label }),
               }).catch(() => {});
             }
           }
@@ -1213,7 +1220,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey, isLiveVerified]);
 
   const visibleSignals = useMemo(() => {
-    const testing = allSignals.filter((s) => s.label === "Coil").map((s) => ({ ...s, verifiedVia: "testing" }));
+    const testing = account.isAdmin ? allSignals.filter((s) => s.label === "Coil").map((s) => ({ ...s, verifiedVia: "testing" })) : [];
     return allSignals
       .filter((s) => s.tier === "proven")
       .map((s) => {
@@ -1226,7 +1233,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       })
       .filter(Boolean)
       .concat(testing);
-  }, [allSignals, liveGate, regimeGate]);
+  }, [allSignals, liveGate, regimeGate, account.isAdmin]);
   // Open positions still resolve correctly in the background for any coin,
   // watchlisted or not, close-alert doesn't care about the watchlist at
   // all. This just controls what's actually shown, once a coin's removed

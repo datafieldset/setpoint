@@ -59,7 +59,7 @@ export async function GET(req) {
     // as my-watchlist/route.js), not a real Postgres array, so it's
     // parsed here rather than filtered in SQL.
     const rawSubs = await sql`
-      SELECT DISTINCT u.email, u.watchlist, ps.endpoint, ps.subscription
+      SELECT DISTINCT u.email, u.watchlist, u.is_admin, ps.endpoint, ps.subscription
       FROM push_subscriptions ps
       JOIN users u ON u.email = ps.email
       WHERE u.watchlist IS NOT NULL
@@ -180,9 +180,9 @@ export async function GET(req) {
           // Real, temporary, named exception (Sep 6): Coil is brand new
           // and needs a real, live track record before it can ever be
           // trusted, so it's logged for continuous backtesting even
-          // while unverified — but the currentlyVerified check right
-          // below still gates it out of ever triggering a push
-          // notification or counting as a real, verified alert.
+          // while unverified — the admin-only push gate further below
+          // is the real, separate safeguard keeping it from ever
+          // reaching a real, paying customer while it's still testing.
           const isCoilTest = s.label === "Coil";
           if (s.tier !== "proven" && !isCoilTest) continue; // not statically verified at all
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
@@ -214,11 +214,11 @@ export async function GET(req) {
             continue; // a real logging failure here should never crash the whole run
           }
           if (!inserted) continue; // the database itself says this isn't actually new
-          if (!currentlyVerified) continue; // Coil reaches this point purely to log for its own real backtest, never to alert or push
+          if (!currentlyVerified && !isCoilTest) continue; // anything else reaches here only once genuinely verified
 
           const verb = s.dir === "bull" ? "Buy" : "Sell";
           const payload = JSON.stringify({
-            title: `${verb} ${brandName(s.label)}`,
+            title: `${verb} ${isCoilTest ? `${brandName(s.label)} (testing)` : brandName(s.label)}`,
             body: `${coin} · ${TF[tf].label}, just fired.`,
             url: "/",
             tag: `${coin}-${s.label}-${s.dir}`,
@@ -226,6 +226,11 @@ export async function GET(req) {
 
           for (const sub of subs) {
             if (!(sub.watchlist || []).includes(coin)) continue;
+            // Real, temporary, named exception (Sep 6): Coil is brand
+            // new and unverified, so unlike every other signal here, it
+            // only ever reaches the admin subscriber, never a real,
+            // paying customer, while it's still being tested.
+            if (isCoilTest && !sub.is_admin) continue;
             try {
               await webpush.sendNotification(sub.subscription, payload);
               sent++;
