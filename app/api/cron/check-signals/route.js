@@ -26,7 +26,7 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk } from "../../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleOutflow } from "../../../../lib/marketContext.js";
 
@@ -183,7 +183,7 @@ export async function GET(req) {
           // while unverified — the admin-only push gate further below
           // is the real, separate safeguard keeping it from ever
           // reaching a real, paying customer while it's still testing.
-          const isCoilTest = s.label === "Coil";
+          const isCoilTest = TESTING_SIGNALS.includes(s.label);
           if (s.tier !== "proven" && !isCoilTest) continue; // not statically verified at all
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
           const gate = liveGate[gateKey];

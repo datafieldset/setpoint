@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -1096,7 +1096,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             // dashboard open, so gating it to the admin account keeps a
             // real, paying customer from ever getting a confusing,
             // experimental notification while it's still being tested.
-            const isCoilTest = s.label === "Coil" && account.isAdmin;
+            const isCoilTest = TESTING_SIGNALS.includes(s.label) && account.isAdmin;
             if (currentlyVerified || isCoilTest) {
               fetch("/api/push/notify", {
                 method: "POST",
@@ -1225,7 +1225,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey, isLiveVerified]);
 
   const visibleSignals = useMemo(() => {
-    const testing = account.isAdmin ? allSignals.filter((s) => s.label === "Coil").map((s) => ({ ...s, verifiedVia: "testing" })) : [];
+    const testing = account.isAdmin ? allSignals.filter((s) => TESTING_SIGNALS.includes(s.label)).map((s) => ({ ...s, verifiedVia: "testing" })) : [];
     return allSignals
       .filter((s) => s.tier === "proven")
       .map((s) => {
