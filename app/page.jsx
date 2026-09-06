@@ -1213,6 +1213,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey, isLiveVerified]);
 
   const visibleSignals = useMemo(() => {
+    const testing = allSignals.filter((s) => s.label === "Coil").map((s) => ({ ...s, verifiedVia: "testing" }));
     return allSignals
       .filter((s) => s.tier === "proven")
       .map((s) => {
@@ -1223,7 +1224,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
         return regimeVerified ? { ...s, verifiedVia: "regime", tierRate: rGate.rate } : null;
       })
-      .filter(Boolean);
+      .filter(Boolean)
+      .concat(testing);
   }, [allSignals, liveGate, regimeGate]);
   // Open positions still resolve correctly in the background for any coin,
   // watchlisted or not, close-alert doesn't care about the watchlist at

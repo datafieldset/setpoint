@@ -177,7 +177,14 @@ export async function GET(req) {
       for (const tf of timeframes) {
         const signals = computed.get(`${coin}:${tf}`) || [];
         for (const s of signals) {
-          if (s.tier !== "proven") continue; // not statically verified at all
+          // Real, temporary, named exception (Sep 6): Coil is brand new
+          // and needs a real, live track record before it can ever be
+          // trusted, so it's logged for continuous backtesting even
+          // while unverified — but the currentlyVerified check right
+          // below still gates it out of ever triggering a push
+          // notification or counting as a real, verified alert.
+          const isCoilTest = s.label === "Coil";
+          if (s.tier !== "proven" && !isCoilTest) continue; // not statically verified at all
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
           const gate = liveGate[gateKey];
           const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
@@ -191,8 +198,8 @@ export async function GET(req) {
           // rather than guessing.
           const rGate = s.regimeStage ? regimeGate[`${gateKey}|${s.regimeStage}`] : null;
           const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
-          const currentlyVerified = overallVerified || regimeVerified;
-          if (!currentlyVerified) continue;
+          const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
+          if (!currentlyVerified && !isCoilTest) continue;
 
           let inserted;
           try {
@@ -207,6 +214,7 @@ export async function GET(req) {
             continue; // a real logging failure here should never crash the whole run
           }
           if (!inserted) continue; // the database itself says this isn't actually new
+          if (!currentlyVerified) continue; // Coil reaches this point purely to log for its own real backtest, never to alert or push
 
           const verb = s.dir === "bull" ? "Buy" : "Sell";
           const payload = JSON.stringify({
