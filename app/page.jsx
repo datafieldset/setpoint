@@ -1195,9 +1195,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // recent data should never silently hide something that's actually
   // fine, same principle Signal Drift already uses.
   const isLiveVerified = useCallback((s) => {
-    const gate = liveGate[`${s.label}|${s.tf}|${s.dir}`];
-    const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD; // not enough recent data yet, trust the backtested number
-    if (overallVerified) return true;
+    const key = `${s.label}|${s.tf}|${s.dir}`;
+    const entry = SIGNAL_RATES[key];
+    const staticProven = !!(entry && entry.rate != null && entry.rate >= PROVEN_THRESHOLD);
+    const gate = liveGate[key];
+    if (staticProven) {
+      const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD; // not enough recent data yet, trust the backtested number
+      if (overallVerified) return true;
+    }
     // Real, regime-specific fallback — a signal genuinely verified for
     // the real, current market condition it fired under counts too,
     // even when its blended, overall number is weak.
