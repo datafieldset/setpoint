@@ -1,27 +1,52 @@
 name: Check signals cron
 
-# Runs on GitHub's own servers, on a real schedule, completely independent
-# of any browser being open anywhere. This is the real fix for push
-# notifications that used to only ever trigger from inside a customer's
-# own, actively-open dashboard tab, exactly the case that fails on a
-# phone the moment the OS suspends a background tab.
+# Runs on GitHub's own servers, completely independent of any browser
+# being open anywhere. This is the real fix for push notifications that
+# used to only ever trigger from inside a customer's own, actively-open
+# dashboard tab, exactly the case that fails on a phone the moment the
+# OS suspends a background tab.
 #
-# Same pattern as close-alert-cron.yml, part of this repo, no third-party
-# service, no new signup.
+# Real, direct finding (Sep 6): GitHub's own scheduler is honestly
+# unreliable at high frequency. A schedule declared for every 5 minutes
+# was actually landing every 3-4 real hours in practice, confirmed
+# directly from this repo's own run history. The unreliable part is
+# specifically the scheduler deciding when to START a new job, not how
+# long an already-running job can keep going once it does start (a
+# single job can run up to 6 real hours, completely free on this public
+# repo). So this now asks GitHub to trigger a new run only every 2
+# hours, something it handles far more reliably, and once a run
+# actually starts, it loops internally for hours, checking every real 5
+# minutes the whole time, never depending on the high-frequency
+# scheduler at all. New starts every 2 hours while each run lasts ~5.5
+# hours also means several real, overlapping runs are alive at once,
+# genuine redundancy if any single trigger happens to run late.
+#
+# Same pattern as close-alert-cron.yml, part of this repo, no
+# third-party service, no new signup, no real, ongoing cost, GitHub
+# Actions is free and unlimited on a public repo like this one.
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 */2 * * *'
   workflow_dispatch: {}
 
 jobs:
   check-signals:
     runs-on: ubuntu-latest
+    timeout-minutes: 350 # a real, explicit safety net just under the hard, 360-minute (6h) platform limit
     steps:
-      - name: Hit check-signals endpoint
+      - name: Repeatedly hit check-signals for a real, long stretch
         run: |
-          curl -sS -f "https://setpointalerts.com/api/cron/check-signals?key=verified2026" \
-            -o response.json \
-            -w "\nHTTP status: %{http_code}\n" \
-            --max-time 55
-          cat response.json
+          # Real, internal time budget, 330 real minutes (5.5 hours),
+          # deliberately short of the hard, 6-hour platform limit so
+          # this exits cleanly on its own rather than getting forcibly
+          # killed mid-request.
+          END=$(( $(date +%s) + 330*60 ))
+          while [ "$(date +%s)" -lt "$END" ]; do
+            curl -sS -f "https://setpointalerts.com/api/cron/check-signals?key=verified2026" \
+              -o response.json \
+              -w "\nHTTP status: %{http_code}\n" \
+              --max-time 55 || echo "a single, real check failed, continuing the real, ongoing loop rather than exiting"
+            cat response.json 2>/dev/null || true
+            sleep 300
+          done
