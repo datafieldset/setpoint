@@ -1176,6 +1176,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   useEffect(() => { const id = setInterval(load, 60000); return () => clearInterval(id); }, [load]);
   useEffect(() => { loadBtcRegime(); const id = setInterval(loadBtcRegime, 60000); return () => clearInterval(id); }, [loadBtcRegime]);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
+  useEffect(() => {
+    const onVisible = () => {
+      if (document.visibilityState === "visible") {
+        load();
+        loadOpenPositions();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => document.removeEventListener("visibilitychange", onVisible);
+  }, [load, loadOpenPositions]);
 
   const secsToRefresh = lastUpdate ? Math.max(0, 60 - Math.floor((now - lastUpdate) / 1000)) : null;
 
