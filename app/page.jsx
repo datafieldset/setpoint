@@ -1245,8 +1245,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // from the watchlist, its open trades stop showing here too, even
   // though they're still quietly tracking to a real win or loss.
   const visibleOpenPositions = useMemo(
-    () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p) && p.tf === TF[tfKey].label),
-    [openPositions, watchlist, isLiveVerified, tfKey]
+    () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tf === TF[tfKey].label && (
+      (p.tier === "proven" && isLiveVerified(p)) ||
+      (TESTING_SIGNALS.includes(p.label) && account.isAdmin)
+    )),
+    [openPositions, watchlist, isLiveVerified, tfKey, account.isAdmin]
   );
   // Real, simple closure, not scoped to whichever timeframe tab happens to
   // be selected right now, the whole point is catching something that
@@ -1258,8 +1261,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // shown as a real alert in the first place) were appearing in what's
   // supposed to be closure for something the customer actually saw.
   const visibleRecentlyResolved = useMemo(
-    () => recentlyResolved.filter((p) => watchlist.includes(p.coin) && p.tier === "proven" && isLiveVerified(p)).slice(0, 5),
-    [recentlyResolved, watchlist, isLiveVerified]
+    () => recentlyResolved.filter((p) => watchlist.includes(p.coin) && (
+      (p.tier === "proven" && isLiveVerified(p)) ||
+      (TESTING_SIGNALS.includes(p.label) && account.isAdmin)
+    )).slice(0, 5),
+    [recentlyResolved, watchlist, isLiveVerified, account.isAdmin]
   );
   // One real, combined list, merging what's already server-confirmed open
   // with anything that just fired locally and hasn't been picked up by
