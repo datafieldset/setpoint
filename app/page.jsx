@@ -1066,44 +1066,56 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           if (isNew) fired.current[key] = { firstFired: t, lastSeen: t };
           else fired.current[key] = { firstFired: rec?.firstFired || serverMatch?.firedAt || t, lastSeen: t };
           if (isNew) {
-            // Log to the rolling scoreboard (now part of /api/backtest, the standalone /api/scoreboard page is retired). Fire-and-forget,
-            // a logging hiccup should never block the dashboard from working.
+            // Log to the rolling scoreboard (now part of /api/backtest, the standalone /api/scoreboard page is retired).
+            // Real, important fix (Sep 6): the push notification below now
+            // waits for this call to genuinely, directly confirm the
+            // insert actually succeeded before ever firing, matching the
+            // same, proven pattern the cron already uses. Found after a
+            // real, live push fired for a fast-resolving 1m signal that
+            // never actually made it into signal_track, since the two
+            // calls used to be completely independent, fire-and-forget,
+            // with no real guarantee logging succeeded before the push
+            // went out regardless.
             fetch("/api/track", {
               method: "POST",
               headers: { "content-type": "application/json" },
               body: JSON.stringify({ coin: c.sym, tf: tfKey, label: s.label, dir: s.dir, entry: s.entry, stop: s.stop, target: s.target, firedAt: t, regime: regimeHere?.stage || null }),
-            }).catch(() => {});
-            // Push notification, only for what's actually verified right
-            // now, both the static table AND the live recent-20 check,
-            // using the fresh liveGate just fetched this same call rather
-            // than one render-cycle-old state, so this can never fire on
-            // something that's already been quietly live-gated out.
-            // Genuinely follows the same list that decides what shows in
-            // Opportunities, no separate trigger list to keep in sync.
-            // Real, regime-specific check too, same real reasoning as the
-            // cron: a signal can be genuinely verified for the market
-            // condition it's actually firing under, even while its
-            // blended, overall number stays weak.
-            const gateKey = `${s.label}|${TF[tfKey].label}|${s.dir}`;
-            const gate = (json.liveGate || {})[gateKey];
-            const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
-            const rGate = regimeHere?.stage ? (json.regimeGate || {})[`${gateKey}|${regimeHere.stage}`] : null;
-            const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
-            const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
-            // Real, temporary, named exception (Sep 6): Coil is brand
-            // new and unverified, but this call already only ever
-            // reaches whoever is currently signed in and has their own
-            // dashboard open, so gating it to the admin account keeps a
-            // real, paying customer from ever getting a confusing,
-            // experimental notification while it's still being tested.
-            const isCoilTest = TESTING_SIGNALS.includes(s.label) && account.isAdmin;
-            if (currentlyVerified || isCoilTest) {
-              fetch("/api/push/notify", {
-                method: "POST",
-                headers: { "content-type": "application/json" },
-                body: JSON.stringify({ coin: c.sym, label: isCoilTest ? `${brandName(s.label)} (testing)` : brandName(s.label), dir: s.dir, tf: TF[tfKey].label }),
-              }).catch(() => {});
-            }
+            }).then(async (res) => {
+              if (!res.ok) return;
+              const trackResult = await res.json().catch(() => null);
+              if (!trackResult || !trackResult.inserted) return; // a real logging failure, or a real, already-open duplicate, either way, never push on it
+              // Push notification, only for what's actually verified right
+              // now, both the static table AND the live recent-20 check,
+              // using the fresh liveGate just fetched this same call rather
+              // than one render-cycle-old state, so this can never fire on
+              // something that's already been quietly live-gated out.
+              // Genuinely follows the same list that decides what shows in
+              // Opportunities, no separate trigger list to keep in sync.
+              // Real, regime-specific check too, same real reasoning as the
+              // cron: a signal can be genuinely verified for the market
+              // condition it's actually firing under, even while its
+              // blended, overall number stays weak.
+              const gateKey = `${s.label}|${TF[tfKey].label}|${s.dir}`;
+              const gate = (json.liveGate || {})[gateKey];
+              const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
+              const rGate = regimeHere?.stage ? (json.regimeGate || {})[`${gateKey}|${regimeHere.stage}`] : null;
+              const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
+              const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
+              // Real, temporary, named exception (Sep 6): Coil is brand
+              // new and unverified, but this call already only ever
+              // reaches whoever is currently signed in and has their own
+              // dashboard open, so gating it to the admin account keeps a
+              // real, paying customer from ever getting a confusing,
+              // experimental notification while it's still being tested.
+              const isCoilTest = TESTING_SIGNALS.includes(s.label) && account.isAdmin;
+              if (currentlyVerified || isCoilTest) {
+                fetch("/api/push/notify", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ coin: c.sym, label: isCoilTest ? `${brandName(s.label)} (testing)` : brandName(s.label), dir: s.dir, tf: TF[tfKey].label }),
+                }).catch(() => {});
+              }
+            }).catch(() => {}); // a real network hiccup here should never block the dashboard from working, this whole block is fire-and-forget from the map's own perspective
           }
           return { ...s, tf: TF[tfKey].label, firedAt: fired.current[key].firstFired, key, regimeStage: regimeHere?.stage || null };
         });
