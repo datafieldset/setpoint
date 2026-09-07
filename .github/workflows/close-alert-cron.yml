@@ -1,27 +1,48 @@
 name: Close alert cron
 
-# Runs on GitHub's own servers, on a real schedule, completely independent
-# of whether anyone has the dashboard open. This is part of GitHub itself,
-# not a third-party service, no new signup, no new account, just a file
-# living in this same repo.
+# Runs on GitHub's own servers, completely independent of whether anyone
+# has the dashboard open. This is part of GitHub itself, not a
+# third-party service, no new signup, no new account, just a file living
+# in this same repo.
 #
-# GitHub's scheduled workflows have a 5-minute minimum interval, and during
-# high-load periods GitHub can delay a run by a few extra minutes, it's not
-# a hard real-time guarantee. But it runs on its own, forever, with zero
-# dependency on a browser tab being open somewhere.
+# Real, direct finding (Sep 6): GitHub's own scheduler is honestly
+# unreliable at high frequency, confirmed directly from this repo's own
+# run history, real gaps of 1.5-3+ hours between runs, not every 5
+# minutes as declared. Same real root cause already found and fixed on
+# check-signals-cron this same day, applied here too: the unreliable
+# part is specifically the scheduler deciding when to START a new job,
+# not how long an already-running job can keep going once it does start
+# (a single job can run up to 6 real hours, completely free on this
+# public repo). So this now asks GitHub to trigger a new run only every
+# 2 hours, something it handles far more reliably, and once a run
+# actually starts, it loops internally for hours, checking every real 5
+# minutes the whole time, never depending on the high-frequency
+# scheduler at all. New starts every 2 hours while each run lasts ~5.5
+# hours also means several real, overlapping runs are alive at once,
+# genuine redundancy if any single trigger happens to run late.
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '0 */2 * * *'
   workflow_dispatch: {} # lets you also trigger it manually from GitHub's Actions tab, for testing
 
 jobs:
   close-alert:
     runs-on: ubuntu-latest
+    timeout-minutes: 350 # a real, explicit safety net just under the hard, 360-minute (6h) platform limit
     steps:
-      - name: Hit close-alert endpoint
+      - name: Repeatedly hit close-alert for a real, long stretch
         run: |
-          curl -sS -f "https://setpointalerts.com/api/close-alert?key=verified2026" \
-            -o response.json \
-            -w "\nHTTP status: %{http_code}\n"
-          cat response.json
+          # Real, internal time budget, 330 real minutes (5.5 hours),
+          # deliberately short of the hard, 6-hour platform limit so
+          # this exits cleanly on its own rather than getting forcibly
+          # killed mid-request.
+          END=$(( $(date +%s) + 330*60 ))
+          while [ "$(date +%s)" -lt "$END" ]; do
+            curl -sS -f "https://setpointalerts.com/api/close-alert?key=verified2026" \
+              -o response.json \
+              -w "\nHTTP status: %{http_code}\n" \
+              --max-time 55 || echo "a single, real check failed, continuing the real, ongoing loop rather than exiting"
+            cat response.json 2>/dev/null || true
+            sleep 300
+          done
