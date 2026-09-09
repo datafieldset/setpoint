@@ -8,7 +8,7 @@ export const revalidate = 0;
 
 import { TF, isValidTf } from "../../../lib/timeframes.js";
 import { marketBias, reversalRisk, getLiveVerifiedGate } from "../../../lib/signals.js";
-import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleOutflow, HEADERS } from "../../../lib/marketContext.js";
+import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
 
 // Kept local, market/route.js-specific: 24h stats display and the
 // signal-drift bias panel aren't needed by the server-side signal
@@ -118,7 +118,7 @@ export async function GET(req) {
   const tfParam = searchParams.get("tf");
   const tf = isValidTf(tfParam) ? tfParam : "15m";
 
-  const [coins, fng, bias, weekly200, signalBias, liveGateResult, recentWhaleOutflow] = await Promise.all([
+  const [coins, fng, bias, weekly200, signalBias, liveGateResult, whaleActivity] = await Promise.all([
     Promise.all(
       symbols.map(async (sym) => {
         try {
@@ -136,13 +136,13 @@ export async function GET(req) {
     withTimeout(getWeekly200MA().catch(() => null), 8000, null),
     getSignalBias(),
     getLiveVerifiedGate(),
-    getRecentWhaleOutflow(),
+    getRecentWhaleActivity(),
   ]);
   const { gate: liveGate, regimeGate } = liveGateResult;
 
   const risk = reversalRisk(bias, fng?.value);
   return Response.json(
-    { coins, fng, bias, risk, weekly200, signalBias, liveGate, regimeGate, recentWhaleOutflow, tf, at: Date.now() },
+    { coins, fng, bias, risk, weekly200, signalBias, liveGate, regimeGate, recentWhaleOutflowOversold: whaleActivity.outflowOversold, recentWhaleInflowOverbought: whaleActivity.inflowOverbought, tf, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }

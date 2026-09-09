@@ -1044,7 +1044,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null };
           return;
         }
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflow: json.recentWhaleOutflow, liveGate: json.liveGate });
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflowOversold: json.recentWhaleOutflowOversold, recentWhaleInflowOverbought: json.recentWhaleInflowOverbought, liveGate: json.liveGate });
         const meter = volatilityMeter(c.candles, tfKey);
         const regimeHere = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
@@ -1107,7 +1107,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               // dashboard open, so gating it to the admin account keeps a
               // real, paying customer from ever getting a confusing,
               // experimental notification while it's still being tested.
-              const isCoilTest = TESTING_SIGNALS.includes(s.label) && account.isAdmin;
+              const isCoilTest = TESTING_SIGNALS.includes(s.label) && s.tier !== "proven" && account.isAdmin;
               if (currentlyVerified || isCoilTest) {
                 fetch("/api/push/notify", {
                   method: "POST",
@@ -1247,7 +1247,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey, isLiveVerified]);
 
   const visibleSignals = useMemo(() => {
-    const testing = account.isAdmin ? allSignals.filter((s) => TESTING_SIGNALS.includes(s.label)).map((s) => ({ ...s, verifiedVia: "testing" })) : [];
+    const testing = account.isAdmin ? allSignals.filter((s) => TESTING_SIGNALS.includes(s.label) && s.tier !== "proven").map((s) => ({ ...s, verifiedVia: "testing" })) : [];
     return allSignals
       .filter((s) => s.tier === "proven")
       .map((s) => {

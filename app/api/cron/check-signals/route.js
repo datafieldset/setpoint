@@ -28,7 +28,7 @@ import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
-import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleOutflow } from "../../../../lib/marketContext.js";
+import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity } from "../../../../lib/marketContext.js";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -77,14 +77,16 @@ export async function GET(req) {
     // every account checked this run, same real inputs the dashboard
     // itself uses so a signal detected here matches what would have
     // shown there.
-    const [fng, bias, weekly200, recentWhaleOutflow, liveGateResult] = await Promise.all([
+    const [fng, bias, weekly200, whaleActivity, liveGateResult] = await Promise.all([
       fetchFng().catch(() => null),
       fetchBroadMarketBias().catch(() => null),
       getWeekly200MA().catch(() => null),
-      getRecentWhaleOutflow().catch(() => false),
+      getRecentWhaleActivity().catch(() => ({ outflowOversold: false, inflowOverbought: false })),
       getLiveVerifiedGate(),
     ]);
     const { gate: liveGate, regimeGate } = liveGateResult;
+    const recentWhaleOutflowOversold = whaleActivity.outflowOversold;
+    const recentWhaleInflowOverbought = whaleActivity.inflowOverbought;
     const risk = reversalRisk(bias, fng?.value);
 
     // Real, database-level protection, not an application-level guess.
@@ -147,7 +149,7 @@ export async function GET(req) {
             const slice = candles.slice(0, i + 1);
             const { signals } = computeSignals(slice, tf, th2, {
               now: slice[slice.length - 1].time + barMsLen,
-              marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflow, liveGate,
+              marketBias: bias, reversalRisk: risk, fngValue: fng?.value, recentWhaleOutflowOversold, recentWhaleInflowOverbought, liveGate,
             });
             const regimeHere = marketRegime(slice, tf);
             for (const s of signals) results.push({ ...s, regimeStage: regimeHere?.stage || null });
@@ -183,7 +185,7 @@ export async function GET(req) {
           // while unverified — the admin-only push gate further below
           // is the real, separate safeguard keeping it from ever
           // reaching a real, paying customer while it's still testing.
-          const isCoilTest = TESTING_SIGNALS.includes(s.label);
+          const isCoilTest = TESTING_SIGNALS.includes(s.label) && s.tier !== "proven";
           if (s.tier !== "proven" && !isCoilTest) continue; // not statically verified at all
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
           const gate = liveGate[gateKey];
