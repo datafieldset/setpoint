@@ -189,17 +189,30 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <div className="sig-id">
           <span className="sym">{sym}</span>
           <span className="sig-type">{s.dir === "bull" ? "Buy" : "Sell"} {brandName(s.label)} {s.tierRate != null ? `${Math.round(s.tierRate * 100)}%` : ""}</span>
-          {s.tierRate != null && s.verifiedVia === "regime" && (
-            <span className="rate-src regime" title={`Not verified overall right now, but genuinely earning it in the real, current market condition it just fired under: ${REGIME_LABELS[s.regimeStage] || s.regimeStage}`}>
-              verified: {REGIME_LABELS[s.regimeStage] || s.regimeStage}
-            </span>
+          {s.verifiedVia === "testing" ? (
+            <>
+              {s.tierRate != null && (
+                <span className="rate-src live" title={`A real, current number from its own, live, recent record (last ${s.liveN} real trades) — still testing, not yet verified`}>
+                  live, {s.liveN} trades
+                </span>
+              )}
+              <span className="testing-tag">testing, not yet verified</span>
+            </>
+          ) : (
+            <>
+              {s.tierRate != null && s.verifiedVia === "regime" && (
+                <span className="rate-src regime" title={`Not verified overall right now, but genuinely earning it in the real, current market condition it just fired under: ${REGIME_LABELS[s.regimeStage] || s.regimeStage}`}>
+                  verified: {REGIME_LABELS[s.regimeStage] || s.regimeStage}
+                </span>
+              )}
+              {s.tierRate != null && s.verifiedVia !== "regime" && (
+                <span className={`rate-src ${s.tierIsLive ? "live" : "backtest"}`} title={s.tierIsLive ? "A real, current number, from recent, actual trades" : "The original backtest number, not enough recent trades yet to refresh it"}>
+                  {s.tierIsLive ? "live" : "backtest"}
+                </span>
+              )}
+              {s.tierRate == null && <span className="testing-tag">testing, not yet verified</span>}
+            </>
           )}
-          {s.tierRate != null && s.verifiedVia !== "regime" && (
-            <span className={`rate-src ${s.tierIsLive ? "live" : "backtest"}`} title={s.tierIsLive ? "A real, current number, from recent, actual trades" : "The original backtest number, not enough recent trades yet to refresh it"}>
-              {s.tierIsLive ? "live" : "backtest"}
-            </span>
-          )}
-          {s.tierRate == null && <span className="testing-tag">testing, not yet verified</span>}
           {s.isConfluence && <span className="confluence-tag">⚡ extreme read</span>}
           {isOpenPosition && <span className="open-pos-tag">still in motion</span>}
         </div>
@@ -1247,7 +1260,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey, isLiveVerified]);
 
   const visibleSignals = useMemo(() => {
-    const testing = account.isAdmin ? allSignals.filter((s) => TESTING_SIGNALS.includes(s.label) && s.tier !== "proven").map((s) => ({ ...s, verifiedVia: "testing" })) : [];
+    const testing = account.isAdmin ? allSignals.filter((s) => TESTING_SIGNALS.includes(s.label) && s.tier !== "proven").map((s) => {
+      const gate = liveGate[`${s.label}|${s.tf}|${s.dir}`];
+      return { ...s, verifiedVia: "testing", tierRate: gate ? gate.rate : null, tierIsLive: !!gate, liveN: gate ? gate.n : null };
+    }) : [];
     return allSignals
       .filter((s) => s.tier === "proven")
       .map((s) => {
@@ -1270,8 +1286,12 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tf === TF[tfKey].label && (
       (p.tier === "proven" && isLiveVerified(p)) ||
       (TESTING_SIGNALS.includes(p.label) && account.isAdmin)
-    )),
-    [openPositions, watchlist, isLiveVerified, tfKey, account.isAdmin]
+    )).map((p) => {
+      if (p.tier === "proven") return p;
+      const gate = liveGate[`${p.label}|${p.tf}|${p.dir}`];
+      return { ...p, verifiedVia: "testing", tierRate: gate ? gate.rate : null, tierIsLive: !!gate, liveN: gate ? gate.n : null };
+    }),
+    [openPositions, watchlist, isLiveVerified, tfKey, account.isAdmin, liveGate]
   );
   // Real, simple closure, not scoped to whichever timeframe tab happens to
   // be selected right now, the whole point is catching something that
@@ -1286,8 +1306,12 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     () => recentlyResolved.filter((p) => watchlist.includes(p.coin) && (
       (p.tier === "proven" && isLiveVerified(p)) ||
       (TESTING_SIGNALS.includes(p.label) && account.isAdmin)
-    )).slice(0, 5),
-    [recentlyResolved, watchlist, isLiveVerified, account.isAdmin]
+    )).map((p) => {
+      if (p.tier === "proven") return p;
+      const gate = liveGate[`${p.label}|${p.tf}|${p.dir}`];
+      return { ...p, verifiedVia: "testing", tierRate: gate ? gate.rate : null, tierIsLive: !!gate, liveN: gate ? gate.n : null };
+    }).slice(0, 5),
+    [recentlyResolved, watchlist, isLiveVerified, account.isAdmin, liveGate]
   );
   // One real, combined list, merging what's already server-confirmed open
   // with anything that just fired locally and hasn't been picked up by
