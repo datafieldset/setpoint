@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -1057,7 +1057,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           next[c.sym] = { signals: [], snap: null, warming: false, error: c.error || "no data", stats: c.stats || null, meter: null };
           return;
         }
-        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflowOversold: json.recentWhaleOutflowOversold, recentWhaleInflowOverbought: json.recentWhaleInflowOverbought, liveGate: json.liveGate });
+        const { signals, snap, warming } = computeSignals(c.candles, tfKey, th2, { now: t, marketBias: currentBias, reversalRisk: currentRisk, fngValue: json.fng?.value, recentWhaleOutflowOversold: json.recentWhaleOutflowOversold, recentWhaleInflowOverbought: json.recentWhaleInflowOverbought, liveGate: json.liveGate, regimeGate: json.regimeGate });
         const meter = volatilityMeter(c.candles, tfKey);
         const regimeHere = marketRegime(c.candles, tfKey);
         const tagged = signals.map((s) => {
@@ -1099,28 +1099,25 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               if (!trackResult || !trackResult.inserted) return; // a real logging failure, or a real, already-open duplicate, either way, never push on it
               // Push notification, only for what's actually verified right
               // now, both the static table AND the live recent-20 check,
-              // using the fresh liveGate just fetched this same call rather
-              // than one render-cycle-old state, so this can never fire on
-              // something that's already been quietly live-gated out.
-              // Genuinely follows the same list that decides what shows in
-              // Opportunities, no separate trigger list to keep in sync.
-              // Real, regime-specific check too, same real reasoning as the
-              // cron: a signal can be genuinely verified for the market
-              // condition it's actually firing under, even while its
-              // blended, overall number stays weak.
-              const gateKey = `${s.label}|${TF[tfKey].label}|${s.dir}`;
-              const gate = (json.liveGate || {})[gateKey];
-              const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
-              const rGate = regimeHere?.stage ? (json.regimeGate || {})[`${gateKey}|${regimeHere.stage}`] : null;
-              const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
-              const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
+              // using the fresh liveGate/regimeGate just fetched this same
+              // call rather than one render-cycle-old state, so this can
+              // never fire on something that's already been quietly
+              // live-gated out. Genuinely calls the exact same, shared
+              // function that decides what shows in Opportunities, no
+              // separate, hand-rolled check to keep in sync — including
+              // the real, regime-only path (Sep 17), a signal can now
+              // genuinely earn this with no static promotion behind it at
+              // all, as long as its condition-specific record clears the
+              // bar on a real, honest sample.
+              const freshPc = provenContext(s.label, TF[tfKey].label, s.dir, json.liveGate, regimeHere?.stage, json.regimeGate);
+              const currentlyVerified = freshPc.tag === "proven";
               // Real, temporary, named exception (Sep 6): Coil is brand
               // new and unverified, but this call already only ever
               // reaches whoever is currently signed in and has their own
               // dashboard open, so gating it to the admin account keeps a
               // real, paying customer from ever getting a confusing,
               // experimental notification while it's still being tested.
-              const isCoilTest = TESTING_SIGNALS.includes(s.label) && s.tier !== "proven" && account.isAdmin;
+              const isCoilTest = TESTING_SIGNALS.includes(s.label) && !currentlyVerified && account.isAdmin;
               if (currentlyVerified || isCoilTest) {
                 fetch("/api/push/notify", {
                   method: "POST",
@@ -1230,19 +1227,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // recent data should never silently hide something that's actually
   // fine, same principle Signal Drift already uses.
   const isLiveVerified = useCallback((s) => {
-    const key = `${s.label}|${s.tf}|${s.dir}`;
-    const entry = SIGNAL_RATES[key];
-    const staticProven = !!(entry && entry.rate != null && entry.rate >= PROVEN_THRESHOLD);
-    const gate = liveGate[key];
-    if (staticProven) {
-      const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD; // not enough recent data yet, trust the backtested number
-      if (overallVerified) return true;
-    }
-    // Real, regime-specific fallback — a signal genuinely verified for
-    // the real, current market condition it fired under counts too,
-    // even when its blended, overall number is weak.
-    const rGate = s.regimeStage ? regimeGate[`${s.label}|${s.tf}|${s.dir}|${s.regimeStage}`] : null;
-    return !!(rGate && rGate.rate >= PROVEN_THRESHOLD);
+    return provenContext(s.label, s.tf, s.dir, liveGate, s.regimeStage, regimeGate).tag === "proven";
   }, [liveGate, regimeGate]);
 
   // Real, direct check for whether anything is even currently verified on
@@ -1265,14 +1250,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       return { ...s, verifiedVia: "testing", tierRate: gate ? gate.rate : null, tierIsLive: !!gate, liveN: gate ? gate.n : null };
     }) : [];
     return allSignals
-      .filter((s) => s.tier === "proven")
       .map((s) => {
-        const gate = liveGate[`${s.label}|${s.tf}|${s.dir}`];
-        const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
-        if (overallVerified) return { ...s, verifiedVia: "overall" };
-        const rGate = s.regimeStage ? regimeGate[`${s.label}|${s.tf}|${s.dir}|${s.regimeStage}`] : null;
-        const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
-        return regimeVerified ? { ...s, verifiedVia: "regime", tierRate: rGate.rate } : null;
+        const pc = provenContext(s.label, s.tf, s.dir, liveGate, s.regimeStage, regimeGate);
+        if (pc.tag !== "proven") return null;
+        return { ...s, tier: pc.tag, tierRate: pc.rate, tierIsLive: pc.isLive, verifiedVia: pc.verifiedVia, regimeStage: pc.verifiedVia === "regime" ? pc.regimeStage : s.regimeStage };
       })
       .filter(Boolean)
       .concat(testing);

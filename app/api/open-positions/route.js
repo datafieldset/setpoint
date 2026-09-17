@@ -50,14 +50,14 @@ export async function GET(req) {
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     const [rows, resolvedRows, liveGateResult] = await Promise.all([
       sql`
-        SELECT coin, tf, label, dir, fired_at, entry, stop, target
+        SELECT coin, tf, label, dir, fired_at, entry, stop, target, regime
         FROM signal_track
         WHERE outcome = 'open'
         ORDER BY fired_at DESC
         LIMIT 100
       `,
       sql`
-        SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome
+        SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime
         FROM signal_track
         WHERE outcome IN ('win', 'loss')
         ORDER BY resolved_at DESC
@@ -65,9 +65,9 @@ export async function GET(req) {
       `,
       getLiveVerifiedGate(),
     ]);
-    const { gate: liveGate } = liveGateResult;
+    const { gate: liveGate, regimeGate } = liveGateResult;
     const positions = rows.map((r) => {
-      const pc = provenContext(r.label, r.tf, r.dir, liveGate);
+      const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       return {
         coin: r.coin,
         tf: r.tf,
@@ -80,10 +80,11 @@ export async function GET(req) {
         tier: pc.tag,
         tierRate: pc.rate,
         tierIsLive: pc.isLive,
+        regimeStage: r.regime,
       };
     });
     const recentlyResolved = resolvedRows.map((r) => {
-      const pc = provenContext(r.label, r.tf, r.dir, liveGate);
+      const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       const entry = parseFloat(r.entry);
       const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
       const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
@@ -99,6 +100,7 @@ export async function GET(req) {
         tier: pc.tag,
         tierRate: pc.rate,
         tierIsLive: pc.isLive,
+        regimeStage: r.regime,
       };
     });
     return Response.json({ positions, recentlyResolved, generatedAt: new Date().toISOString(), dbRowCount: rows.length }, { headers: noCache });
