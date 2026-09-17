@@ -31,7 +31,7 @@
 // someone hadn't checked recently enough to catch it resolving live, it
 // looked like it disappeared for no reason. This gives real, honest
 // closure either way, win or loss, the next time the dashboard loads.
-import { provenContext } from "../../../lib/signals.js";
+import { provenContext, getLiveVerifiedGate } from "../../../lib/signals.js";
 import { checkKey } from "../../../lib/access.js";
 
 export const dynamic = "force-dynamic";
@@ -48,7 +48,7 @@ export async function GET(req) {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const [rows, resolvedRows] = await Promise.all([
+    const [rows, resolvedRows, liveGateResult] = await Promise.all([
       sql`
         SELECT coin, tf, label, dir, fired_at, entry, stop, target
         FROM signal_track
@@ -63,9 +63,11 @@ export async function GET(req) {
         ORDER BY resolved_at DESC
         LIMIT 30
       `,
+      getLiveVerifiedGate(),
     ]);
+    const { gate: liveGate } = liveGateResult;
     const positions = rows.map((r) => {
-      const pc = provenContext(r.label, r.tf, r.dir);
+      const pc = provenContext(r.label, r.tf, r.dir, liveGate);
       return {
         coin: r.coin,
         tf: r.tf,
@@ -77,10 +79,11 @@ export async function GET(req) {
         target: parseFloat(r.target),
         tier: pc.tag,
         tierRate: pc.rate,
+        tierIsLive: pc.isLive,
       };
     });
     const recentlyResolved = resolvedRows.map((r) => {
-      const pc = provenContext(r.label, r.tf, r.dir);
+      const pc = provenContext(r.label, r.tf, r.dir, liveGate);
       const entry = parseFloat(r.entry);
       const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
       const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
@@ -95,6 +98,7 @@ export async function GET(req) {
         entry, exit, pctMove,
         tier: pc.tag,
         tierRate: pc.rate,
+        tierIsLive: pc.isLive,
       };
     });
     return Response.json({ positions, recentlyResolved, generatedAt: new Date().toISOString(), dbRowCount: rows.length }, { headers: noCache });
