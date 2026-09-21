@@ -179,14 +179,20 @@ export async function GET(req) {
       for (const tf of timeframes) {
         const signals = computed.get(`${coin}:${tf}`) || [];
         for (const s of signals) {
-          // Real, temporary, named exception (Sep 6): Coil is brand new
-          // and needs a real, live track record before it can ever be
-          // trusted, so it's logged for continuous backtesting even
-          // while unverified — the admin-only push gate further below
-          // is the real, separate safeguard keeping it from ever
-          // reaching a real, paying customer while it's still testing.
+          // Real, important change (Sep 21): logging itself no longer
+          // requires a signal to already be proven or in the testing
+          // list — every real signal that fires now gets logged,
+          // period, so nothing ever again builds up months of real,
+          // silent history with zero record behind it (found after
+          // Momentum genuinely caught a real, fast market move and we
+          // had no data to even know it, since it was never promoted
+          // or added to testing). Visibility stays exactly as careful
+          // as it's always been — the push notification gate right
+          // below this is untouched, still requires currentlyVerified
+          // or the admin-only isCoilTest exception, so this change is
+          // purely about never losing data again, not about who ever
+          // sees an alert.
           const isCoilTest = TESTING_SIGNALS.includes(s.label) && s.tier !== "proven";
-          if (s.tier !== "proven" && !isCoilTest) continue; // not statically verified at all
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
           const gate = liveGate[gateKey];
           const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
@@ -201,7 +207,6 @@ export async function GET(req) {
           const rGate = s.regimeStage ? regimeGate[`${gateKey}|${s.regimeStage}`] : null;
           const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
           const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
-          if (!currentlyVerified && !isCoilTest) continue;
 
           let inserted;
           try {
