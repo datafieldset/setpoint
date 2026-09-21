@@ -571,6 +571,100 @@ function Guide({ onBack }) {
 }
 
 /* =============================== ADMIN PANEL ============================== */
+function SignalCatalog({ onBack }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    fetch("/api/signal-catalog", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error("failed")))
+      .then((json) => json.error ? setError(json.error) : setData(json))
+      .catch(() => setError("Couldn't load the signal catalog."));
+  }, []);
+
+  const STATUS_INFO = {
+    promoted: { label: "Live for real customers", cls: "live" },
+    testing: { label: "Testing, admin only", cls: "regime" },
+    collecting: { label: "Collecting data only, not shown to anyone", cls: "backtest" },
+  };
+  const statusOrder = { promoted: 0, testing: 1, collecting: 2 };
+  const sorted = data?.signals ? [...data.signals].sort((a, b) => statusOrder[a.status] - statusOrder[b.status]) : [];
+  const counts = data?.signals ? {
+    promoted: data.signals.filter((s) => s.status === "promoted").length,
+    testing: data.signals.filter((s) => s.status === "testing").length,
+    collecting: data.signals.filter((s) => s.status === "collecting").length,
+  } : null;
+
+  return (
+    <div className="dash">
+      <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
+
+      <div className="guide-hero">
+        <div className="guide-mark">S</div>
+        <h1>Signal catalog</h1>
+        <p>Every real signal this app has ever built, its real, current percentage, and what it's actually good at. The honest, total picture, not just what's currently promoted.</p>
+      </div>
+
+      {error && <div className="guide-section"><p style={{ color: "var(--red)" }}>{error}</p></div>}
+
+      {counts && (
+        <div className="guide-section">
+          <div className="admin-stat-row">
+            <div className="admin-stat"><div className="admin-stat-n">{data.signals.length}</div><div className="admin-stat-k">total signals built</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{counts.promoted}</div><div className="admin-stat-k">live for customers</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{counts.testing}</div><div className="admin-stat-k">testing, admin only</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{counts.collecting}</div><div className="admin-stat-k">collecting data only</div></div>
+          </div>
+          {data.latestBacktestRunAt && (
+            <div className="admin-conv-note">Condition breakdowns below are from the most recent saved backtest run, {new Date(data.latestBacktestRunAt).toLocaleString()}.</div>
+          )}
+        </div>
+      )}
+
+      {sorted.map((s) => (
+        <div className="guide-section" key={s.name}>
+          <div className="guide-card-top" style={{ marginBottom: 6 }}>
+            <span className="guide-card-name">{s.name}</span>
+            <span className={`rate-src ${STATUS_INFO[s.status].cls}`}>{STATUS_INFO[s.status].label}</span>
+          </div>
+          <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>{s.what}</p>
+          <div className="admin-conv-note" style={{ marginBottom: 10 }}>{s.totalFired} real fires, all time, every timeframe and direction combined.</div>
+
+          {s.combos.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>By timeframe and direction:</div>
+              {s.combos.map((c) => (
+                <div key={`${c.tf}-${c.dir}`} className="admin-plan-chip" style={{ marginRight: 6, marginBottom: 6, display: "inline-block" }}>
+                  {c.dir === "bull" ? "Long" : "Short"} · {c.tf}: {c.rate != null ? `${Math.round(c.rate * 100)}%` : "not enough data yet"}
+                  {c.n != null ? ` (${c.n} live trades)` : c.staticRate != null ? " (backtest number)" : ""}
+                  {c.currentlyPromoted ? " · promoted" : ""}
+                </div>
+              ))}
+            </>
+          )}
+          {s.combos.length === 0 && (
+            <div style={{ fontSize: 12, color: "var(--muted)" }}>No real fires logged yet on any timeframe.</div>
+          )}
+
+          {s.conditions.length > 0 && (
+            <>
+              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, marginBottom: 6 }}>What it's actually good at, real condition breakdown:</div>
+              {s.conditions.slice(0, 6).map((c) => (
+                <div key={c.key} style={{ fontSize: 12, marginBottom: 4 }}>
+                  <span style={{ color: c.winRate >= 0.58 ? "var(--green)" : c.winRate < 0.45 ? "var(--red)" : "var(--muted)" }}>
+                    {Math.round(c.winRate * 100)}%
+                  </span>
+                  {" "}— {c.key.split("·").slice(1).join("·")} ({c.wins}W / {c.losses}L)
+                </div>
+              ))}
+            </>
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function AdminPanel({ onBack }) {
   const [users, setUsers] = useState(null);
   const [error, setError] = useState(null);
@@ -723,6 +817,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [cancelState, setCancelState] = useState("idle"); // idle | confirming | busy | done
   const [cancelInfo, setCancelInfo] = useState(null); // { endsAt } once real, confirmed
   const [showAdminPanel, setShowAdminPanel] = useState(false);
+  const [showSignalCatalog, setShowSignalCatalog] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Guide, Watch Live, and the admin panel now each get a real, actual
@@ -753,6 +848,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       setShowGuide(false);
       setShowWatchLive(false);
       setShowAdminPanel(false);
+      setShowSignalCatalog(false);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -764,6 +860,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     if (view === "guide") setShowGuide(true);
     else if (view === "watchlive") setShowWatchLive(true);
     else if (view === "admin") setShowAdminPanel(true);
+    else if (view === "signals") setShowSignalCatalog(true);
   }, []);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -1423,6 +1520,17 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     );
   }
 
+  if (showSignalCatalog) {
+    return (
+      <div className="dash">
+        <div className="topbar">
+          <div className="brand"><span className="logo-dot" />Setpoint</div>
+        </div>
+        <SignalCatalog onBack={() => closeSubView(setShowSignalCatalog)} />
+      </div>
+    );
+  }
+
   return (
     <div className="dash">
       <div className="topbar">
@@ -1440,6 +1548,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             {account.isAdmin && (
               <button className="admin-badge" onClick={() => { openSubView(setShowAdminPanel, "admin"); setShowMobileMenu(false); }}>
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
+              </button>
+            )}
+            {account.isAdmin && (
+              <button className="admin-badge" onClick={() => { openSubView(setShowSignalCatalog, "signals"); setShowMobileMenu(false); }}>
+                SIGNALS
               </button>
             )}
             {!account.isAdmin && (
