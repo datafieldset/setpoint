@@ -85,6 +85,7 @@ export default function WatchLiveContent({ onBack }) {
                     <div className="wc-top">
                       <span className="wc-coin">{t.coin}</span>
                       <span className="wc-name">{t.dir === "bull" ? "Buy" : "Sell"} {t.name}</span>
+                      <span className="wc-tf">{t.tf}</span>
                       <span className={`wc-outcome ${t.outcome}`}>{t.outcome === "win" ? "WIN" : "LOSS"}</span>
                     </div>
                     <div className="wc-levels">
@@ -171,6 +172,7 @@ const CSS = `
   .wc-top{display:flex;align-items:center;gap:8px;margin-bottom:12px}
   .wc-coin{font-weight:800;font-size:14px}
   .wc-name{color:var(--muted);font-size:12.5px;flex:1}
+  .wc-tf{font-size:10px;font-weight:700;color:var(--muted);background:var(--panel2);padding:2px 6px;border-radius:5px;letter-spacing:.02em}
   .wc-outcome{font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:2px 7px;border-radius:5px}
   .wc-outcome.win{color:var(--green);background:rgba(0,209,121,.12)}
   .wc-outcome.loss{color:var(--red);background:rgba(255,92,108,.12)}
