@@ -187,26 +187,13 @@ export async function GET(req) {
           // Momentum genuinely caught a real, fast market move and we
           // had no data to even know it, since it was never promoted
           // or added to testing). Visibility stays exactly as careful
-          // as it's always been — the push notification gate right
-          // below this is untouched, still requires currentlyVerified
-          // or the admin-only isCoilTest exception, so this change is
-          // purely about never losing data again, not about who ever
-          // sees an alert.
+          // as it's always been — the push notification gate further
+          // below is untouched in spirit, still requires a genuine,
+          // current verified status or the admin-only isCoilTest
+          // exception, so this change is purely about never losing
+          // data again, not about who ever sees an alert.
           const isCoilTest = TESTING_SIGNALS.includes(s.label) && s.tier !== "proven";
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
-          const gate = liveGate[gateKey];
-          const overallVerified = !gate || gate.rate >= PROVEN_THRESHOLD;
-          // Real, regime-specific check too — a signal can be genuinely
-          // weak overall (blended across every market condition it's
-          // ever fired in) while still earning a real, verified status
-          // specific to the one condition it's actually good at. Only
-          // trusted once it has the same, real minimum sample the
-          // overall gate already requires; a regime bucket with too
-          // little real, recent data defers to the overall number
-          // rather than guessing.
-          const rGate = s.regimeStage ? regimeGate[`${gateKey}|${s.regimeStage}`] : null;
-          const regimeVerified = rGate && rGate.rate >= PROVEN_THRESHOLD;
-          const currentlyVerified = s.tier === "proven" && (overallVerified || regimeVerified);
 
           let inserted;
           try {
@@ -221,7 +208,38 @@ export async function GET(req) {
             continue; // a real logging failure here should never crash the whole run
           }
           if (!inserted) continue; // the database itself says this isn't actually new
-          if (!currentlyVerified && !isCoilTest) continue; // anything else reaches here only once genuinely verified
+
+          // Real, direct fix (Sep 22): re-fetch the freshest possible
+          // live and regime gate data right here, right before the
+          // actual push decision, instead of trusting the single
+          // snapshot fetched once at the very start of this whole run.
+          // Found after a real, direct case: a signal pushed as
+          // verified through a real, current regime edge, but by the
+          // time the dashboard was checked minutes later, that same
+          // regime's real, rolling record had already shifted below
+          // the bar — the push wasn't wrong when it used that data,
+          // the data itself was already stale by the time this
+          // specific check, deep into a run covering many coins and
+          // timeframes, actually got here. This keeps the push
+          // decision itself as current as the moment it's actually
+          // made, not a snapshot from however long ago this run
+          // started.
+          let freshGate = liveGate, freshRegimeGate = regimeGate;
+          try {
+            const fresh = await getLiveVerifiedGate();
+            freshGate = fresh.gate;
+            freshRegimeGate = fresh.regimeGate;
+          } catch {
+            // a real, live re-check failing here should never block an
+            // otherwise-valid push — fall back to the run's own,
+            // already-fetched snapshot rather than losing the alert
+          }
+          const freshGateEntry = freshGate[gateKey];
+          const freshOverallVerified = !freshGateEntry || freshGateEntry.rate >= PROVEN_THRESHOLD;
+          const freshRGate = s.regimeStage ? freshRegimeGate[`${gateKey}|${s.regimeStage}`] : null;
+          const freshRegimeVerified = freshRGate && freshRGate.rate >= PROVEN_THRESHOLD;
+          const currentlyVerifiedFresh = s.tier === "proven" && (freshOverallVerified || freshRegimeVerified);
+          if (!currentlyVerifiedFresh && !isCoilTest) continue; // anything else reaches here only once genuinely, currently verified
 
           const verb = s.dir === "bull" ? "Buy" : "Sell";
           const payload = JSON.stringify({
