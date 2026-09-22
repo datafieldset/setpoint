@@ -19,6 +19,7 @@ import { auth } from "../../../auth.js";
 import { neon } from "@neondatabase/serverless";
 import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, getLiveVerifiedGate } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
+import { brandName } from "../../../lib/brand.js";
 
 export const dynamic = "force-dynamic";
 
@@ -57,18 +58,32 @@ export async function GET() {
           const key = `${name}|${tf}|${dir}`;
           const staticEntry = SIGNAL_RATES[key];
           const gate = liveGate[key];
-          const hasAnyData = !!staticEntry || !!gate;
+          // Real, direct check (Sep 21): a combo with no static entry
+          // and no overall live data can still be genuinely, currently
+          // verified purely through the regime-only path — check every
+          // real regime this combo has a live record for, not just the
+          // blended, overall one, the same honest definition the
+          // dashboard and Watch Live both already use.
+          const regimeEntries = Object.entries(regimeGate).filter(([k]) => k.startsWith(`${key}|`));
+          const bestRegime = regimeEntries
+            .map(([k, v]) => ({ regime: k.slice(key.length + 1), rate: v.rate, n: v.n }))
+            .filter((r) => r.n >= 10 && r.rate >= PROVEN_THRESHOLD)
+            .sort((a, b) => b.rate - a.rate)[0] || null;
+          const hasAnyData = !!staticEntry || !!gate || regimeEntries.length > 0;
           if (!hasAnyData) continue;
           const staticProven = !!staticEntry && staticEntry.rate != null && staticEntry.rate >= PROVEN_THRESHOLD;
           const rate = gate && gate.n >= 5 ? gate.rate : (staticEntry?.rate ?? null);
           const isLive = !!(gate && gate.n >= 5);
+          const currentlyPromoted = (staticProven && rate != null && rate >= PROVEN_THRESHOLD) || !!bestRegime;
           combos.push({
             tf, dir,
-            rate,
+            rate: currentlyPromoted && !staticProven && bestRegime ? bestRegime.rate : rate,
             n: gate?.n ?? null,
             isLive,
             staticRate: staticEntry?.rate ?? null,
-            currentlyPromoted: staticProven && rate != null && rate >= PROVEN_THRESHOLD,
+            currentlyPromoted,
+            verifiedVia: staticProven && rate != null && rate >= PROVEN_THRESHOLD ? "overall" : bestRegime ? "regime" : null,
+            regimeStage: bestRegime?.regime ?? null,
           });
         }
       }
@@ -87,7 +102,7 @@ export async function GET() {
       const status = anyPromoted ? "promoted" : isTesting ? "testing" : "collecting";
 
       return {
-        name, what, status,
+        name, brandedName: brandName(name), what, status,
         totalFired: totalsByLabel[name] || 0,
         combos: combos.sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1)),
         conditions,

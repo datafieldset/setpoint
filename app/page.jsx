@@ -621,7 +621,7 @@ function SignalCatalog({ onBack }) {
       {sorted.map((s) => (
         <div className="guide-section" key={s.name}>
           <div className="guide-card-top" style={{ marginBottom: 6 }}>
-            <span className="guide-card-name">{s.name}</span>
+            <span className="guide-card-name">{s.name}{s.brandedName && s.brandedName !== s.name ? ` (shown to customers as "${s.brandedName}")` : ""}</span>
             <span className={`rate-src ${STATUS_INFO[s.status].cls}`}>{STATUS_INFO[s.status].label}</span>
           </div>
           <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>{s.what}</p>
@@ -631,6 +631,7 @@ function SignalCatalog({ onBack }) {
           )}
           {s.combos.map((c) => {
             const dirWord = c.dir === "bull" ? "buying" : "selling";
+            const regimeNote = c.verifiedVia === "regime" ? ` It's earning this purely from doing well right now, specifically when the market's ${REGIME_LABELS?.[c.regimeStage] || c.regimeStage}, not from a permanent promotion.` : "";
             const rateWord = c.rate == null ? "hasn't fired enough yet to have a real number"
               : c.currentlyPromoted ? `right about ${Math.round(c.rate * 100)}% of the time, currently live for real customers`
               : `right about ${Math.round(c.rate * 100)}% of the time, real, current record, not currently shown to customers`;
@@ -638,7 +639,7 @@ function SignalCatalog({ onBack }) {
             return (
               <div key={`${c.tf}-${c.dir}`} style={{ marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid var(--panel2)" }}>
                 <div style={{ fontSize: 14, marginBottom: 6 }}>
-                  On the <b>{c.tf}</b> chart, {dirWord}, this is {rateWord}.
+                  On the <b>{c.tf}</b> chart, {dirWord}, this is {rateWord}.{regimeNote}
                 </div>
                 {myConditions.length > 0 && (
                   <div style={{ fontSize: 13, color: "var(--muted)" }}>
