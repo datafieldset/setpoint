@@ -615,9 +615,6 @@ function SignalCatalog({ onBack }) {
             <div className="admin-stat"><div className="admin-stat-n">{counts.testing}</div><div className="admin-stat-k">testing, admin only</div></div>
             <div className="admin-stat"><div className="admin-stat-n">{counts.collecting}</div><div className="admin-stat-k">collecting data only</div></div>
           </div>
-          {data.latestBacktestRunAt && (
-            <div className="admin-conv-note">Condition breakdowns below are from the most recent saved backtest run, {new Date(data.latestBacktestRunAt).toLocaleString()}.</div>
-          )}
         </div>
       )}
 
@@ -628,41 +625,58 @@ function SignalCatalog({ onBack }) {
             <span className={`rate-src ${STATUS_INFO[s.status].cls}`}>{STATUS_INFO[s.status].label}</span>
           </div>
           <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>{s.what}</p>
-          <div className="admin-conv-note" style={{ marginBottom: 10 }}>{s.totalFired} real fires, all time, every timeframe and direction combined.</div>
 
-          {s.combos.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 6 }}>By timeframe and direction:</div>
-              {s.combos.map((c) => (
-                <div key={`${c.tf}-${c.dir}`} className="admin-plan-chip" style={{ marginRight: 6, marginBottom: 6, display: "inline-block" }}>
-                  {c.dir === "bull" ? "Long" : "Short"} · {c.tf}: {c.rate != null ? `${Math.round(c.rate * 100)}%` : "not enough data yet"}
-                  {c.n != null ? ` (${c.n} live trades)` : c.staticRate != null ? " (backtest number)" : ""}
-                  {c.currentlyPromoted ? " · promoted" : ""}
-                </div>
-              ))}
-            </>
-          )}
           {s.combos.length === 0 && (
-            <div style={{ fontSize: 12, color: "var(--muted)" }}>No real fires logged yet on any timeframe.</div>
+            <div style={{ fontSize: 13, color: "var(--muted)" }}>Hasn't fired yet on any timeframe, no real data to show.</div>
           )}
-
-          {s.conditions.length > 0 && (
-            <>
-              <div style={{ fontSize: 12, color: "var(--muted)", marginTop: 12, marginBottom: 6 }}>What it's actually good at, real condition breakdown:</div>
-              {s.conditions.slice(0, 6).map((c) => (
-                <div key={c.key} style={{ fontSize: 12, marginBottom: 4 }}>
-                  <span style={{ color: c.winRate >= 0.58 ? "var(--green)" : c.winRate < 0.45 ? "var(--red)" : "var(--muted)" }}>
-                    {Math.round(c.winRate * 100)}%
-                  </span>
-                  {" "}— {c.key.split("·").slice(1).join("·")} ({c.wins}W / {c.losses}L)
+          {s.combos.map((c) => {
+            const dirWord = c.dir === "bull" ? "buying" : "selling";
+            const rateWord = c.rate == null ? "hasn't fired enough yet to have a real number"
+              : c.currentlyPromoted ? `right about ${Math.round(c.rate * 100)}% of the time, currently live for real customers`
+              : `right about ${Math.round(c.rate * 100)}% of the time, real, current record, not currently shown to customers`;
+            const myConditions = (s.conditions || []).filter((c2) => c2.key.startsWith(`${s.name} · ${c.tf} · ${c.dir} ·`));
+            return (
+              <div key={`${c.tf}-${c.dir}`} style={{ marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid var(--panel2)" }}>
+                <div style={{ fontSize: 14, marginBottom: 6 }}>
+                  On the <b>{c.tf}</b> chart, {dirWord}, this is {rateWord}.
                 </div>
-              ))}
-            </>
-          )}
+                {myConditions.length > 0 && (
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
+                    <div style={{ marginBottom: 4 }}>Real, honest breakdown of when it actually works:</div>
+                    {myConditions.slice(0, 4).map((c2) => (
+                      <div key={c2.key} style={{ marginBottom: 3 }}>
+                        • <span style={{ color: c2.winRate >= 0.58 ? "var(--green)" : c2.winRate < 0.45 ? "var(--red)" : "var(--muted)", fontWeight: 600 }}>
+                          {Math.round(c2.winRate * 100)}% right
+                        </span>{" "}
+                        {translateCondition(c2.key, c.dir)} ({c2.wins} right out of {c2.wins + c2.losses}).
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
       ))}
     </div>
   );
+}
+
+function translateCondition(key, dir) {
+  const conditionPart = key.split("·").pop().trim(); // e.g. "Bias:against"
+  const [condType, condVal] = conditionPart.split(":");
+  const dirWord = dir === "bull" ? "already going up" : "already going down";
+  if (condType === "Trend") {
+    if (condVal === "with") return `when it's riding a real trend that's ${dirWord}`;
+    if (condVal === "against") return `when it's fighting against a real, existing trend`;
+    return `when the market's just ranging, no real trend either way`;
+  }
+  if (condType === "Bias") {
+    if (condVal === "with") return `when the broader market is also leaning that same way`;
+    if (condVal === "against") return `when the broader market's leaning the other way`;
+    return `when there's no clear read on the broader market`;
+  }
+  return conditionPart;
 }
 
 function AdminPanel({ onBack }) {

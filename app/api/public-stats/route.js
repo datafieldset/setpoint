@@ -4,37 +4,25 @@
 // "check it yourself", which only works if anyone can hit this endpoint
 // without an account.
 //
-// Only ever returns trades from signals that are BOTH statically
-// verified AND currently clearing 58% on their real recent-20 trades
-// (or a real, regime-specific record, gated the exact same way), the
-// same live gate the customer dashboard itself uses. This page used to
-// check only the static table, a real, found inconsistency (Aug 19):
-// the dashboard could quietly stop showing a drifted signal as an
-// active alert while this page kept counting its trades toward the
-// headline number regardless, two surfaces of the same product
-// disagreeing about what "verified" currently means. Fixed to share
-// the exact same check.
-//
-// Real, second, deeper fix (Sep 21): the shared check above was itself
-// a separate, hand-rolled copy, not the actual, real provenContext
-// every other real surface now uses, and it never had any regime
-// awareness at all. Found after a real, direct audit showed this
-// page's own headline number counting a trade under "Climb", a signal
-// name retired and renamed to Grind Up long ago — old, stale history
-// with no current, matching entry anywhere, still dragging the real,
-// public number down. Now calls the same, single, shared function
-// everything else does, so a name with no real, current entry
-// correctly stops counting on its own, nothing to remember to exclude
-// by hand.
-//
-// Every trade includes its locked entry/stop/target, exactly as they
-// were the moment it fired, that's the actual proof behind "we don't
-// redraw", a visitor can check every one of these against their own
-// chart. The exit price is never a separate, editable field, it's always
-// exactly the target (on a win) or the stop (on a loss), the same two
-// numbers that were locked in from the start.
+// Real, direct redesign (Sep 21): the previous version counted a
+// signal's ENTIRE, all-time history the moment it counted as verified
+// at all, static promotion or the newer, dynamic regime-only path.
+// That let one strong, recent stretch get diluted by months of older
+// trades from before the signal was ever actually earning it, or by a
+// condition-specific slice that only performs well in the current
+// market, dragging the headline number down in a way that didn't
+// honestly reflect what's happening right now. Real, direct fix: only
+// count signals with a genuine, static, deliberate promotion behind
+// them (SIGNAL_RATES, not the dynamic regime path, which is built for
+// live, internal decision-making, not a stable, public number), and
+// for each one, only its own real, most-recent 20 trades, the same
+// rolling window every other real surface already uses to decide
+// "is this currently earning it." A signal that's promoted but
+// currently failing pulls the number down immediately; one that just
+// started earning a real promotion only ever contributes its own
+// genuine, recent record, never stale history from before it existed.
 import { brandName } from "../../../lib/brand.js";
-import { getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
+import { SIGNAL_RATES, PROVEN_THRESHOLD, LIVE_GATE_WINDOW } from "../../../lib/signals.js";
 
 export const dynamic = "force-dynamic";
 
@@ -46,21 +34,35 @@ export async function GET() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const [rows, liveGateResult] = await Promise.all([
-      sql`
-        SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime
-        FROM signal_track
-        WHERE outcome IN ('win', 'loss')
-        ORDER BY resolved_at DESC
-      `,
-      getLiveVerifiedGate(),
-    ]);
-    const { gate: liveGate, regimeGate } = liveGateResult;
+
+    const promoted = Object.entries(SIGNAL_RATES)
+      .filter(([, v]) => v.rate != null && v.rate >= PROVEN_THRESHOLD)
+      .map(([key]) => {
+        const [label, tf, dir] = key.split("|");
+        return { label, tf, dir };
+      });
+    const labels = [...new Set(promoted.map((p) => p.label))];
+    if (labels.length === 0) {
+      return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
+    }
+
+    const rows = await sql`
+      SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at
+      FROM signal_track
+      WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
+      ORDER BY resolved_at DESC
+    `;
 
     let wins = 0, losses = 0;
     const recent = [];
+    const seenPerCombo = {};
     for (const r of rows) {
-      if (provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate).tag !== "proven") continue; // testing-tier, currently underperforming, or a stale/renamed signal name with no current, matching entry — never shown here
+      const isPromoted = promoted.some((p) => p.label === r.label && p.tf === r.tf && p.dir === r.dir);
+      if (!isPromoted) continue;
+      const comboKey = `${r.label}|${r.tf}|${r.dir}`;
+      seenPerCombo[comboKey] = (seenPerCombo[comboKey] || 0) + 1;
+      if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue; // only this signal's own, real, most-recent 20
+
       r.outcome === "win" ? wins++ : losses++;
       const entry = parseFloat(r.entry);
       const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
