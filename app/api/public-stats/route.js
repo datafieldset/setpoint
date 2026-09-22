@@ -12,25 +12,35 @@
 // condition-specific slice that only performs well in the current
 // market, dragging the headline number down in a way that didn't
 // honestly reflect what's happening right now. Real, direct fix: for
-// each real signal with a genuine, static, deliberate promotion
-// behind it, only count its own real, most-recent 20 trades, the same
-// rolling window every other real surface already uses to decide "is
-// this currently earning it." A signal that's promoted but currently
-// failing pulls the number down immediately; one that just started
-// earning a real promotion only ever contributes its own genuine,
-// recent record, never stale history from before it existed.
+// each real signal with a genuine, current, verified status, only
+// count its own real, most-recent 20 trades, the same rolling window
+// every other real surface already uses to decide "is this currently
+// earning it." A signal that's promoted but currently failing pulls
+// the number down immediately; one that just started earning it only
+// ever contributes its own genuine, recent record, never stale
+// history from before it existed.
 //
 // Real, second, direct fix, found the same day: the first version of
 // this only checked the static table, meaning a signal currently,
-// genuinely demoted by its own live record (real, recent 20-30%,
-// nothing close to verified) still had its trades counted here, even
-// though it was already correctly hidden from real customers on the
-// dashboard itself — the exact, same class of two-surfaces-disagree
-// bug this file has already been fixed for twice. Now requires a
-// signal to be genuinely, currently verified, live gate included,
-// before any of its trades count here at all.
+// genuinely demoted by its own live record still had its trades
+// counted here, even though it was already correctly hidden from real
+// customers on the dashboard itself.
+//
+// Real, third, deeper fix (Sep 21, same day): the second version still
+// only ever considered STATICALLY-promoted signals as eligible at
+// all, entirely ignoring the regime-only path — a signal that's
+// currently, genuinely earning "verified" purely from a real, strong
+// record in the current market condition (Reversal watch on 1m short,
+// 90% on a real 10-trade sample in the current bullish-trending
+// regime; RSI oversold on 1m long, 70% on 10 real trades in the
+// current sideways-ranging regime) was invisible here even though the
+// dashboard itself already, correctly treats it as verified. That's
+// the exact, same two-surfaces-disagree class of bug this file keeps
+// getting caught by. Now checks every real, resolved row directly
+// against the one, real, shared definition of verified, static or
+// regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { SIGNAL_RATES, PROVEN_THRESHOLD, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
+import { ALL_SIGNALS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
 
 export const dynamic = "force-dynamic";
 
@@ -42,28 +52,11 @@ export async function GET() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const { gate: liveGate } = await getLiveVerifiedGate();
+    const { gate: liveGate, regimeGate } = await getLiveVerifiedGate();
 
-    const staticallyPromoted = Object.entries(SIGNAL_RATES)
-      .filter(([, v]) => v.rate != null && v.rate >= PROVEN_THRESHOLD)
-      .map(([key]) => {
-        const [label, tf, dir] = key.split("|");
-        return { label, tf, dir };
-      });
-    // Real, direct check: only a combo that's genuinely, currently
-    // verified right now, static promotion PLUS a passing live-gate
-    // check (or no real live data yet to contradict it), ever counts —
-    // one that's currently, actively demoted by its own real, recent
-    // record is excluded here the same way it's excluded from the
-    // dashboard itself.
-    const promoted = staticallyPromoted.filter((p) => provenContext(p.label, p.tf, p.dir, liveGate).tag === "proven");
-    const labels = [...new Set(promoted.map((p) => p.label))];
-    if (labels.length === 0) {
-      return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
-    }
-
+    const labels = ALL_SIGNALS.map((s) => s.name);
     const rows = await sql`
-      SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at
+      SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime
       FROM signal_track
       WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
       ORDER BY resolved_at DESC
@@ -73,11 +66,22 @@ export async function GET() {
     const recent = [];
     const seenPerCombo = {};
     for (const r of rows) {
-      const isPromoted = promoted.some((p) => p.label === r.label && p.tf === r.tf && p.dir === r.dir);
-      if (!isPromoted) continue;
-      const comboKey = `${r.label}|${r.tf}|${r.dir}`;
+      // Real, direct check against the same, single, shared definition
+      // of verified every other real surface uses — a genuine, static
+      // promotion, or this specific row's own, real regime currently
+      // clearing the bar. Either way is honestly "verified", the same
+      // way the dashboard itself already treats it.
+      const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+      if (pc.tag !== "proven") continue;
+      // Rolling window scoped to how this specific row earned its
+      // verification — a statically-proven row rolls up with every
+      // other row of its (label, tf, dir), since the static check
+      // doesn't care about regime; a regime-only-proven row only
+      // rolls up with rows that fired in that same, real regime,
+      // matching the regime gate's own, real scope.
+      const comboKey = pc.verifiedVia === "regime" ? `${r.label}|${r.tf}|${r.dir}|${r.regime}` : `${r.label}|${r.tf}|${r.dir}`;
       seenPerCombo[comboKey] = (seenPerCombo[comboKey] || 0) + 1;
-      if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue; // only this signal's own, real, most-recent 20
+      if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue; // only this combo's own, real, most-recent 20
 
       r.outcome === "win" ? wins++ : losses++;
       const entry = parseFloat(r.entry);
