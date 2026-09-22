@@ -11,18 +11,26 @@
 // trades from before the signal was ever actually earning it, or by a
 // condition-specific slice that only performs well in the current
 // market, dragging the headline number down in a way that didn't
-// honestly reflect what's happening right now. Real, direct fix: only
-// count signals with a genuine, static, deliberate promotion behind
-// them (SIGNAL_RATES, not the dynamic regime path, which is built for
-// live, internal decision-making, not a stable, public number), and
-// for each one, only its own real, most-recent 20 trades, the same
-// rolling window every other real surface already uses to decide
-// "is this currently earning it." A signal that's promoted but
-// currently failing pulls the number down immediately; one that just
-// started earning a real promotion only ever contributes its own
-// genuine, recent record, never stale history from before it existed.
+// honestly reflect what's happening right now. Real, direct fix: for
+// each real signal with a genuine, static, deliberate promotion
+// behind it, only count its own real, most-recent 20 trades, the same
+// rolling window every other real surface already uses to decide "is
+// this currently earning it." A signal that's promoted but currently
+// failing pulls the number down immediately; one that just started
+// earning a real promotion only ever contributes its own genuine,
+// recent record, never stale history from before it existed.
+//
+// Real, second, direct fix, found the same day: the first version of
+// this only checked the static table, meaning a signal currently,
+// genuinely demoted by its own live record (real, recent 20-30%,
+// nothing close to verified) still had its trades counted here, even
+// though it was already correctly hidden from real customers on the
+// dashboard itself — the exact, same class of two-surfaces-disagree
+// bug this file has already been fixed for twice. Now requires a
+// signal to be genuinely, currently verified, live gate included,
+// before any of its trades count here at all.
 import { brandName } from "../../../lib/brand.js";
-import { SIGNAL_RATES, PROVEN_THRESHOLD, LIVE_GATE_WINDOW } from "../../../lib/signals.js";
+import { SIGNAL_RATES, PROVEN_THRESHOLD, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
 
 export const dynamic = "force-dynamic";
 
@@ -34,13 +42,21 @@ export async function GET() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+    const { gate: liveGate } = await getLiveVerifiedGate();
 
-    const promoted = Object.entries(SIGNAL_RATES)
+    const staticallyPromoted = Object.entries(SIGNAL_RATES)
       .filter(([, v]) => v.rate != null && v.rate >= PROVEN_THRESHOLD)
       .map(([key]) => {
         const [label, tf, dir] = key.split("|");
         return { label, tf, dir };
       });
+    // Real, direct check: only a combo that's genuinely, currently
+    // verified right now, static promotion PLUS a passing live-gate
+    // check (or no real live data yet to contradict it), ever counts —
+    // one that's currently, actively demoted by its own real, recent
+    // record is excluded here the same way it's excluded from the
+    // dashboard itself.
+    const promoted = staticallyPromoted.filter((p) => provenContext(p.label, p.tf, p.dir, liveGate).tag === "proven");
     const labels = [...new Set(promoted.map((p) => p.label))];
     if (labels.length === 0) {
       return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
