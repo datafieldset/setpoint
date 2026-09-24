@@ -488,7 +488,7 @@ const GUIDE_DESC = {
   "Whale Flow": "A real, unusually large trade just happened on a major exchange, the kind of size that can genuinely move a market on its own.",
 };
 
-function Guide({ onBack, account }) {
+function Guide({ onBack, account, liveGate, regimeGate }) {
   const [catalogSummary, setCatalogSummary] = useState(null);
   useEffect(() => {
     if (!account?.isAdmin) return;
@@ -506,12 +506,22 @@ function Guide({ onBack, account }) {
       .catch(() => {});
   }, [account?.isAdmin]);
 
+  // Real, direct fix (Sep 24): this used to just filter the static
+  // table directly, with no live-gate check at all — the exact, same
+  // "two surfaces disagree" bug already found and fixed in a few
+  // other places this session, just never caught here, on the one
+  // page real customers actually see this claim on. Now checks each
+  // statically-promoted combo through the same, single, shared
+  // function everything else uses, so a combo currently demoted by
+  // its own real, recent record correctly disappears from here too,
+  // not just from the dashboard.
   const proven = Object.entries(SIGNAL_RATES)
-    .map(([key, v]) => {
+    .map(([key]) => {
       const [label, tf, dir] = key.split("|");
-      return { label, tf, dir, rate: v.rate };
+      const pc = provenContext(label, tf, dir, liveGate, undefined, regimeGate);
+      return pc.tag === "proven" ? { label, tf, dir, rate: pc.rate } : null;
     })
-    .filter((s) => s.rate != null && s.rate >= 0.58)
+    .filter(Boolean)
     .sort((a, b) => b.rate - a.rate);
 
   // Grouped by real, customer-facing brand name, not by the raw
@@ -1468,7 +1478,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
-        <Guide onBack={() => closeSubView(setShowGuide)} account={account} />
+        <Guide onBack={() => closeSubView(setShowGuide)} account={account} liveGate={liveGate} regimeGate={regimeGate} />
       </div>
     );
   }
