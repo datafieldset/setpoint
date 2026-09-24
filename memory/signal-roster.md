@@ -16,8 +16,8 @@ Reversal watch (brand: Rebound) · Grind Up · Grind Down · Swing · Swing Earl
 
 Static promotion ≠ currently showing as verified — check the live gate. As of the last direct check, several of the above were *currently* demoted by their own real, recent record (Grind Up both timeframes were retired outright for this reason — see below; Volume spike and Grind Down have each dipped below the bar on their live-gate record at various points this session). Don't assume a name on this list is firing as verified right now without checking.
 
-## Retired from SIGNAL_RATES (were promoted, no longer are)
-- Grind Up | 5m | bull and Grind Up | 15m | bull — both retired (not killed, just removed from the static table) after a real, independent, much-deeper audit directly contradicted the original, smaller promoting samples: 40% on 406 real fires (5m), ~31% across four real coins (15m). Root-cause investigated directly: tested firing on an earlier trigger (fewer confirming bars required) — made no real difference, 29-37% either way. The underlying idea (a recent run of up-bars predicts more upside) doesn't hold, regardless of timing.
+## Fully retired (killed entirely, will never fire or log again)
+- Grind Up | 5m | bull and Grind Up | 15m | bull — fully killed (Sep 24), not just unpromoted. Real, exhaustive testing history: originally promoted, then retired from SIGNAL_RATES after a deeper audit contradicted it (40% on 406 fires, 5m; ~31% across 4 coins, 15m); an earlier-trigger variant was tested directly and made no real difference; specifically checked, on Na's direct hypothesis, whether it does better during a genuinely bullish-trending market — it doesn't (25% on 5m, 33% on 15m, barely different from its already-weak overall numbers). The underlying idea (recent up-bars predict more upside) simply doesn't hold under any real condition tested. Grind Down (the separate, short-side sibling from the same detector) is entirely unaffected — still live, still promoted on 15m.
 
 ## In TESTING_SIGNALS (logged + shown admin-only even while unproven)
 Coil, Swing, Swing Early, Whale Flow
@@ -28,6 +28,7 @@ All found via either a live audit or a real, direct, independent backtest agains
 - Quiet accumulation | 1m | bull (32% / 1225 fires), Quiet accumulation | 5m | bull (35% / 579 fires)
 - Swing Early | every combo except 15m|bear — 1m both directions (33%/33% on 573/610 fires), 5m both (35%/33% on 383/407), 15m|bull (35%/140), 30m both (33%/29% on 78/104), 1h both (34%/34% on 77/87), 4h both (39%/35% on 41/37)
 - Grind Down | 5m | bear (32% / 356 fires)
+- Grind Up | 5m | bull, Grind Up | 15m | bull — see "Fully retired" above
 
 ## Currently dark / collecting-only (no static entry, not in TESTING_SIGNALS)
 Volume building early, RSI overbought, Breakout, Breakdown. Also Whale Flow's two directional variants beyond its testing status: gated in-detector to only fire on outflow-during-oversold (long) or inflow-during-overbought (short), on 4h only — both still testing, neither promoted yet as of last check.
