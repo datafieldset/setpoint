@@ -433,6 +433,47 @@ const REGIME_LABELS = {
   "low-volatility": "low volatility",
 };
 
+// Real, direct synthesis (Sep 24): the Market Meter (price structure)
+// and signal bias (real, recent win-rate lean) used to sit side by
+// side as two, raw, independent readings with no honest, combined
+// takeaway — a viewer had to do that math themselves. This answers
+// "where might the market go next" in one, plain sentence, using both
+// real inputs together, without ever presenting it as a prediction or
+// a recommendation — always "here's what the real, current data
+// leans toward," never a promise. Returns null when there's honestly
+// nothing worth saying yet (too little real bias data and no active
+// trend or squeeze) rather than forcing a sentence.
+function synthesizeMarketRead(marketMeter, signalBias) {
+  if (!marketMeter || !signalBias) return null;
+  const { stage, phase } = marketMeter;
+  const trending = stage === "bullish-trending" || stage === "bearish-trending";
+  const squeezed = stage === "sideways-ranging" && phase === "ending";
+  const enoughBiasData = signalBias.bullN >= 5 && signalBias.bearN >= 5;
+  const biasDir = !enoughBiasData ? null : signalBias.score > 55 ? "up" : signalBias.score < 45 ? "down" : null;
+  const meterDir = stage === "bullish-trending" ? "up" : stage === "bearish-trending" ? "down" : null;
+  const weakNote = signalBias.bothWeak ? ", though neither side's actually winning much right now" : "";
+
+  if (trending && meterDir && biasDir) {
+    if (meterDir === biasDir) {
+      return `Market's actively ${meterDir === "up" ? "climbing" : "falling"}, and recent, real trades lean ${meterDir === "up" ? "long" : "short"} too${weakNote}. Real, current lean toward more ${meterDir === "up" ? "upside" : "downside"}.`;
+    }
+    return `Price is actively ${meterDir === "up" ? "climbing" : "falling"} right now, but recent, real trades have actually been winning more on the ${biasDir === "up" ? "long" : "short"} side${weakNote}. Worth knowing, these are pointing different ways right now.`;
+  }
+  if (trending && meterDir) {
+    return `Market's actively ${meterDir === "up" ? "climbing" : "falling"}, but there's no real, current lean in recent trade outcomes either way yet.`;
+  }
+  if (squeezed && biasDir) {
+    return `Squeezed tight, may be about to break. Recent, real trades lean ${biasDir === "up" ? "long" : "short"}${weakNote}. If it breaks, the real edge currently favors ${biasDir === "up" ? "up" : "down"}, though that's not a strong signal on its own.`;
+  }
+  if (squeezed) {
+    return `Squeezed tight, may be about to break, but no real, current lean in recent trade outcomes to say which way yet.`;
+  }
+  if (signalBias.bothWeak || !enoughBiasData) {
+    return `Quiet right now, and neither side has real, current conviction. No strong lean to report.`;
+  }
+  return null;
+}
+
 const GUIDE_DESC = {
   "Volume spike": "A sudden burst of trading, way more than usual, in the direction shown.",
   "Quiet accumulation": "Trading volume is quietly climbing while the price barely moves at all. Often the calm before a real move starts.",
@@ -539,7 +580,7 @@ function Guide({ onBack }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 5m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Quiet range, may be about to break," says the same thing in words instead of just a number.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 5m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Squeezed tight, may be about to break," says the same thing in words instead of just a number.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -1780,6 +1821,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <span className="mm-title">Market Meter</span>
                 <span className="mm-sub">BTC · 5m</span>
               </div>
+              {synthesizeMarketRead(marketMeter, signalBias) && (
+                <div className="mm-synthesis">{synthesizeMarketRead(marketMeter, signalBias)}</div>
+              )}
               <div className="sb-head">
                 <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
               </div>
@@ -2454,6 +2498,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mm-sub{font-size:11px;color:var(--dim)}
+.mm-synthesis{font-size:15px;font-weight:600;line-height:1.4;color:var(--text);background:var(--panel3);border-left:3px solid var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:14px}
 .mm-levels{display:flex;gap:6px;margin-bottom:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
 .mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}
 .mm-dot.on.up{background:var(--green-soft)}
