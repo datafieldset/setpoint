@@ -14,6 +14,8 @@ Watches BTC/XLM/XRP/SOL (user-configurable watchlist) across six timeframes (1m,
 
 ## Where things live (see other files for depth)
 - `writing-style.md` — how to talk to Na and how the product itself talks to users
+- `product-copy.md` — real, concrete copy examples and standing copy rules
+- `design-system.md` — real, exact color tokens, typography, recurring UI patterns
 - `architecture.md` — file structure, core patterns (computeSignals, provenContext, KILLED_COMBOS, regime verification)
 - `signal-roster.md` — current, live status of all 15 signals — READ THIS FIRST for any signal question, it's ground truth, more current than this file
 - `infrastructure.md` — database, Stripe, auth, cron jobs, env
