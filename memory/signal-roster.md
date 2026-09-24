@@ -1,9 +1,9 @@
 # Signal roster — current, live status
 
-Ground truth as of v19.2 (Sep 22). This file will drift — before trusting it, re-check `SIGNAL_RATES`/`KILLED_COMBOS`/`TESTING_SIGNALS`/`ALL_SIGNALS` directly in `lib/signals.js`, and for *current* (not just statically-set) status, query `provenContext` live against `/api/market`'s `liveGate`/`regimeGate`. Static promotion is necessary but not sufficient — the live gate can and does demote a statically-promoted combo in real time.
+Ground truth as of v19.6 (Sep 24). This file will drift — before trusting it, re-check `SIGNAL_RATES`/`KILLED_COMBOS`/`TESTING_SIGNALS`/`ALL_SIGNALS` directly in `lib/signals.js`, and for *current* (not just statically-set) status, query `provenContext` live against `/api/market`'s `liveGate`/`regimeGate`. Static promotion is necessary but not sufficient — the live gate can and does demote a statically-promoted combo in real time.
 
-## All 15 real signal names
-Reversal watch (brand: Rebound) · Grind Up · Grind Down · Swing · Swing Early · Coil · Momentum · Volume spike (brand: Surge) · Volume building early · RSI oversold (brand: Snapback) · RSI overbought · Quiet accumulation · Breakout · Breakdown · Whale Flow
+## All 14 real signal names
+Reversal watch (brand: Rebound) · Grind Down · Swing · Swing Early · Coil · Momentum · Volume spike (brand: Surge) · Volume building early · RSI oversold (brand: Snapback) · RSI overbought · Quiet accumulation · Breakout · Breakdown · Whale Flow
 
 ## Statically promoted (in SIGNAL_RATES) as of v19.2
 - Reversal watch | 1h | bull — 100% (thin sample, kept on Na's call, from very early in the project)
@@ -16,8 +16,9 @@ Reversal watch (brand: Rebound) · Grind Up · Grind Down · Swing · Swing Earl
 
 Static promotion ≠ currently showing as verified — check the live gate. As of the last direct check, several of the above were *currently* demoted by their own real, recent record (Grind Up both timeframes were retired outright for this reason — see below; Volume spike and Grind Down have each dipped below the bar on their live-gate record at various points this session). Don't assume a name on this list is firing as verified right now without checking.
 
-## Fully retired (killed entirely, will never fire or log again)
-- Grind Up | 5m | bull and Grind Up | 15m | bull — fully killed (Sep 24), not just unpromoted. Real, exhaustive testing history: originally promoted, then retired from SIGNAL_RATES after a deeper audit contradicted it (40% on 406 fires, 5m; ~31% across 4 coins, 15m); an earlier-trigger variant was tested directly and made no real difference; specifically checked, on Na's direct hypothesis, whether it does better during a genuinely bullish-trending market — it doesn't (25% on 5m, 33% on 15m, barely different from its already-weak overall numbers). The underlying idea (recent up-bars predict more upside) simply doesn't hold under any real condition tested. Grind Down (the separate, short-side sibling from the same detector) is entirely unaffected — still live, still promoted on 15m.
+## Fully retired (removed from ALL_SIGNALS entirely — never shown, never counted, anywhere)
+- Grind Up — fully removed from the registry (Sep 24), not just unpromoted or marked "retired." Standing rule set directly by Na: once something's killed for good, it's gone everywhere, including the total count — a signal that's fully done doesn't stay listed with a "retired" label, it's deleted from `ALL_SIGNALS` outright. Total signal count is 14, not 15. Real, exhaustive testing history behind this one: originally promoted, then retired from SIGNAL_RATES after a deeper audit contradicted it (40% on 406 fires, 5m; ~31% across 4 coins, 15m); an earlier-trigger variant was tested directly and made no real difference; specifically checked, on Na's direct hypothesis, whether it does better during a genuinely bullish-trending market — it doesn't (25% on 5m, 33% on 15m, barely different from its already-weak overall numbers). The underlying idea (recent up-bars predict more upside) simply doesn't hold under any real condition tested. Grind Down (the separate, short-side sibling from the same detector) is entirely unaffected — still live, still promoted on 15m, still counted.
+- `KILLED_COMBOS` (in `lib/signals.js`) is a different, narrower thing from full retirement — it stops one specific `(label, tf, dir)` combination from ever firing/logging again, while the signal *name* stays in `ALL_SIGNALS` if it still has other, real combos worth watching (e.g. most of Swing Early's combos are killed, but the name itself stays, since 15m|bear is still live). Only remove a name from `ALL_SIGNALS` entirely once every real combo it could ever fire on is dead and there's nothing left worth tracking — that's the bar for "gone everywhere," not just "currently weak."
 
 ## In TESTING_SIGNALS (logged + shown admin-only even while unproven)
 Coil, Swing, Swing Early, Whale Flow
