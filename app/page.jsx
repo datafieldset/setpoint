@@ -500,7 +500,6 @@ function Guide({ onBack, account }) {
           promoted: json.signals.filter((s) => s.status === "promoted").length,
           testing: json.signals.filter((s) => s.status === "testing").length,
           collecting: json.signals.filter((s) => s.status === "collecting").length,
-          retired: json.signals.filter((s) => s.status === "retired").length,
         };
         setCatalogSummary({ total: json.signals.length, ...counts });
       })
@@ -547,12 +546,13 @@ function Guide({ onBack, account }) {
         <div className="guide-section">
           <div className="guide-eyebrow">Admin only</div>
           <h2>The real, total signal count</h2>
-          <p className="guide-lede">Every real signal Setpoint has ever built, and where each one honestly stands right now.</p>
-          <div className="guide-field"><div className="guide-field-k">Total built</div><div className="guide-field-v">{catalogSummary.total} real signals, total, ever coded up and given a chance.</div></div>
-          <div className="guide-field"><div className="guide-field-k">Live now</div><div className="guide-field-v">{catalogSummary.promoted} currently, genuinely verified and shown to real customers.</div></div>
-          <div className="guide-field"><div className="guide-field-k">Testing</div><div className="guide-field-v">{catalogSummary.testing} still building a real track record, admin-only for now.</div></div>
-          <div className="guide-field"><div className="guide-field-k">Collecting</div><div className="guide-field-v">{catalogSummary.collecting} quietly logging real data, not shown to anyone yet.</div></div>
-          <div className="guide-field"><div className="guide-field-k">Retired</div><div className="guide-field-v">{catalogSummary.retired} fully, directly tested and cut — genuinely done, not coming back without new evidence.</div></div>
+          <p className="guide-lede">Every real signal Setpoint currently runs, and where each one honestly stands right now.</p>
+          <div className="admin-stat-row">
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">total signals built</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.promoted}</div><div className="admin-stat-k">live for customers</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.testing}</div><div className="admin-stat-k">testing, admin only</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.collecting}</div><div className="admin-stat-k">collecting data only</div></div>
+          </div>
         </div>
       )}
 

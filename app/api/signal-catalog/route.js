@@ -17,7 +17,7 @@
 // page load.
 import { auth } from "../../../auth.js";
 import { neon } from "@neondatabase/serverless";
-import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, KILLED_COMBOS, getLiveVerifiedGate } from "../../../lib/signals.js";
+import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, getLiveVerifiedGate } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
 import { brandName } from "../../../lib/brand.js";
 
@@ -84,7 +84,6 @@ export async function GET() {
             currentlyPromoted,
             verifiedVia: staticProven && rate != null && rate >= PROVEN_THRESHOLD ? "overall" : bestRegime ? "regime" : null,
             regimeStage: bestRegime?.regime ?? null,
-            killed: KILLED_COMBOS.includes(key),
           });
         }
       }
@@ -100,12 +99,7 @@ export async function GET() {
 
       const isTesting = TESTING_SIGNALS.includes(name);
       const anyPromoted = combos.some((c) => c.currentlyPromoted);
-      // Real, direct check (Sep 24): a name whose every real combo with
-      // any real, historical data is now killed will never collect
-      // anything new again — "collecting" would honestly be
-      // misleading there, this calls it what it actually is.
-      const allKilled = combos.length > 0 && combos.every((c) => c.killed);
-      const status = anyPromoted ? "promoted" : allKilled ? "retired" : isTesting ? "testing" : "collecting";
+      const status = anyPromoted ? "promoted" : isTesting ? "testing" : "collecting";
 
       return {
         name, brandedName: brandName(name), what, status,
