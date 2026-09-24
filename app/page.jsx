@@ -627,8 +627,9 @@ function SignalCatalog({ onBack }) {
     promoted: { label: "Live for real customers", cls: "live" },
     testing: { label: "Testing, admin only", cls: "regime" },
     collecting: { label: "Collecting data only, not shown to anyone", cls: "backtest" },
+    retired: { label: "Retired, fully tested and cut", cls: "backtest" },
   };
-  const statusOrder = { promoted: 0, testing: 1, collecting: 2 };
+  const statusOrder = { promoted: 0, testing: 1, collecting: 2, retired: 3 };
   const sorted = data?.signals ? [...data.signals].sort((a, b) => statusOrder[a.status] - statusOrder[b.status]) : [];
   const counts = data?.signals ? {
     promoted: data.signals.filter((s) => s.status === "promoted").length,
