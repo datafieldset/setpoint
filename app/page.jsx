@@ -488,7 +488,25 @@ const GUIDE_DESC = {
   "Whale Flow": "A real, unusually large trade just happened on a major exchange, the kind of size that can genuinely move a market on its own.",
 };
 
-function Guide({ onBack }) {
+function Guide({ onBack, account }) {
+  const [catalogSummary, setCatalogSummary] = useState(null);
+  useEffect(() => {
+    if (!account?.isAdmin) return;
+    fetch("/api/signal-catalog", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : null)
+      .then((json) => {
+        if (!json?.signals) return;
+        const counts = {
+          promoted: json.signals.filter((s) => s.status === "promoted").length,
+          testing: json.signals.filter((s) => s.status === "testing").length,
+          collecting: json.signals.filter((s) => s.status === "collecting").length,
+          retired: json.signals.filter((s) => s.status === "retired").length,
+        };
+        setCatalogSummary({ total: json.signals.length, ...counts });
+      })
+      .catch(() => {});
+  }, [account?.isAdmin]);
+
   const proven = Object.entries(SIGNAL_RATES)
     .map(([key, v]) => {
       const [label, tf, dir] = key.split("|");
@@ -524,6 +542,19 @@ function Guide({ onBack }) {
         <h1>How Setpoint Works</h1>
         <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, the Market tab, and the news read.</p>
       </div>
+
+      {account?.isAdmin && catalogSummary && (
+        <div className="guide-section">
+          <div className="guide-eyebrow">Admin only</div>
+          <h2>The real, total signal count</h2>
+          <p className="guide-lede">Every real signal Setpoint has ever built, and where each one honestly stands right now.</p>
+          <div className="guide-field"><div className="guide-field-k">Total built</div><div className="guide-field-v">{catalogSummary.total} real signals, total, ever coded up and given a chance.</div></div>
+          <div className="guide-field"><div className="guide-field-k">Live now</div><div className="guide-field-v">{catalogSummary.promoted} currently, genuinely verified and shown to real customers.</div></div>
+          <div className="guide-field"><div className="guide-field-k">Testing</div><div className="guide-field-v">{catalogSummary.testing} still building a real track record, admin-only for now.</div></div>
+          <div className="guide-field"><div className="guide-field-k">Collecting</div><div className="guide-field-v">{catalogSummary.collecting} quietly logging real data, not shown to anyone yet.</div></div>
+          <div className="guide-field"><div className="guide-field-k">Retired</div><div className="guide-field-v">{catalogSummary.retired} fully, directly tested and cut — genuinely done, not coming back without new evidence.</div></div>
+        </div>
+      )}
 
       <div className="guide-section">
         <div className="guide-eyebrow">Part 1</div>
@@ -612,116 +643,6 @@ function Guide({ onBack }) {
 }
 
 /* =============================== ADMIN PANEL ============================== */
-function SignalCatalog({ onBack }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    fetch("/api/signal-catalog", { cache: "no-store" })
-      .then((r) => r.ok ? r.json() : Promise.reject(new Error("failed")))
-      .then((json) => json.error ? setError(json.error) : setData(json))
-      .catch(() => setError("Couldn't load the signal catalog."));
-  }, []);
-
-  const STATUS_INFO = {
-    promoted: { label: "Live for real customers", cls: "live" },
-    testing: { label: "Testing, admin only", cls: "regime" },
-    collecting: { label: "Collecting data only, not shown to anyone", cls: "backtest" },
-    retired: { label: "Retired, fully tested and cut", cls: "backtest" },
-  };
-  const statusOrder = { promoted: 0, testing: 1, collecting: 2, retired: 3 };
-  const sorted = data?.signals ? [...data.signals].sort((a, b) => statusOrder[a.status] - statusOrder[b.status]) : [];
-  const counts = data?.signals ? {
-    promoted: data.signals.filter((s) => s.status === "promoted").length,
-    testing: data.signals.filter((s) => s.status === "testing").length,
-    collecting: data.signals.filter((s) => s.status === "collecting").length,
-  } : null;
-
-  return (
-    <div className="dash">
-      <button className="guide-back" onClick={onBack}>← Back to dashboard</button>
-
-      <div className="guide-hero">
-        <div className="guide-mark">S</div>
-        <h1>Signal catalog</h1>
-        <p>Every real signal this app has ever built, its real, current percentage, and what it's actually good at. The honest, total picture, not just what's currently promoted.</p>
-      </div>
-
-      {error && <div className="guide-section"><p style={{ color: "var(--red)" }}>{error}</p></div>}
-
-      {counts && (
-        <div className="guide-section">
-          <div className="admin-stat-row">
-            <div className="admin-stat"><div className="admin-stat-n">{data.signals.length}</div><div className="admin-stat-k">total signals built</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{counts.promoted}</div><div className="admin-stat-k">live for customers</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{counts.testing}</div><div className="admin-stat-k">testing, admin only</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{counts.collecting}</div><div className="admin-stat-k">collecting data only</div></div>
-          </div>
-        </div>
-      )}
-
-      {sorted.map((s) => (
-        <div className="guide-section" key={s.name}>
-          <div className="guide-card-top" style={{ marginBottom: 6 }}>
-            <span className="guide-card-name">{s.name}{s.brandedName && s.brandedName !== s.name ? ` (shown to customers as "${s.brandedName}")` : ""}</span>
-            <span className={`rate-src ${STATUS_INFO[s.status].cls}`}>{STATUS_INFO[s.status].label}</span>
-          </div>
-          <p style={{ marginTop: 0, marginBottom: 10, color: "var(--muted)" }}>{s.what}</p>
-
-          {s.combos.length === 0 && (
-            <div style={{ fontSize: 13, color: "var(--muted)" }}>Hasn't fired yet on any timeframe, no real data to show.</div>
-          )}
-          {s.combos.map((c) => {
-            const dirWord = c.dir === "bull" ? "buying" : "selling";
-            const regimeNote = c.verifiedVia === "regime" ? ` It's earning this purely from doing well right now, specifically when the market's ${REGIME_LABELS?.[c.regimeStage] || c.regimeStage}, not from a permanent promotion.` : "";
-            const rateWord = c.rate == null ? "hasn't fired enough yet to have a real number"
-              : c.currentlyPromoted ? `right about ${Math.round(c.rate * 100)}% of the time, currently live for real customers`
-              : `right about ${Math.round(c.rate * 100)}% of the time, real, current record, not currently shown to customers`;
-            const myConditions = (s.conditions || []).filter((c2) => c2.key.startsWith(`${s.name} · ${c.tf} · ${c.dir} ·`));
-            return (
-              <div key={`${c.tf}-${c.dir}`} style={{ marginBottom: 16, paddingBottom: 14, borderBottom: "1px solid var(--panel2)" }}>
-                <div style={{ fontSize: 14, marginBottom: 6 }}>
-                  On the <b>{c.tf}</b> chart, {dirWord}, this is {rateWord}.{regimeNote}
-                </div>
-                {myConditions.length > 0 && (
-                  <div style={{ fontSize: 13, color: "var(--muted)" }}>
-                    <div style={{ marginBottom: 4 }}>Real, honest breakdown of when it actually works:</div>
-                    {myConditions.slice(0, 4).map((c2) => (
-                      <div key={c2.key} style={{ marginBottom: 3 }}>
-                        • <span style={{ color: c2.winRate >= 0.58 ? "var(--green)" : c2.winRate < 0.45 ? "var(--red)" : "var(--muted)", fontWeight: 600 }}>
-                          {Math.round(c2.winRate * 100)}% right
-                        </span>{" "}
-                        {translateCondition(c2.key, c.dir)} ({c2.wins} right out of {c2.wins + c2.losses}).
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function translateCondition(key, dir) {
-  const conditionPart = key.split("·").pop().trim(); // e.g. "Bias:against"
-  const [condType, condVal] = conditionPart.split(":");
-  const dirWord = dir === "bull" ? "already going up" : "already going down";
-  if (condType === "Trend") {
-    if (condVal === "with") return `when it's riding a real trend that's ${dirWord}`;
-    if (condVal === "against") return `when it's fighting against a real, existing trend`;
-    return `when the market's just ranging, no real trend either way`;
-  }
-  if (condType === "Bias") {
-    if (condVal === "with") return `when the broader market is also leaning that same way`;
-    if (condVal === "against") return `when the broader market's leaning the other way`;
-    return `when there's no clear read on the broader market`;
-  }
-  return conditionPart;
-}
-
 function AdminPanel({ onBack }) {
   const [users, setUsers] = useState(null);
   const [error, setError] = useState(null);
@@ -874,7 +795,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [cancelState, setCancelState] = useState("idle"); // idle | confirming | busy | done
   const [cancelInfo, setCancelInfo] = useState(null); // { endsAt } once real, confirmed
   const [showAdminPanel, setShowAdminPanel] = useState(false);
-  const [showSignalCatalog, setShowSignalCatalog] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
   // Guide, Watch Live, and the admin panel now each get a real, actual
@@ -905,7 +825,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       setShowGuide(false);
       setShowWatchLive(false);
       setShowAdminPanel(false);
-      setShowSignalCatalog(false);
     };
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
@@ -917,7 +836,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     if (view === "guide") setShowGuide(true);
     else if (view === "watchlive") setShowWatchLive(true);
     else if (view === "admin") setShowAdminPanel(true);
-    else if (view === "signals") setShowSignalCatalog(true);
   }, []);
   const [adminStats, setAdminStats] = useState(null);
   const [adminUsers, setAdminUsers] = useState(null);
@@ -1550,7 +1468,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
-        <Guide onBack={() => closeSubView(setShowGuide)} />
+        <Guide onBack={() => closeSubView(setShowGuide)} account={account} />
       </div>
     );
   }
@@ -1577,17 +1495,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     );
   }
 
-  if (showSignalCatalog) {
-    return (
-      <div className="dash">
-        <div className="topbar">
-          <div className="brand"><span className="logo-dot" />Setpoint</div>
-        </div>
-        <SignalCatalog onBack={() => closeSubView(setShowSignalCatalog)} />
-      </div>
-    );
-  }
-
   return (
     <div className="dash">
       <div className="topbar">
@@ -1605,11 +1512,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             {account.isAdmin && (
               <button className="admin-badge" onClick={() => { openSubView(setShowAdminPanel, "admin"); setShowMobileMenu(false); }}>
                 ADMIN{adminStats?.newLast24h > 0 ? ` · ${adminStats.newLast24h} new` : ""}
-              </button>
-            )}
-            {account.isAdmin && (
-              <button className="admin-badge" onClick={() => { openSubView(setShowSignalCatalog, "signals"); setShowMobileMenu(false); }}>
-                SIGNALS
               </button>
             )}
             {!account.isAdmin && (
@@ -2047,6 +1949,49 @@ function UpgradeGate({ account, onSignOut }) {
   );
 }
 
+// Real, direct fix (Sep 24) for a recurring, confusing pattern this
+// whole session: a tab open since before a real deploy keeps running
+// the old, bundled client code, so a genuine, server-side fix can
+// look like it "didn't work" when it actually did. Fetches the real,
+// current deployment's identity once on mount as a baseline, then
+// re-checks on an interval and whenever the tab becomes visible again
+// (the moment someone's most likely to actually notice something's
+// off) — if it's changed, shows a small, honest, dismiss-free banner
+// rather than silently leaving stale code running.
+function VersionCheckBanner() {
+  const [stale, setStale] = useState(false);
+  const baseline = useRef(null);
+
+  useEffect(() => {
+    const check = async () => {
+      try {
+        const res = await fetch("/api/version", { cache: "no-store" });
+        const { id } = await res.json();
+        if (baseline.current === null) {
+          baseline.current = id;
+        } else if (id !== baseline.current) {
+          setStale(true);
+        }
+      } catch {
+        // a failed check here should never itself disrupt anything
+      }
+    };
+    check();
+    const interval = setInterval(check, 5 * 60 * 1000); // every real 5 minutes
+    const onVisible = () => { if (document.visibilityState === "visible") check(); };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => { clearInterval(interval); document.removeEventListener("visibilitychange", onVisible); };
+  }, []);
+
+  if (!stale) return null;
+  return (
+    <div className="version-banner">
+      <span>A new version is ready.</span>
+      <button onClick={() => window.location.reload()}>Refresh</button>
+    </div>
+  );
+}
+
 export default function App() {
   const { data: session, status, update } = useSession(); // "loading" | "authenticated" | "unauthenticated"
   const [view, setView] = useState("landing"); // landing | auth
@@ -2131,6 +2076,7 @@ export default function App() {
     return (
       <div className="app">
         <style>{CSS}</style>
+        <VersionCheckBanner />
         <div className="boot-screen"><span className="logo-dot" />Setpoint</div>
       </div>
     );
@@ -2139,6 +2085,7 @@ export default function App() {
   return (
     <div className="app">
       <style>{CSS}</style>
+      <VersionCheckBanner />
       {!account && view === "landing" && (
         <Landing
           onPickPlan={(p) => { setAuthMode("signup"); setPlan(p); setView("auth"); }}
@@ -2294,6 +2241,8 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .auth-err{background:var(--red-dim);border:1px solid rgba(255,92,108,.3);color:var(--red-soft);font-size:12.5px;padding:10px 13px;border-radius:10px;margin-top:14px;line-height:1.5}
 button:disabled{opacity:.6;cursor:not-allowed}
 .boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;color:var(--text)}
+.version-banner{position:sticky;top:env(safe-area-inset-top,0px);z-index:200;display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 14px;background:var(--amber);color:#1A1205;font-size:12.5px;font-weight:700}
+.version-banner button{background:#1A1205;color:var(--amber);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
 .auth-card .solid{margin-top:20px}
 .auth-alt{text-align:center;color:var(--dim);font-size:12.5px;margin-top:16px}
 
