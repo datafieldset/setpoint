@@ -223,10 +223,15 @@ export async function GET(req) {
           // timeframes, actually got here. This keeps the push
           // decision itself as current as the moment it's actually
           // made, not a snapshot from however long ago this run
-          // started.
+          // started. Real, direct note (Sep 25): getLiveVerifiedGate
+          // now caches its result for a real, moderate stretch by
+          // default, to cut real database load — this one, specific
+          // call deliberately passes 0 to bypass that cache, since a
+          // push decision is exactly the one real moment genuine
+          // freshness matters more than saving a query.
           let freshGate = liveGate, freshRegimeGate = regimeGate;
           try {
-            const fresh = await getLiveVerifiedGate();
+            const fresh = await getLiveVerifiedGate(0);
             freshGate = fresh.gate;
             freshRegimeGate = fresh.regimeGate;
           } catch {
