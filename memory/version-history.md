@@ -14,5 +14,9 @@ v18.0-18.9: Regime-only verification extended so a combo can be "proven" with ze
 
 v19.0-19.2: Found and fixed the same regime-blindness bug (public-stats and signal-catalog both silently ignored regime-only verified signals entirely) — this was the deeper root cause behind "the dashboard shows real wins the public page doesn't reflect." Both names (internal + customer-facing brand) shown together in signal-catalog to prevent confusion. Cron push decision fixed to re-fetch fresh live/regime gate data right before sending, instead of reusing a snapshot from the start of a potentially long-running check.
 
+v19.7: Whale Flow fully retired (both directions genuinely weak on deepened, cross-coin evidence) — see signal-roster.md.
+
+v19.9: Neon compute-hour quota fully exhausted (real, live 402s from the database) — root cause confirmed directly from Neon's own usage numbers: two separate, overlapping cron workflows kept the database almost never idle. Combined into one workflow, trigger interval stretched from 2h to 5h to match real run duration, and the Sep 25 push-decision re-check fixed to use a short, real cache (90s) instead of fully bypassing it. See infrastructure.md's "Neon compute-hour incident" for the full, real numbers and reasoning.
+
 ## Numbering note
 Version numbers are informal, bumped per real, deployed change, tracked in git commit messages (`vX.Y`) — not tied to a formal release process. Check `git log --oneline` for the authoritative, current sequence.

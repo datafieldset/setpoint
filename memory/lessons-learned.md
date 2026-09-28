@@ -45,3 +45,28 @@ memory versus a 5-second script check (`memory/check-signal-state.mjs`).
 What memory should hold is what a script can't tell you: the real,
 dated reasoning behind a decision, which stays true forever once
 written, unlike a current-state snapshot.
+
+## A fix for one real problem can quietly create a different, real problem — check the actual numbers, don't guess from code alone
+The overlapping-runs cron design (Sep 6) was a genuinely correct fix
+for a real, confirmed problem: GitHub Actions' scheduler was
+unreliable at high frequency. But that same design, hitting the
+database every 5 minutes via multiple, redundant, overlapping runs,
+directly, meaningfully contributed to Neon's free-tier compute-hour
+quota getting exhausted a few weeks later (Sep 28, see
+infrastructure.md's "Neon compute-hour incident" for the full,
+real numbers). Two real, separate, correct decisions, made at
+different times for different reasons, compounded into a real,
+serious problem neither one alone would have caused.
+
+The real, direct lesson: when investigating a resource or cost
+problem, check the actual, real usage numbers from the source
+(Neon's own billing page, in this case) before proposing a fix —
+reasoning from the code alone gave a real, plausible, but unconfirmed
+theory; the real numbers (110 CU-hours against genuinely tiny storage
+and network transfer) directly confirmed which theory was actually
+right and roughly by how much, rather than fixing based on a guess.
+This generalizes past this one incident: a change that's honestly
+correct for the problem it was built to solve can still be a real,
+direct contributor to a different problem later — worth periodically
+asking "what did this fix actually cost us elsewhere," not just
+"did this fix work."
