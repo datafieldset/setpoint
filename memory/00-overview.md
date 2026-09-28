@@ -17,7 +17,7 @@ Watches BTC/XLM/XRP/SOL (user-configurable watchlist) across six timeframes (1m,
 - `product-copy.md` — real, concrete copy examples and standing copy rules
 - `design-system.md` — real, exact color tokens, typography, recurring UI patterns
 - `architecture.md` — file structure, core patterns (computeSignals, provenContext, KILLED_COMBOS, regime verification)
-- `signal-roster.md` — current, live status of all 15 signals — READ THIS FIRST for any signal question, it's ground truth, more current than this file
+- `signal-roster.md` — the real, dated reasoning behind every signal promotion, kill, and retirement. Doesn't assert a current count or list — run `node memory/check-signal-state.mjs` for that, straight from the live code.
 - `infrastructure.md` — database, Stripe, auth, cron jobs, env
 - `version-history.md` — condensed version log
 - `lessons-learned.md` — the hard-won, recurring mistakes — read before making any change that smells familiar
@@ -25,7 +25,7 @@ Watches BTC/XLM/XRP/SOL (user-configurable watchlist) across six timeframes (1m,
 ## Working pattern every session
 1. Bootstrap: re-clone the repo fresh into `/home/claude/gh-current/repo` (a prior sandbox clone rarely survives to a new session).
 2. Read every file in `/memory/` before doing anything else.
-3. For any signal-status question, verify directly against the live, deployed code/API rather than trusting memory of a past conversation — signal promotions and kills change often and memory files can lag.
+3. For any signal-status question, run `node memory/check-signal-state.mjs` and/or check live against the deployed API rather than trusting memory of a past conversation — signal promotions and kills change often and memory files can lag (this happened once already — see CLAUDE.md's standing rule).
 4. Discuss and propose before building — Na's explicit, standing preference. Only proceed straight to building when he's given a clear, direct go-ahead (or the request itself is an explicit, detailed build spec).
 5. Validate every change locally (`node --check`, JSX parse check) before pushing. Push directly to `main` (no PR flow in use). Bump the version string in commit messages (vX.Y). Wait ~90s after push, then curl the homepage to confirm 200 and no client-side exception before reporting back.
-6. Update `/memory/` after any major decision — new promotion, new kill, new architectural pattern, new lesson learned.
+6. Update `/memory/` after any major decision — new promotion, new kill, new architectural pattern, new lesson learned. Any commit touching `SIGNAL_RATES`/`KILLED_COMBOS`/`ALL_SIGNALS`/`TESTING_SIGNALS` updates `signal-roster.md` in that same commit, not a later one.

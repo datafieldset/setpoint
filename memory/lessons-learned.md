@@ -26,3 +26,22 @@ Recurring, repeated feedback from Na: condition breakdowns like `93% — 4h · b
 
 ## Timing/investigation discipline
 When investigating a reported bug, verify directly against live, deployed data and code before proposing or building a fix — several "bugs" turned out to be honest, correct behavior once checked directly (e.g. a trade correctly excluded because it fired in a currently-weak regime, not a bug). When a real root cause can't be confidently pinned down (the ~40min push-notification timing gap), say so plainly rather than presenting a partial, plausible theory as solved.
+
+## Memory itself can drift the exact same way code and copy do
+Whale Flow was fully retired in v19.7 (both directions, real, deepened
+evidence behind it), but the memory update never happened, in that
+commit or any after it — `signal-roster.md` sat wrong, still claiming
+14 signals with no mention of the removal, for two real versions,
+until Na caught it directly. Same root cause as the logging/pushing
+bug above: two things that should share a fate were allowed to happen
+as separate, un-coupled steps, and the second one silently didn't.
+The fix follows the same shape too: don't treat "update memory" as a
+follow-up, make it part of the same, atomic commit as the change
+itself (see CLAUDE.md's standing rule). Separately, stop hand-copying
+facts into memory that are cheap to check directly and expensive to
+keep in sync by hand — a specific count or name list is exactly the
+kind of thing that goes stale fastest and matters least to get from
+memory versus a 5-second script check (`memory/check-signal-state.mjs`).
+What memory should hold is what a script can't tell you: the real,
+dated reasoning behind a decision, which stays true forever once
+written, unlike a current-state snapshot.
