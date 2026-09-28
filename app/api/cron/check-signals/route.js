@@ -225,13 +225,23 @@ export async function GET(req) {
           // made, not a snapshot from however long ago this run
           // started. Real, direct note (Sep 25): getLiveVerifiedGate
           // now caches its result for a real, moderate stretch by
-          // default, to cut real database load — this one, specific
-          // call deliberately passes 0 to bypass that cache, since a
-          // push decision is exactly the one real moment genuine
-          // freshness matters more than saving a query.
+          // default, to cut real database load. Real, second, direct
+          // finding (Sep 28): this call originally bypassed that
+          // cache entirely (passed 0), which directly, meaningfully
+          // contributed to Neon's free-tier compute-hour quota
+          // getting exhausted, confirmed from the account's own usage
+          // numbers — a full, uncached scan on every single push
+          // decision, potentially many times within one long-running
+          // cron invocation, adds up fast. A short, real cache (90
+          // real seconds) keeps this close enough to genuinely fresh
+          // for the real problem it was built to solve (a push
+          // reflecting a regime status that's already shifted by the
+          // time it's seen), without forcing a full database scan on
+          // every single push within the same run.
+          const PUSH_CHECK_CACHE_MS = 90 * 1000;
           let freshGate = liveGate, freshRegimeGate = regimeGate;
           try {
-            const fresh = await getLiveVerifiedGate(0);
+            const fresh = await getLiveVerifiedGate(PUSH_CHECK_CACHE_MS);
             freshGate = fresh.gate;
             freshRegimeGate = fresh.regimeGate;
           } catch {
