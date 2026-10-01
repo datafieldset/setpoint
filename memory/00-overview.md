@@ -4,13 +4,20 @@ Crypto signal dashboard. Next.js 14, deployed on Vercel. Domain: setpointalerts.
 Live repo: github.com/datafieldset/setpoint (public).
 Owner: Na, NOKANET LLC, Honolulu.
 
-**Database status check (Sep 28): the Neon database hit its free-tier
-compute-hour quota and went fully down (real 402s on every DB-backed
-route) — check infrastructure.md's "Neon compute-hour incident"
-before assuming the live API works normally, and re-check whether
-this has recurred, since the root cause (crons keeping the database
-almost never idle) was only just fixed and hasn't been observed
-through a full billing cycle yet.**
+**Database status (Sep 28): the Neon database hit its free-tier
+compute-hour quota, went fully down (real 402s on every DB-backed
+route), then recovered the same day, confirmed directly across
+multiple live endpoints. Na hadn't upgraded, so the real, likely
+explanation is the monthly billing cycle resets on whatever day the
+Neon project was originally created, not the 1st of the calendar
+month — "usage since Sep 1" on the billing page was just the current
+cycle's start as displayed, not proof the next reset falls on Oct 1.
+Worth confirming the real, exact cycle dates directly in Neon's
+billing page next time this comes up, rather than assume. See
+infrastructure.md's "Neon compute-hour incident" for the full,
+real root cause and fixes — re-check whether this has recurred, since
+the fix (crons keeping the database almost never idle) hasn't been
+observed through a full billing cycle yet.**
 
 ## What it does
 Watches BTC/XLM/XRP/SOL (user-configurable watchlist) across six timeframes (1m, 5m, 15m, 30m, 1h, 4h) for ~15 distinct technical signal families. Each signal gets a real, honest win-rate track record before it's ever shown to a paying customer as "verified." The whole product's pitch is: no fake backtests, every trade locked in with real entry/stop/target, checkable against your own chart.

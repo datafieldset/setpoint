@@ -78,6 +78,18 @@ quality:**
 3. Fixed the uncached push-decision re-check to use a short, real
    cache (90s) instead of a full bypass.
 
+**Resolution (same day, Sep 28):** database recovered on its own,
+confirmed directly across multiple live endpoints — Na confirmed he
+hadn't upgraded, so this wasn't paid access kicking in. Real,
+honest correction: the assumption that the monthly quota resets
+Oct 1 (calendar month start) was never actually confirmed, just
+inferred from the billing page showing "usage since Sep 1." The
+real, more likely explanation is the billing cycle resets on
+whatever day the Neon project was originally created, which would
+put the real reset around Sep 28, not Oct 1 — worth confirming the
+exact, real cycle dates directly in Neon's billing page next time
+this comes up, rather than assume the calendar month.
+
 **Immediate options considered, for the record, if this happens
 again before a permanent fix lands:** wait for the monthly reset
 (free, but real downtime the whole time); upgrade to Neon's Launch
