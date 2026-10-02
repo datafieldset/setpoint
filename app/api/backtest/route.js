@@ -46,7 +46,7 @@
 //   sample size is naturally smaller on slower timeframes (1h ≈ 12 days of
 //   history, 5m ≈ 25 hours). Read low-sample buckets accordingly.
 
-import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk, ALL_SIGNALS } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
 import { logNewEvents, resolveCheckpoints, aggregateWhaleDirection } from "../whale-track/route.js";
 import { fetchCoinbaseCandles, fetchMinuteCandles, resolveFromMinuteCandles, walkForwardOutcome } from "../../../lib/resolve.js";
@@ -449,13 +449,22 @@ async function getLiveScoreboard() {
 
     const totalTrackedRows = await sql`SELECT COUNT(*)::int AS n FROM signal_track`;
     const totalOpenRows = await sql`SELECT COUNT(*)::int AS n FROM signal_track WHERE outcome = 'open'`;
+    // Real, direct fix (Oct 2): this used to scan every real row in
+    // signal_track with no filter at all, meaning a fully-retired
+    // signal's old, frozen history (Whale Flow, EMA cross — both
+    // removed from ALL_SIGNALS, neither can ever log a new, real
+    // trade again) kept showing up here forever, confusingly looking
+    // active since the rolling window was still full. Filtered by
+    // ALL_SIGNALS now, same, direct fix already applied to
+    // public-stats.
+    const activeLabels = ALL_SIGNALS.map((s) => s.name);
     const resolvedRows = await sql`
       SELECT label, tf, dir, outcome
       FROM (
         SELECT label, tf, dir, outcome,
                ROW_NUMBER() OVER (PARTITION BY label, tf, dir ORDER BY resolved_at DESC) AS rn
         FROM signal_track
-        WHERE outcome IN ('win', 'loss')
+        WHERE outcome IN ('win', 'loss') AND label = ANY(${activeLabels})
       ) t
       WHERE rn <= ${ROLLING_N}
     `;

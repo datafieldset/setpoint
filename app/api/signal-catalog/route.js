@@ -7,17 +7,22 @@
 // chat history and code comments, nowhere the person running this app
 // could actually look.
 //
-// Combines two real, existing sources rather than computing anything
-// fresh and slow: getLiveVerifiedGate() for each signal's real,
-// current percentage (fast, already used everywhere else), and the
-// most recently saved /api/backtest run for the real, condition-
-// specific breakdown (trend, bias) — that route already computes and
-// saves this on every real run, so this just reads the latest one
-// rather than re-running a genuinely slow, full simulation on every
-// page load.
+// Real, direct rebuild (Oct 2): the original version only ever showed
+// a combo once it had enough real data to clear a formal threshold —
+// 5 trades for an overall live read, 10 for a regime-specific one.
+// Anything thinner was completely invisible, even to admin, even
+// though the real, honest data existed. The real problem this caused:
+// genuinely working signals sat unnoticed because nobody could see
+// them building a real track record in real time, only after they'd
+// already cleared a bar that itself only gets checked when someone
+// happens to think to look. Now uses confidenceTier() for every real
+// combo, so anything with even a single real, resolved trade shows up,
+// honestly labeled established / emerging / early read / no data —
+// never hidden, never dressed up as more than the real sample
+// actually supports.
 import { auth } from "../../../auth.js";
 import { neon } from "@neondatabase/serverless";
-import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, getLiveVerifiedGate } from "../../../lib/signals.js";
+import { ALL_SIGNALS, TESTING_SIGNALS, getLiveVerifiedGate, getFullSignalGate, confidenceTier, CONFIDENCE_TIERS } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
 import { brandName } from "../../../lib/brand.js";
 
@@ -32,12 +37,14 @@ export async function GET() {
 
   try {
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const [totalsRows, latestRunRow, liveGateResult] = await Promise.all([
+    const [totalsRows, latestRunRow, liveGateResult, fullGateResult] = await Promise.all([
       sql`SELECT label, COUNT(*)::int AS n FROM signal_track GROUP BY label`,
       sql`SELECT MAX(run_at) AS run_at FROM backtest_results`,
       getLiveVerifiedGate(),
+      getFullSignalGate(),
     ]);
     const { gate: liveGate, regimeGate } = liveGateResult;
+    const { gate: fullGate, regimeGate: fullRegimeGate } = fullGateResult;
     const latestRunAt = latestRunRow[0]?.run_at || null;
     const bucketRows = latestRunAt
       ? await sql`SELECT bucket, fired, wins, losses, win_rate FROM backtest_results WHERE run_at = ${latestRunAt}`
@@ -48,43 +55,14 @@ export async function GET() {
     const dirs = ["bull", "bear"];
 
     const signals = ALL_SIGNALS.map(({ name, what }) => {
-      // Every real (tf, dir) combination this signal has ever fired,
-      // with its real, current status — static table, live gate,
-      // regime gate, all three checked the same, honest way real
-      // customers see it.
+      // Every real (tf, dir) combination, always, the moment any real
+      // data exists at all — the real, honest point of this rebuild.
       const combos = [];
       for (const tf of tfLabels) {
         for (const dir of dirs) {
-          const key = `${name}|${tf}|${dir}`;
-          const staticEntry = SIGNAL_RATES[key];
-          const gate = liveGate[key];
-          // Real, direct check (Sep 21): a combo with no static entry
-          // and no overall live data can still be genuinely, currently
-          // verified purely through the regime-only path — check every
-          // real regime this combo has a live record for, not just the
-          // blended, overall one, the same honest definition the
-          // dashboard and Watch Live both already use.
-          const regimeEntries = Object.entries(regimeGate).filter(([k]) => k.startsWith(`${key}|`));
-          const bestRegime = regimeEntries
-            .map(([k, v]) => ({ regime: k.slice(key.length + 1), rate: v.rate, n: v.n }))
-            .filter((r) => r.n >= 10 && r.rate >= PROVEN_THRESHOLD)
-            .sort((a, b) => b.rate - a.rate)[0] || null;
-          const hasAnyData = !!staticEntry || !!gate || regimeEntries.length > 0;
-          if (!hasAnyData) continue;
-          const staticProven = !!staticEntry && staticEntry.rate != null && staticEntry.rate >= PROVEN_THRESHOLD;
-          const rate = gate && gate.n >= 5 ? gate.rate : (staticEntry?.rate ?? null);
-          const isLive = !!(gate && gate.n >= 5);
-          const currentlyPromoted = (staticProven && rate != null && rate >= PROVEN_THRESHOLD) || !!bestRegime;
-          combos.push({
-            tf, dir,
-            rate: currentlyPromoted && !staticProven && bestRegime ? bestRegime.rate : rate,
-            n: gate?.n ?? null,
-            isLive,
-            staticRate: staticEntry?.rate ?? null,
-            currentlyPromoted,
-            verifiedVia: staticProven && rate != null && rate >= PROVEN_THRESHOLD ? "overall" : bestRegime ? "regime" : null,
-            regimeStage: bestRegime?.regime ?? null,
-          });
+          const ct = confidenceTier(name, tf, dir, liveGate, null, regimeGate, fullGate, fullRegimeGate);
+          if (ct.tier === "none") continue;
+          combos.push({ tf, dir, ...ct });
         }
       }
       // The real, honest, condition-specific breakdown, straight from
@@ -98,18 +76,19 @@ export async function GET() {
         .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1));
 
       const isTesting = TESTING_SIGNALS.includes(name);
-      const anyPromoted = combos.some((c) => c.currentlyPromoted);
-      const status = anyPromoted ? "promoted" : isTesting ? "testing" : "collecting";
+      const bestTierOrder = combos.reduce((max, c) => Math.max(max, CONFIDENCE_TIERS[c.tier].order), 0);
+      const bestTier = Object.entries(CONFIDENCE_TIERS).find(([, v]) => v.order === bestTierOrder)?.[0] || "none";
 
       return {
-        name, brandedName: brandName(name), what, status,
+        name, brandedName: brandName(name), what,
+        isTesting, bestTier,
         totalFired: totalsByLabel[name] || 0,
-        combos: combos.sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1)),
+        combos: combos.sort((a, b) => CONFIDENCE_TIERS[b.tier].order - CONFIDENCE_TIERS[a.tier].order || (b.rate ?? -1) - (a.rate ?? -1)),
         conditions,
       };
     });
 
-    return Response.json({ signals, latestBacktestRunAt: latestRunAt }, { headers: { "cache-control": "no-store" } });
+    return Response.json({ signals, latestBacktestRunAt: latestRunAt, tiers: CONFIDENCE_TIERS }, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return Response.json({ error: String(e.message || e).slice(0, 200) }, { status: 500, headers: { "cache-control": "no-store" } });
   }

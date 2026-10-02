@@ -490,6 +490,8 @@ const GUIDE_DESC = {
 
 function Guide({ onBack, account, liveGate, regimeGate }) {
   const [catalogSummary, setCatalogSummary] = useState(null);
+  const [catalogFull, setCatalogFull] = useState(null);
+  const [showFullFeed, setShowFullFeed] = useState(false);
   useEffect(() => {
     if (!account?.isAdmin) return;
     fetch("/api/signal-catalog", { cache: "no-store" })
@@ -497,11 +499,13 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
       .then((json) => {
         if (!json?.signals) return;
         const counts = {
-          promoted: json.signals.filter((s) => s.status === "promoted").length,
-          testing: json.signals.filter((s) => s.status === "testing").length,
-          collecting: json.signals.filter((s) => s.status === "collecting").length,
+          established: json.signals.filter((s) => s.bestTier === "established").length,
+          emerging: json.signals.filter((s) => s.bestTier === "emerging").length,
+          early: json.signals.filter((s) => s.bestTier === "early").length,
+          none: json.signals.filter((s) => s.bestTier === "none").length,
         };
         setCatalogSummary({ total: json.signals.length, ...counts });
+        setCatalogFull(json);
       })
       .catch(() => {});
   }, [account?.isAdmin]);
@@ -559,10 +563,37 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
           <p className="guide-lede">Every real signal Setpoint currently runs, and where each one honestly stands right now.</p>
           <div className="admin-stat-row">
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">total signals built</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.promoted}</div><div className="admin-stat-k">live for customers</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.testing}</div><div className="admin-stat-k">testing, admin only</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.collecting}</div><div className="admin-stat-k">collecting data only</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.established}</div><div className="admin-stat-k">established — live for customers</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.emerging}</div><div className="admin-stat-k">emerging — real, under the bar</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.early}</div><div className="admin-stat-k">early read — real, very thin</div></div>
           </div>
+          <button className="guide-admin-link" onClick={() => setShowFullFeed((v) => !v)}>
+            {showFullFeed ? "Hide the full, real feed ↑" : "See every real signal, every timeframe, right now →"}
+          </button>
+          {showFullFeed && catalogFull && (
+            <div className="signal-feed">
+              <p className="guide-lede" style={{ marginTop: 10 }}>Every real signal, every real combo with any real data at all, best tier first. Never shown to a real customer, never used to decide what a push notification sends — same, strict bar as always there. This is purely for watching.</p>
+              {catalogFull.signals
+                .filter((s) => s.bestTier !== "none")
+                .sort((a, b) => catalogFull.tiers[b.bestTier].order - catalogFull.tiers[a.bestTier].order)
+                .map((s) => (
+                  <div key={s.name} className="signal-feed-card">
+                    <div className="signal-feed-head">
+                      <span className="guide-card-name">{s.name}{s.brandedName && s.brandedName !== s.name ? ` ("${s.brandedName}")` : ""}</span>
+                      {s.isTesting && <span className="rate-src regime">testing list</span>}
+                    </div>
+                    {s.combos.map((c) => (
+                      <div key={`${c.tf}-${c.dir}`} className="signal-feed-row">
+                        <span className={`rate-src ${c.tier === "established" ? "live" : c.tier === "emerging" ? "regime" : "backtest"}`}>{catalogFull.tiers[c.tier].label}</span>
+                        <span className="signal-feed-combo">{c.dir === "bull" ? "Long" : "Short"} · {c.tf}</span>
+                        <span className="signal-feed-rate">{c.rate != null ? `${Math.round(c.rate * 100)}%` : "—"}</span>
+                        <span className="signal-feed-n">{c.n != null ? `${c.n} real trades` : "static only"}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+            </div>
+          )}
         </div>
       )}
 
@@ -2602,6 +2633,15 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .guide-eyebrow{color:var(--green-soft);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
 .guide-section h2{font-size:18px;margin:0 0 8px}
 .guide-lede{color:var(--muted);font-size:13.5px;margin-bottom:18px;line-height:1.5}
+.guide-admin-link{background:none;border:none;color:var(--green-soft);font-size:13px;font-weight:600;cursor:pointer;padding:8px 0;text-align:left;font-family:inherit}
+.signal-feed{margin-top:14px}
+.signal-feed-card{background:var(--panel2);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.signal-feed-head{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+.signal-feed-row{display:flex;align-items:center;gap:10px;font-size:12.5px;padding:4px 0;border-top:1px solid var(--panel3,rgba(255,255,255,.05))}
+.signal-feed-row:first-of-type{border-top:none}
+.signal-feed-combo{color:var(--muted);flex:1}
+.signal-feed-rate{font-weight:700;min-width:36px;text-align:right}
+.signal-feed-n{color:var(--dim);font-size:11px}
 .guide-card{background:var(--panel2);border:1px solid var(--border);border-left:3px solid var(--green);border-radius:12px;padding:14px 16px;margin-bottom:10px}
 .guide-card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:6px}
 .guide-card-name{font-weight:700;font-size:14px}
