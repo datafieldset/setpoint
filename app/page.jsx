@@ -485,7 +485,6 @@ const GUIDE_DESC = {
   "Grind Up": "A sustained, steady climb, most of the recent bars moving the same direction. A real move, not a single dramatic bar.",
   "Grind Down": "A sustained, steady decline, most of the recent bars moving the same direction. A real move, not a single dramatic bar.",
   "Momentum": "Price moved a large amount in a single bar, a burst of one-sided pressure.",
-  "Whale Flow": "A real, unusually large trade just happened on a major exchange, the kind of size that can genuinely move a market on its own.",
 };
 
 function Guide({ onBack, account, liveGate, regimeGate }) {
@@ -560,7 +559,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-section">
           <div className="guide-eyebrow">Admin only</div>
           <h2>The real, total signal count</h2>
-          <p className="guide-lede">Every real signal Setpoint currently runs, and where each one honestly stands right now.</p>
+          <p className="guide-lede">Every real signal Setpoint currently runs, and where each one honestly stands right now. Three real tiers, not a binary promoted-or-invisible split: <b>established</b> is the same, strict bar real customers see. <b>Emerging</b> is a real, current edge, genuine but under that bar, admin-only. <b>Early read</b> is any real data at all, even a single trade, always honestly labeled as thin. A separate, automated check runs every 6 hours and sends a real, direct push the moment something newly qualifies for established or emerging — it never promotes anything on its own, a real promotion still means a real, deliberate decision, this just means that decision no longer waits on someone noticing by accident.</p>
           <div className="admin-stat-row">
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">total signals built</div></div>
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.established}</div><div className="admin-stat-k">established — live for customers</div></div>
