@@ -71,7 +71,24 @@ function withTimeout(promise, ms, fallback) {
 const BIAS_WINDOW = 30;
 const BIAS_MIN_SAMPLE = 5;
 
+// Real, direct fix (Oct 2), found during the caching audit: this ran a
+// real, direct, 400-row database query with zero caching at all, on
+// every single call — and this is the most frequently-hit route in
+// the entire app, polled every 60 real seconds by every active user's
+// dashboard, plus the cron on top of that. A real, genuine, 400-trade
+// rolling read like this is inherently slow-moving — it can't shift
+// meaningfully in the real, few minutes between two consecutive
+// checks — so there was never a real reason for every single caller
+// to re-run the full query. Same, proven, in-memory cache pattern
+// already used for getLiveVerifiedGate, with a real, moderate TTL.
+const SIGNAL_BIAS_CACHE_MS = 10 * 60 * 1000; // 10 real minutes
+let signalBiasCache = null; // { data, at }
+
 async function getSignalBias() {
+  const now = Date.now();
+  if (signalBiasCache && now - signalBiasCache.at < SIGNAL_BIAS_CACHE_MS) {
+    return signalBiasCache.data;
+  }
   const conn = process.env.DATABASE_URL;
   if (!conn) return null;
   try {
@@ -87,7 +104,9 @@ async function getSignalBias() {
     const bull = rows.filter((r) => r.dir === "bull").slice(0, BIAS_WINDOW);
     const bear = rows.filter((r) => r.dir === "bear").slice(0, BIAS_WINDOW);
     if (bull.length < BIAS_MIN_SAMPLE || bear.length < BIAS_MIN_SAMPLE) {
-      return { score: 50, label: "Not enough data yet", bullN: bull.length, bearN: bear.length };
+      const thin = { score: 50, label: "Not enough data yet", bullN: bull.length, bearN: bear.length };
+      signalBiasCache = { data: thin, at: now };
+      return thin;
     }
     const bullRate = bull.filter((r) => r.outcome === "win").length / bull.length;
     const bearRate = bear.filter((r) => r.outcome === "win").length / bear.length;
@@ -105,7 +124,9 @@ async function getSignalBias() {
     const label = bothWeak
       ? (score >= 55 ? "Both weak, longs relatively better" : score <= 45 ? "Both weak, shorts relatively better" : "Both sides struggling")
       : score >= 60 ? "Longs winning more" : score >= 55 ? "Leaning long" : score <= 40 ? "Shorts winning more" : score <= 45 ? "Leaning short" : "Roughly even";
-    return { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length, bothWeak };
+    const result = { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length, bothWeak };
+    signalBiasCache = { data: result, at: now };
+    return result;
   } catch {
     return null;
   }

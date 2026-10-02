@@ -24,3 +24,15 @@ from the repo root — it pulls ground truth straight from the live
 code. The roster file deliberately doesn't restate these as fact
 anymore; it holds the real, dated reasoning and history instead, which
 doesn't go stale the way a copied list does.
+
+## Standing rule: update the real, customer-facing Guide page whenever something new ships
+
+Direct instruction from Na (Oct 2). Whenever a real, shipped change
+touches what Setpoint actually does, a new signal, a changed
+promotion, a new feature, a retired combo, check whether `Guide`
+(the in-app component, admin-only sections included) still describes
+it accurately, and update it in the same push if not. The Guide page
+is the one place meant to honestly explain the real, current product
+to whoever's looking at it, admin or customer — it drifting out of
+sync with reality is the same, real class of problem `signal-roster.md`
+already learned this lesson from once.

@@ -33,8 +33,20 @@
 // closure either way, win or loss, the next time the dashboard loads.
 import { provenContext, getLiveVerifiedGate } from "../../../lib/signals.js";
 import { checkKey } from "../../../lib/access.js";
+import { withCache } from "../../../lib/cache.js";
 
 export const dynamic = "force-dynamic";
+
+// Real, direct fix (Oct 2, caching overhaul): this route used to run a
+// fully fresh, uncached database query on every single call, despite
+// being polled every 60 real seconds by every real, active customer's
+// browser — the exact kind of real, redundant load the Neon incident
+// came from. The real data here is identical for every customer
+// asking (not personalized), so a short, shared cache directly cuts
+// real database hits across every simultaneously-active customer,
+// while staying well inside the client's own 60-second refresh
+// cadence, so freshness isn't meaningfully affected.
+const CACHE_MS = 30 * 1000;
 
 export async function GET(req) {
   const noCache = { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" };
@@ -46,25 +58,29 @@ export async function GET(req) {
     return Response.json({ positions: [], recentlyResolved: [] }, { headers: noCache });
   }
   try {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const [rows, resolvedRows, liveGateResult] = await Promise.all([
-      sql`
-        SELECT coin, tf, label, dir, fired_at, entry, stop, target, regime
-        FROM signal_track
-        WHERE outcome = 'open'
-        ORDER BY fired_at DESC
-        LIMIT 100
-      `,
-      sql`
-        SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime
-        FROM signal_track
-        WHERE outcome IN ('win', 'loss')
-        ORDER BY resolved_at DESC
-        LIMIT 30
-      `,
-      getLiveVerifiedGate(),
-    ]);
+    const result = await withCache("open-positions", CACHE_MS, async () => {
+      const { neon } = await import("@neondatabase/serverless");
+      const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+      const [rows, resolvedRows, liveGateResult] = await Promise.all([
+        sql`
+          SELECT coin, tf, label, dir, fired_at, entry, stop, target, regime
+          FROM signal_track
+          WHERE outcome = 'open'
+          ORDER BY fired_at DESC
+          LIMIT 100
+        `,
+        sql`
+          SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime
+          FROM signal_track
+          WHERE outcome IN ('win', 'loss')
+          ORDER BY resolved_at DESC
+          LIMIT 30
+        `,
+        getLiveVerifiedGate(),
+      ]);
+      return { rows, resolvedRows, liveGateResult };
+    });
+    const { rows, resolvedRows, liveGateResult } = result;
     const { gate: liveGate, regimeGate } = liveGateResult;
     const positions = rows.map((r) => {
       const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);

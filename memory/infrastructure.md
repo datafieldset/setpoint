@@ -37,6 +37,27 @@ reliable on its own, and the whole point is avoiding adding to the
 kind of database load that caused the Neon incident below. Calls
 `/api/cron/check-promotions`.
 
+## Caching audit (Oct 2) — the real, direct fix for "minimize database load without losing quality"
+Real, direct, methodical audit of every route touching the database,
+same discipline as the Neon incident itself: check the actual code,
+don't guess. Most routes checked out genuinely fine already — the
+crons (`getLiveVerifiedGate`, already cached), `open-positions` and
+`close-alert` (small, bounded, genuinely need to be real-time, caching
+them would mean showing stale "still open" state), `resolved-
+positions` (confirmed never called from the client at all, purely a
+manual lookup tool), `track-visit` (a single, cheap insert).
+
+**The one, real, substantial finding: `getSignalBias()` inside
+`app/api/market/route.js` ran a direct, completely uncached, 400-row
+database query on every single call, and this is the single most
+frequently-hit route in the entire app — polled every real 60 seconds
+by every active user's dashboard, on top of the cron hitting it too.**
+A 400-trade rolling read is inherently slow-moving, it can't shift
+meaningfully in the few, real minutes between two consecutive checks,
+so there was never a real reason for this. Fixed with the same,
+proven, in-memory cache pattern already used for
+`getLiveVerifiedGate` (10-minute TTL).
+
 ## Tiered confidence system (Oct 2) — the real fix for "only gets
 ## noticed when someone happens to look in chat"
 Nearly every bug found this session traced back to the same root

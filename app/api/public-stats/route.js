@@ -41,8 +41,20 @@
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
 import { ALL_SIGNALS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
+import { withCache } from "../../../lib/cache.js";
 
 export const dynamic = "force-dynamic";
+
+// Real, direct fix (Oct 2, caching overhaul): this is genuinely
+// public, no login, no rate limit at all, which means any real
+// visitor, search crawler included, triggers a fresh, uncached
+// database query on every single hit. This page doesn't need
+// live-trading-level freshness, it's an honest, recent snapshot of a
+// real track record, not a live tool — a real, several-minute cache
+// is genuinely fine here, and cuts database load from exactly the
+// kind of unpredictable, un-rate-limited traffic this route is most
+// exposed to.
+const CACHE_MS = 3 * 60 * 1000;
 
 export async function GET() {
   const conn = process.env.DATABASE_URL;
@@ -50,19 +62,27 @@ export async function GET() {
     return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
   }
   try {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const { gate: liveGate, regimeGate } = await getLiveVerifiedGate();
+    const data = await withCache("public-stats", CACHE_MS, () => computeStats(conn));
+    return Response.json(data, { headers: { "cache-control": "no-store" } });
+  } catch (e) {
+    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
+  }
+}
 
-    const labels = ALL_SIGNALS.map((s) => s.name);
-    const rows = await sql`
-      SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime
-      FROM signal_track
-      WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
-      ORDER BY resolved_at DESC
-    `;
+async function computeStats(conn) {
+  const { neon } = await import("@neondatabase/serverless");
+  const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+  const { gate: liveGate, regimeGate } = await getLiveVerifiedGate();
 
-    let wins = 0, losses = 0;
+  const labels = ALL_SIGNALS.map((s) => s.name);
+  const rows = await sql`
+    SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime
+    FROM signal_track
+    WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
+    ORDER BY resolved_at DESC
+  `;
+
+  let wins = 0, losses = 0;
     const recent = [];
     const seenPerCombo = {};
     for (const r of rows) {
@@ -102,11 +122,8 @@ export async function GET() {
       }
     }
 
-    const verifiedTotal = wins + losses;
-    const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
+  const verifiedTotal = wins + losses;
+  const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
-    return Response.json({ verifiedWinRate, verifiedTotal, wins, losses, recent }, { headers: { "cache-control": "no-store" } });
-  } catch (e) {
-    return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
-  }
+  return { verifiedWinRate, verifiedTotal, wins, losses, recent };
 }
