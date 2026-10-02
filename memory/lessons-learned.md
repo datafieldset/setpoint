@@ -70,3 +70,27 @@ correct for the problem it was built to solve can still be a real,
 direct contributor to a different problem later — worth periodically
 asking "what did this fix actually cost us elsewhere," not just
 "did this fix work."
+
+## A retired or killed signal's old, frozen history will keep looking active in any new query that doesn't explicitly check for it — this has now bitten three separate places
+First public-stats, then the backtest report's live scoreboard (Whale
+Flow and EMA cross both showed up with full, real 20-trade windows
+long after being fully retired), then, within hours of shipping it,
+the new check-promotions cron itself, flagging Swing Early short on
+1m as a genuine, 91%-on-11 new finding when that exact combo was
+deliberately killed earlier the same session for being 29-40% on a
+massive, real sample. Same root cause every time: signal_track keeps
+every real row forever, and a query against it has no way to know a
+label is retired or a specific combo is killed unless it's told
+directly — ALL_SIGNALS and KILLED_COMBOS aren't automatically
+respected by every new query, each one has to filter by them
+explicitly, every single time.
+
+The real, direct rule going forward: any new code that queries
+signal_track for "is this currently real, active, worth trusting" —
+not just logging a fresh fire, but READING historical rows to answer
+a current-state question — needs to check both ALL_SIGNALS (is the
+label even still a real signal) and KILLED_COMBOS (is this specific
+combo still allowed to count) before trusting what it finds. This
+isn't a one-time fix, it's a pattern to watch for on every future
+query like this, since nothing structurally prevents it from
+happening a fourth time somewhere else.
