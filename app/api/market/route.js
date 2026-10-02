@@ -9,6 +9,7 @@ export const revalidate = 0;
 import { TF, isValidTf } from "../../../lib/timeframes.js";
 import { marketBias, reversalRisk, getLiveVerifiedGate } from "../../../lib/signals.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
+import { withCache } from "../../../lib/cache.js";
 
 // Kept local, market/route.js-specific: 24h stats display and the
 // signal-drift bias panel aren't needed by the server-side signal
@@ -82,13 +83,8 @@ const BIAS_MIN_SAMPLE = 5;
 // to re-run the full query. Same, proven, in-memory cache pattern
 // already used for getLiveVerifiedGate, with a real, moderate TTL.
 const SIGNAL_BIAS_CACHE_MS = 10 * 60 * 1000; // 10 real minutes
-let signalBiasCache = null; // { data, at }
 
-async function getSignalBias() {
-  const now = Date.now();
-  if (signalBiasCache && now - signalBiasCache.at < SIGNAL_BIAS_CACHE_MS) {
-    return signalBiasCache.data;
-  }
+async function fetchSignalBiasFromDB() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return null;
   try {
@@ -104,9 +100,7 @@ async function getSignalBias() {
     const bull = rows.filter((r) => r.dir === "bull").slice(0, BIAS_WINDOW);
     const bear = rows.filter((r) => r.dir === "bear").slice(0, BIAS_WINDOW);
     if (bull.length < BIAS_MIN_SAMPLE || bear.length < BIAS_MIN_SAMPLE) {
-      const thin = { score: 50, label: "Not enough data yet", bullN: bull.length, bearN: bear.length };
-      signalBiasCache = { data: thin, at: now };
-      return thin;
+      return { score: 50, label: "Not enough data yet", bullN: bull.length, bearN: bear.length };
     }
     const bullRate = bull.filter((r) => r.outcome === "win").length / bull.length;
     const bearRate = bear.filter((r) => r.outcome === "win").length / bear.length;
@@ -124,12 +118,14 @@ async function getSignalBias() {
     const label = bothWeak
       ? (score >= 55 ? "Both weak, longs relatively better" : score <= 45 ? "Both weak, shorts relatively better" : "Both sides struggling")
       : score >= 60 ? "Longs winning more" : score >= 55 ? "Leaning long" : score <= 40 ? "Shorts winning more" : score <= 45 ? "Leaning short" : "Roughly even";
-    const result = { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length, bothWeak };
-    signalBiasCache = { data: result, at: now };
-    return result;
+    return { score, label, bullRate, bearRate, bullN: bull.length, bearN: bear.length, bothWeak };
   } catch {
     return null;
   }
+}
+
+async function getSignalBias() {
+  return withCache("signal-bias", SIGNAL_BIAS_CACHE_MS, fetchSignalBiasFromDB);
 }
 
 export async function GET(req) {
