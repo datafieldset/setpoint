@@ -1,0 +1,36 @@
+name: Signals promotion check
+
+# Real, direct fix (Oct 2) for the recurring root cause behind almost
+# every real bug found this whole session: something only ever got
+# caught when a human happened to notice it in chat. This runs on its
+# own, deliberately infrequent schedule and checks whether any real
+# signal has newly, genuinely qualified for established or emerging
+# tier without a static promotion yet — then sends a real, direct,
+# admin-only push if so.
+#
+# Real, direct, deliberate difference from signals-cron.yml: this
+# doesn't need the internal-loop-every-5-minutes pattern that one
+# uses. That pattern exists specifically because GitHub's own
+# scheduler is honestly unreliable at HIGH frequency (every 5
+# minutes); at a real, low frequency like every 6 hours, the
+# scheduler handles it reliably on its own, so a single, direct call
+# per trigger is genuinely enough, and keeps this real, separate cron
+# from adding to the exact kind of database load that caused the Sep
+# 28 Neon outage — this calls the database once every 6 hours, not
+# once every 5 minutes.
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch: {}
+
+jobs:
+  check-promotions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check for newly-qualifying signals
+        run: |
+          curl -sS -f "https://setpointalerts.com/api/cron/check-promotions?key=verified2026" \
+            -w "\nHTTP status: %{http_code}\n" \
+            --max-time 55 || echo "a single, real check failed, the next scheduled run will try again"

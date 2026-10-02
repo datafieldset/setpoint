@@ -30,6 +30,65 @@ honest overlap for safety, not nearly triple redundancy.
   hours — see "Neon compute-hour incident" below for why this
   changed.
 
+A second, separate workflow, `signals-promotion-cron.yml`, triggers
+every 6 hours (`0 */6 * * *`), a single, direct call per trigger, no
+internal loop — at this real, low frequency, GitHub's scheduler is
+reliable on its own, and the whole point is avoiding adding to the
+kind of database load that caused the Neon incident below. Calls
+`/api/cron/check-promotions`.
+
+## Tiered confidence system (Oct 2) — the real fix for "only gets
+## noticed when someone happens to look in chat"
+Nearly every bug found this session traced back to the same root
+cause: a real, genuine finding (Whale Flow's retirement, RSI
+oversold's real, current edge, Reversal watch's real, current edge)
+only ever got surfaced because a human happened to notice it in chat,
+not because any real system caught it. Two real, direct pieces fix
+this:
+
+**`confidenceTier()`** (lib/signals.js) — a genuinely new function,
+deliberately separate from `provenContext()`, which stays completely
+untouched and still the one, real, strict gate for anything a real
+customer or push notification ever sees. `confidenceTier` classifies
+any real combo into one of four honest tiers: `established` (exactly
+`provenContext`'s existing "proven" bar), `emerging` (a real, current
+edge, 55%+ on at least 5 real trades, genuine but under the full bar),
+`early` (any real data at all, even a single trade, always labeled as
+thin), `none`. Powered by a new, separate, admin-only data function,
+`getFullSignalGate()` — deliberately isolated from
+`getLiveVerifiedGate()` (the one the crons actually depend on), with
+its own, independent, 5-minute cache, since this is only ever called
+when a human opens an admin view, never from a hot, automated loop —
+the same class of query-frequency mistake that caused the Neon
+incident below is exactly what this isolation is meant to prevent.
+
+**`/api/cron/check-promotions`** — the real, automated half. Runs
+every 6 hours (see cron section above), checks every real signal,
+every timeframe, every direction, for anything genuinely qualifying
+for established or emerging tier that doesn't have a static
+`SIGNAL_RATES` entry yet, and sends a real, direct, admin-only push if
+so. Deliberately never writes to `SIGNAL_RATES` itself — a promotion
+still means a real, deliberate decision, this only ever surfaces the
+real candidate, same discipline as every promotion this whole
+project, just no longer gated behind someone happening to notice
+first. Dedup tracked in a new `promotion_alerts` table (created
+automatically on first run) — re-alerts only on a genuine tier change
+or after a real 24 hours, so it doesn't nag on the same, already-seen
+candidate every single run.
+
+**The real, honest admin feed** (Guide page, admin-only, "See every
+real signal, every timeframe, right now") shows the same tiered data
+on demand — every real combo with any data at all, honestly labeled
+by tier and real sample size, built via `/api/signal-catalog`.
+
+**What this deliberately doesn't do yet, real, honest next steps:**
+make any of this tiered data visible to a real, paying customer (today
+it's 100% admin-only, by design — what a customer sees should stay
+exactly as strict as `provenContext` already is), and the real
+caching-layer overhaul discussed but not yet built (see Na's own
+priority order: automated promotion checking first, caching second,
+customer-facing tiers last, each deserving its own focused pass).
+
 ## Neon compute-hour incident (Sep 28) — ongoing area, revisit if usage climbs again
 The database hit Neon's free-tier compute-hour quota and went down
 hard — every DB-backed route started returning real 402s
