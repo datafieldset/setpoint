@@ -23,7 +23,7 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, getFullSignalGate, confidenceTier } from "../../../../lib/signals.js";
+import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, KILLED_COMBOS, getFullSignalGate, confidenceTier } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +72,14 @@ export async function GET(req) {
           const staticKey = `${name}|${tf}|${dir}`;
           const alreadyStaticallyPromoted = !!SIGNAL_RATES[staticKey] && SIGNAL_RATES[staticKey].rate != null && SIGNAL_RATES[staticKey].rate >= PROVEN_THRESHOLD;
           if (alreadyStaticallyPromoted) continue; // already a real, deliberate promotion, nothing new to surface
+          // Real, direct fix, found live right after shipping: a
+          // combo that's already been deliberately killed can still
+          // show strong-looking numbers from old, frozen history
+          // logged before the kill — the exact, same class of issue
+          // already fixed once in the backtest report's live
+          // scoreboard, just showing up in a new place that needed
+          // the same check.
+          if (KILLED_COMBOS.includes(staticKey)) continue;
 
           const ct = confidenceTier(name, tf, dir, {}, null, {}, fullGate, fullRegimeGate);
           if (ct.tier !== "established" && ct.tier !== "emerging") continue;
