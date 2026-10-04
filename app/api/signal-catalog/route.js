@@ -22,7 +22,7 @@
 // actually supports.
 import { auth } from "../../../auth.js";
 import { neon } from "@neondatabase/serverless";
-import { ALL_SIGNALS, TESTING_SIGNALS, getLiveVerifiedGate, getFullSignalGate, confidenceTier, CONFIDENCE_TIERS } from "../../../lib/signals.js";
+import { ALL_SIGNALS, TESTING_SIGNALS, KILLED_COMBOS, getLiveVerifiedGate, getFullSignalGate, confidenceTier, CONFIDENCE_TIERS } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
 import { brandName } from "../../../lib/brand.js";
 
@@ -60,6 +60,11 @@ export async function GET() {
       const combos = [];
       for (const tf of tfLabels) {
         for (const dir of dirs) {
+          // Real, direct fix, found live (Oct 4) in public-stats, same
+          // gap existed here too: a killed combo's old, frozen rows
+          // can still clear confidenceTier on regime-only history from
+          // before the kill, even though it can never fire again.
+          if (KILLED_COMBOS.includes(`${name}|${tf}|${dir}`)) continue;
           const ct = confidenceTier(name, tf, dir, liveGate, null, regimeGate, fullGate, fullRegimeGate);
           if (ct.tier === "none") continue;
           combos.push({ tf, dir, ...ct });

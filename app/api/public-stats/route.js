@@ -40,7 +40,7 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
+import { ALL_SIGNALS, KILLED_COMBOS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
 import { withCache } from "../../../lib/cache.js";
 
 export const dynamic = "force-dynamic";
@@ -86,6 +86,17 @@ async function computeStats(conn) {
     const recent = [];
     const seenPerCombo = {};
     for (const r of rows) {
+      // Real, direct fix, found live (Oct 4): a combo that's been
+      // deliberately killed can never fire again, but its old, frozen
+      // rows logged before the kill still sit in signal_track forever
+      // — and if those old rows happen to pass provenContext (a real,
+      // regime-specific slice from before the kill, say), they'd keep
+      // counting toward the real, customer-facing win rate forever.
+      // Same, exact class of bug already fixed once for the backtest
+      // report and once for check-promotions this same session —
+      // ALL_SIGNALS was checked here, KILLED_COMBOS never was, until
+      // this fix.
+      if (KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`)) continue;
       // Real, direct check against the same, single, shared definition
       // of verified every other real surface uses — a genuine, static
       // promotion, or this specific row's own, real regime currently
