@@ -71,26 +71,35 @@ direct contributor to a different problem later — worth periodically
 asking "what did this fix actually cost us elsewhere," not just
 "did this fix work."
 
-## A retired or killed signal's old, frozen history will keep looking active in any new query that doesn't explicitly check for it — this has now bitten three separate places
-First public-stats, then the backtest report's live scoreboard (Whale
-Flow and EMA cross both showed up with full, real 20-trade windows
-long after being fully retired), then, within hours of shipping it,
-the new check-promotions cron itself, flagging Swing Early short on
-1m as a genuine, 91%-on-11 new finding when that exact combo was
-deliberately killed earlier the same session for being 29-40% on a
-massive, real sample. Same root cause every time: signal_track keeps
-every real row forever, and a query against it has no way to know a
-label is retired or a specific combo is killed unless it's told
-directly — ALL_SIGNALS and KILLED_COMBOS aren't automatically
-respected by every new query, each one has to filter by them
-explicitly, every single time.
+## A retired or killed signal's old, frozen history will keep looking active in any new query that doesn't explicitly check for it — confirmed hitting real, customer-facing numbers, not just internal tools
+First public-stats (fixed for the ALL_SIGNALS gap specifically, a
+retired signal name like Whale Flow or EMA cross counting), then the
+backtest report's live scoreboard (same thing), then check-promotions
+flagging a killed combo as a fresh finding within hours of shipping.
+The predicted fourth instance landed Oct 4, found live by Na, not by
+me: public-stats still had the OTHER gap, KILLED_COMBOS specifically
+(a real signal name that's still active, Swing Early, but one
+specific combo of it killed for being genuinely unprofitable).
+"Swing Early short on 1m" was contributing 11 of 17 trades to the
+real, customer-facing "verified win rate" on Watch Live, 82% and 17
+trades, when the real, honest number, once that killed combo's old
+history was excluded, was 67% on 6 trades. This wasn't a cosmetic
+bug, it was the single headline trust number on the site built mostly
+out of a signal that's been dead for weeks. Same audit then found the
+identical, exact gap in signal-catalog (the admin feed) and
+open-positions (individual trade-card labels) — every real caller of
+provenContext or confidenceTier across the app got checked this time,
+not just the one place the symptom showed up, and all four now filter
+by both ALL_SIGNALS and KILLED_COMBOS.
 
-The real, direct rule going forward: any new code that queries
-signal_track for "is this currently real, active, worth trusting" —
-not just logging a fresh fire, but READING historical rows to answer
-a current-state question — needs to check both ALL_SIGNALS (is the
+The real, direct rule, now confirmed through a real, customer-facing
+miss, not just a close call: any new code that queries signal_track
+for "is this currently real, active, worth trusting" — not just
+logging a fresh fire, but READING historical rows to answer a
+current-state question — needs to check both ALL_SIGNALS (is the
 label even still a real signal) and KILLED_COMBOS (is this specific
-combo still allowed to count) before trusting what it finds. This
-isn't a one-time fix, it's a pattern to watch for on every future
-query like this, since nothing structurally prevents it from
-happening a fourth time somewhere else.
+combo still allowed to count) before trusting what it finds, every
+single time, with no exception for "it's just an internal tool" or
+"it's just metadata on a card." The pattern doesn't stop just because
+it's been fixed before, each new query is a fresh chance to reintroduce
+it, which is exactly what happened here.
