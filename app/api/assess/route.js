@@ -7,7 +7,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { STYLE_GUIDE } from "../../../lib/style.js";
+import { STYLE_GUIDE, checkStyleViolations, retryInstruction } from "../../../lib/style.js";
 
 // --- Spend protection ---------------------------------------------------------
 // This is the only route that costs money (it calls Claude). Guard it so a script
@@ -82,28 +82,46 @@ export async function POST(req) {
     reversalRisk: reversalRisk && reversalRisk.level !== "low" ? reversalRisk : { level: "low" },
   };
 
-  try {
+  async function callClaude(systemPrompt) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
         model,
         max_tokens: 400,
-        system,
+        system: systemPrompt,
         messages: [{ role: "user", content: JSON.stringify(payload) }],
       }),
     });
     if (!r.ok) {
       const t = await r.text();
-      return Response.json({ error: "api", detail: t.slice(0, 240) });
+      throw new Error(`api:${t.slice(0, 240)}`);
     }
     const data = await r.json();
     const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    let read;
-    try { read = JSON.parse(text.replace(/```json|```/g, "").trim()); }
-    catch { read = { stance: "neutral", confidence: "low", headline: "Read unavailable", reasoning: text.slice(0, 300), caution: "" }; }
+    try { return JSON.parse(text.replace(/```json|```/g, "").trim()); }
+    catch { return { stance: "neutral", confidence: "low", headline: "Read unavailable", reasoning: text.slice(0, 300), caution: "" }; }
+  }
+
+  try {
+    let read = await callClaude(system);
+    // Real, direct, deterministic backstop (Oct 2): the model mostly holds
+    // the style guide, but not always, so check its own output against
+    // the same, shared rule every route uses, and give it one real chance
+    // to fix the specific, named problem before this ever reaches a
+    // customer's screen.
+    const problems = checkStyleViolations(read, ["caution"]);
+    if (problems.length > 0) {
+      try {
+        read = await callClaude(system + retryInstruction(problems));
+      } catch {
+        // the retry itself failing is not fatal, the first, real read still stands
+      }
+    }
     return Response.json({ read, model });
   } catch (e) {
-    return Response.json({ error: "exception", detail: String(e).slice(0, 240) });
+    const msg = String(e.message || e);
+    if (msg.startsWith("api:")) return Response.json({ error: "api", detail: msg.slice(4) });
+    return Response.json({ error: "exception", detail: msg.slice(0, 240) });
   }
 }

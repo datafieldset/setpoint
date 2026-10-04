@@ -9,7 +9,7 @@
 // the weekly 200 MA: this is background context, not a per-refresh number.
 
 import { getRss, getReddit, getTelegram, TELEGRAM_CHANNELS } from "../news/route.js";
-import { STYLE_GUIDE } from "../../../lib/style.js";
+import { STYLE_GUIDE, checkStyleViolations, retryInstruction } from "../../../lib/style.js";
 
 export const dynamic = "force-dynamic";
 
@@ -46,21 +46,37 @@ async function generateMacroRead(key) {
   const headlines = await getBroadNews();
   if (!headlines.length) return { error: "no_news" };
 
-  try {
+  const model = process.env.SETPOINT_MODEL || "claude-haiku-4-5-20251001";
+  async function callClaude(systemPrompt) {
     const r = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", "x-api-key": key, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({
-        model: process.env.SETPOINT_MODEL || "claude-haiku-4-5-20251001",
+        model,
         max_tokens: 400,
-        system: SYSTEM,
+        system: systemPrompt,
         messages: [{ role: "user", content: JSON.stringify({ headlines: headlines.map((h) => ({ title: h.title, source: h.source })) }) }],
       }),
     });
-    if (!r.ok) return { error: "api" };
+    if (!r.ok) throw new Error("api");
     const data = await r.json();
     const text = (data.content || []).filter((b) => b.type === "text").map((b) => b.text).join("").trim();
-    const read = JSON.parse(text.replace(/```json|```/g, "").trim());
+    return JSON.parse(text.replace(/```json|```/g, "").trim());
+  }
+
+  try {
+    let read = await callClaude(SYSTEM);
+    // Same, shared, deterministic backstop as /api/assess, one real
+    // chance to fix a named, specific problem before this gets cached
+    // and served for the next three real hours.
+    const problems = checkStyleViolations(read, ["catalyst"]);
+    if (problems.length > 0) {
+      try {
+        read = await callClaude(SYSTEM + retryInstruction(problems));
+      } catch {
+        // the retry itself failing is not fatal, the first, real read still stands
+      }
+    }
     return { read, generatedAt: Date.now(), headlineCount: headlines.length };
   } catch (e) {
     return { error: "exception", detail: String(e).slice(0, 150) };
