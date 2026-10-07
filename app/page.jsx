@@ -620,6 +620,10 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-glossary">
           <b>The percentage is a real batting average, not a guarantee.</b> It means this exact setup has actually happened many times before, and that share of the time it played out the way the alert expected. It doesn't mean this specific alert will win, just that the odds have leaned that way historically. Anything that hasn't verified itself at 58% or higher, checked live against real, current results, never shows up here at all. That's deliberate, not a limitation, you're only ever seeing what's actually earning it right now.
         </div>
+
+        <div className="guide-glossary">
+          <b>Watch It Live shows two groups.</b> Verified is the headline win rate, and it only counts the setups that clear the bar today, using each one's last 20 trades. Some of those setups fire a few times a month, so the page can go quiet. Emerging is the second group: setups that are working lately, but on fewer trades than a verified one. They're labeled, kept out of the win rate, and never send an alert. If an emerging setup keeps winning, it moves up. If it fades, it drops off.
+        </div>
       </div>
 
       <div className="guide-section">

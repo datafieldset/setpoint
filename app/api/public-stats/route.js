@@ -40,7 +40,7 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, KILLED_COMBOS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext } from "../../../lib/signals.js";
+import { ALL_SIGNALS, KILLED_COMBOS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
 import { withCache } from "../../../lib/cache.js";
 
 export const dynamic = "force-dynamic";
@@ -69,6 +69,23 @@ export async function GET() {
   }
 }
 
+function toCard(r) {
+  const entry = parseFloat(r.entry);
+  const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
+  const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
+  return {
+    coin: r.coin,
+    tf: r.tf,
+    name: brandName(r.label),
+    dir: r.dir,
+    outcome: r.outcome,
+    entry, exit,
+    pctMove,
+    firedAt: r.fired_at,
+    resolvedAt: r.resolved_at,
+  };
+}
+
 async function computeStats(conn) {
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
@@ -82,59 +99,84 @@ async function computeStats(conn) {
     ORDER BY resolved_at DESC
   `;
 
+  // ---- Verified record: the headline number and the cards under it ----
   let wins = 0, losses = 0;
-    const recent = [];
-    const seenPerCombo = {};
-    for (const r of rows) {
-      // Real, direct fix, found live (Oct 4): a combo that's been
-      // deliberately killed can never fire again, but its old, frozen
-      // rows logged before the kill still sit in signal_track forever
-      // — and if those old rows happen to pass provenContext (a real,
-      // regime-specific slice from before the kill, say), they'd keep
-      // counting toward the real, customer-facing win rate forever.
-      // Same, exact class of bug already fixed once for the backtest
-      // report and once for check-promotions this same session —
-      // ALL_SIGNALS was checked here, KILLED_COMBOS never was, until
-      // this fix.
-      if (KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`)) continue;
-      // Real, direct check against the same, single, shared definition
-      // of verified every other real surface uses — a genuine, static
-      // promotion, or this specific row's own, real regime currently
-      // clearing the bar. Either way is honestly "verified", the same
-      // way the dashboard itself already treats it.
-      const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
-      if (pc.tag !== "proven") continue;
-      // Rolling window scoped to how this specific row earned its
-      // verification — a statically-proven row rolls up with every
-      // other row of its (label, tf, dir), since the static check
-      // doesn't care about regime; a regime-only-proven row only
-      // rolls up with rows that fired in that same, real regime,
-      // matching the regime gate's own, real scope.
-      const comboKey = pc.verifiedVia === "regime" ? `${r.label}|${r.tf}|${r.dir}|${r.regime}` : `${r.label}|${r.tf}|${r.dir}`;
-      seenPerCombo[comboKey] = (seenPerCombo[comboKey] || 0) + 1;
-      if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue; // only this combo's own, real, most-recent 20
+  const recent = [];
+  const seenPerCombo = {};
+  // Which setups are behind the headline right now, with their own
+  // record and last trade date. Added Oct 7: the page used to say "all
+  // 7 verified setups, all-time" while only 3 were actually verified,
+  // and nothing on it explained why a month could show one trade.
+  const verifiedSetups = new Map();
+  for (const r of rows) {
+    // Real, direct fix, found live (Oct 4): a combo that's been
+    // deliberately killed can never fire again, but its old, frozen
+    // rows logged before the kill still sit in signal_track forever
+    // and would keep counting toward the customer-facing win rate.
+    if (KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`)) continue;
+    // Same, single, shared definition of verified every other surface
+    // uses: a genuine static promotion, or this specific row's own
+    // regime currently clearing the bar.
+    const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+    if (pc.tag !== "proven") continue;
+    // Rolling window scoped to how this row earned its verification: a
+    // statically-proven row rolls up with every row of its (label, tf,
+    // dir), a regime-only-proven row only with rows from that regime.
+    const comboKey = pc.verifiedVia === "regime" ? `${r.label}|${r.tf}|${r.dir}|${r.regime}` : `${r.label}|${r.tf}|${r.dir}`;
+    seenPerCombo[comboKey] = (seenPerCombo[comboKey] || 0) + 1;
+    if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue;
 
-      r.outcome === "win" ? wins++ : losses++;
-      const entry = parseFloat(r.entry);
-      const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
-      const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
-      if (recent.length < 40) {
-        recent.push({
-          coin: r.coin,
-          tf: r.tf,
-          name: brandName(r.label),
-          dir: r.dir,
-          outcome: r.outcome,
-          entry, exit,
-          pctMove,
-          firedAt: r.fired_at,
-          resolvedAt: r.resolved_at,
-        });
-      }
-    }
+    r.outcome === "win" ? wins++ : losses++;
+    const sKey = `${r.label}|${r.tf}|${r.dir}`;
+    const s = verifiedSetups.get(sKey) || { name: brandName(r.label), tf: r.tf, dir: r.dir, wins: 0, losses: 0, lastAt: r.resolved_at };
+    r.outcome === "win" ? s.wins++ : s.losses++;
+    verifiedSetups.set(sKey, s);
+    if (recent.length < 40) recent.push(toCard(r));
+  }
 
   const verifiedTotal = wins + losses;
   const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
-  return { verifiedWinRate, verifiedTotal, wins, losses, recent };
+  // ---- Emerging: real results, under the verified bar ----
+  // Oct 7: the verified list is deliberately strict, which is why only
+  // a few slow setups clear it. Setups that are working lately but
+  // haven't earned the badge (the tiered confidence system's
+  // "emerging" tier: at least 5 real trades, 55% or better) now show
+  // here, clearly separated, and are NEVER counted in the headline
+  // win rate. Same exclusions as everywhere else: retired labels are
+  // already filtered out of rows, killed combos are skipped below.
+  const { gate: fullGate, regimeGate: fullRegimeGate } = buildGatesFromRows(rows);
+  const comboKeys = new Set(rows.map((r) => `${r.label}|${r.tf}|${r.dir}`));
+  const emergingSetups = [];
+  const emergingTrades = [];
+  for (const key of comboKeys) {
+    if (KILLED_COMBOS.includes(key)) continue;
+    if (verifiedSetups.has(key)) continue; // already shown as verified
+    const [label, tf, dir] = key.split("|");
+    const ct = confidenceTier(label, tf, dir, liveGate, null, regimeGate, fullGate, fullRegimeGate);
+    if (ct.tier !== "emerging") continue;
+    const scoped = rows
+      .filter((r) => `${r.label}|${r.tf}|${r.dir}` === key && (ct.verifiedVia !== "regime" || r.regime === ct.regimeStage))
+      .slice(0, LIVE_GATE_WINDOW);
+    if (!scoped.length) continue;
+    const w = scoped.filter((r) => r.outcome === "win").length;
+    emergingSetups.push({
+      name: brandName(label), tf, dir,
+      wins: w, losses: scoped.length - w,
+      rate: w / scoped.length,
+      regime: ct.verifiedVia === "regime" ? ct.regimeStage : null,
+      lastAt: scoped[0].resolved_at,
+    });
+    for (const r of scoped.slice(0, 6)) emergingTrades.push(toCard(r));
+  }
+  emergingSetups.sort((a, b) => b.rate - a.rate || (b.wins + b.losses) - (a.wins + a.losses));
+  emergingTrades.sort((a, b) => String(b.resolvedAt).localeCompare(String(a.resolvedAt)));
+
+  return {
+    verifiedWinRate, verifiedTotal, wins, losses, recent,
+    activeSetups: verifiedSetups.size,
+    setups: [...verifiedSetups.values()],
+    lastTradeAt: recent[0]?.resolvedAt ?? null,
+    emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
+  };
 }

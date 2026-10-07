@@ -14,6 +14,49 @@
 // passed its own real plan check, never for a free "watch" account.
 import { useEffect, useState } from "react";
 
+const fmtPrice = (n) => (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(n >= 1 ? 2 : 5));
+const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const fmtTime = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+
+function TradeCard({ t }) {
+  return (
+    <div className={`watch-card ${t.outcome}`}>
+      <div className="wc-top">
+        <span className="wc-coin">{t.coin}</span>
+        <span className="wc-name">{t.dir === "bull" ? "Buy" : "Sell"} {t.name}</span>
+        <span className="wc-tf">{t.tf}</span>
+        <span className={`wc-outcome ${t.outcome}`}>{t.outcome === "win" ? "WIN" : "LOSS"}</span>
+      </div>
+      <div className="wc-levels">
+        <div className="wc-level"><span className="wc-level-k">Entry</span><span className="wc-level-v mono">{fmtPrice(t.entry)}</span></div>
+        <div className="wc-arrow">→</div>
+        <div className="wc-level"><span className="wc-level-k">Exit</span><span className="wc-level-v mono">{fmtPrice(t.exit)}</span></div>
+        <div className={`wc-pct ${t.outcome}`}>{t.pctMove >= 0 ? "+" : ""}{t.pctMove.toFixed(2)}%</div>
+      </div>
+      <div className="wc-times">
+        <span>Fired {fmtTime(t.firedAt)}</span>
+        <span>Resolved {fmtTime(t.resolvedAt)}</span>
+      </div>
+    </div>
+  );
+}
+
+// One line per setup: what it is, its record in the window being
+// counted, and when it last resolved a trade. This is what explains a
+// quiet page: a setup that fires a few times a month shows up here as
+// exactly that, instead of the page looking broken.
+function SetupRow({ s }) {
+  return (
+    <div className="watch-setup">
+      <span className="ws-name">{s.dir === "bull" ? "Buy" : "Sell"} {s.name}</span>
+      <span className="wc-tf">{s.tf}</span>
+      {s.regime && <span className="ws-regime">in {s.regime.replace("-", " ")} markets</span>}
+      <span className="ws-rec">{s.wins} won, {s.losses} lost</span>
+      <span className="ws-last">last {fmtDay(s.lastAt)}</span>
+    </div>
+  );
+}
+
 export default function WatchLiveContent({ onBack }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -32,7 +75,9 @@ export default function WatchLiveContent({ onBack }) {
   }, []);
 
   const winRatePct = data?.verifiedWinRate != null ? Math.round(data.verifiedWinRate * 100) : null;
-  const fmtPrice = (n) => (n >= 1000 ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : n.toFixed(n >= 1 ? 2 : 5));
+  const setups = data?.setups || [];
+  const emerging = data?.emerging || { setups: [], recent: [] };
+  const activeSetups = data?.activeSetups ?? setups.length;
 
   return (
     <div className="watch-page">
@@ -70,38 +115,53 @@ export default function WatchLiveContent({ onBack }) {
             <div className="watch-stat-legend">
               <div className="watch-legend-row"><span className="dot win" /> {data.wins} wins</div>
               <div className="watch-legend-row"><span className="dot loss" /> {data.losses} losses</div>
-              <div className="watch-legend-total">{data.verifiedTotal} trades, all 7 verified setups, all-time, real price, no exceptions.</div>
+              <div className="watch-legend-total">
+                {data.verifiedTotal === 0
+                  ? "No setup clears the verified bar right now."
+                  : `${data.verifiedTotal} trades from the ${activeSetups} setup${activeSetups === 1 ? "" : "s"} verified right now. Real prices, levels locked when each one fired.`}
+              </div>
+              {data.lastTradeAt && <div className="watch-legend-total">Latest verified trade: {fmtDay(data.lastTradeAt)}.</div>}
             </div>
           </div>
 
-          <div className="watch-feed-head">Every trade, locked levels, most recent first</div>
-          {data.recent.length === 0 ? (
-            <div className="watch-empty">Nothing resolved yet. Check back soon.</div>
-          ) : (
-            <div className="watch-scroll">
-              <div className="watch-grid">
-                {data.recent.map((t, i) => (
-                  <div className={`watch-card ${t.outcome}`} key={i}>
-                    <div className="wc-top">
-                      <span className="wc-coin">{t.coin}</span>
-                      <span className="wc-name">{t.dir === "bull" ? "Buy" : "Sell"} {t.name}</span>
-                      <span className="wc-tf">{t.tf}</span>
-                      <span className={`wc-outcome ${t.outcome}`}>{t.outcome === "win" ? "WIN" : "LOSS"}</span>
-                    </div>
-                    <div className="wc-levels">
-                      <div className="wc-level"><span className="wc-level-k">Entry</span><span className="wc-level-v mono">{fmtPrice(t.entry)}</span></div>
-                      <div className="wc-arrow">→</div>
-                      <div className="wc-level"><span className="wc-level-k">Exit</span><span className="wc-level-v mono">{fmtPrice(t.exit)}</span></div>
-                      <div className={`wc-pct ${t.outcome}`}>{t.pctMove >= 0 ? "+" : ""}{t.pctMove.toFixed(2)}%</div>
-                    </div>
-                    <div className="wc-times">
-                      <span>Fired {new Date(t.firedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                      <span>Resolved {new Date(t.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
-                    </div>
-                  </div>
-                ))}
+          {setups.length > 0 && (
+            <section className="watch-section">
+              <h2 className="watch-h">Verified right now</h2>
+              <div className="watch-setups">
+                {setups.map((s, i) => <SetupRow key={i} s={s} />)}
               </div>
-            </div>
+              <p className="watch-note">Each setup counts its last 20 trades. When a setup's recent results fall under the bar, it leaves this list and its trades go with it.</p>
+            </section>
+          )}
+
+          <section className="watch-section">
+            <h2 className="watch-h">Verified trades, newest first</h2>
+            {data.recent.length === 0 ? (
+              <div className="watch-empty">Nothing resolved yet. Check back soon.</div>
+            ) : (
+              <div className="watch-scroll">
+                <div className="watch-grid">
+                  {data.recent.map((t, i) => <TradeCard key={i} t={t} />)}
+                </div>
+              </div>
+            )}
+          </section>
+
+          {emerging.setups.length > 0 && (
+            <section className="watch-section watch-emerging">
+              <h2 className="watch-h">Emerging <span className="watch-pill">not verified</span></h2>
+              <p className="watch-note">These are working lately, on fewer trades than a verified setup, so they're more likely to fade. They don't count toward the win rate above.</p>
+              <div className="watch-setups">
+                {emerging.setups.map((s, i) => <SetupRow key={i} s={s} />)}
+              </div>
+              {emerging.recent.length > 0 && (
+                <div className="watch-scroll">
+                  <div className="watch-grid">
+                    {emerging.recent.map((t, i) => <TradeCard key={i} t={t} />)}
+                  </div>
+                </div>
+              )}
+            </section>
           )}
 
           {!onBack && (
@@ -127,7 +187,7 @@ const CSS = `
   }
   :root{
     --bg:#0A0F0D; --panel:#0F1712; --panel2:#0D1310; --text:#EAF2EE; --muted:#93A69D; --dim:#5E7168;
-    --border:#223029; --green:#00D179; --red:#FF5C6C;
+    --border:#223029; --green:#00D179; --red:#FF5C6C; --amber:#E8B04A;
   }
   *{box-sizing:border-box}
   .mono{font-family:'JetBrains Mono',monospace}
@@ -153,7 +213,6 @@ const CSS = `
   .dot.win{background:var(--green)}
   .dot.loss{background:var(--red)}
   .watch-legend-total{font-size:12px;color:var(--dim);max-width:240px;margin-top:4px}
-  .watch-feed-head{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 22px;margin-bottom:12px}
   .watch-scroll{padding:0 22px;max-height:400px;overflow-y:auto;border-radius:12px}
   .watch-scroll::-webkit-scrollbar{width:8px}
   .watch-scroll::-webkit-scrollbar-track{background:transparent}
@@ -187,4 +246,16 @@ const CSS = `
   .wc-times{display:flex;flex-direction:column;gap:2px;font-size:10px;color:var(--dim);border-top:1px solid var(--border);padding-top:8px}
   .watch-empty{text-align:center;color:var(--muted);padding:40px 22px;font-size:13px}
   .watch-foot{text-align:center;color:var(--dim);font-size:11px;padding:28px 22px 0}
+  .watch-section{margin-top:28px}
+  .watch-h{font-size:15px;font-weight:700;margin:0 0 10px;padding:0 22px}
+  .watch-note{color:var(--dim);font-size:12.5px;line-height:1.55;margin:0 0 14px;padding:0 22px;max-width:62ch}
+  .watch-setups{display:flex;flex-direction:column;gap:6px;padding:0 22px;margin-bottom:12px}
+  .watch-setup{display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:13px}
+  .ws-name{font-weight:600;flex:1 1 150px}
+  .ws-regime{color:var(--dim);font-size:11.5px}
+  .ws-rec{font-weight:600;font-variant-numeric:tabular-nums}
+  .ws-last{color:var(--dim);font-size:11.5px;min-width:62px;text-align:right}
+  .watch-emerging{margin-top:36px;padding-top:26px;border-top:1px solid var(--border)}
+  .watch-emerging .watch-setup{border-left:3px solid var(--amber)}
+  .watch-pill{margin-left:8px;font-size:11px;font-weight:600;color:var(--amber);background:rgba(232,176,74,.12);padding:2px 8px;border-radius:999px;vertical-align:1px}
 `;
