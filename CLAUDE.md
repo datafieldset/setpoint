@@ -36,3 +36,7 @@ is the one place meant to honestly explain the real, current product
 to whoever's looking at it, admin or customer — it drifting out of
 sync with reality is the same, real class of problem `signal-roster.md`
 already learned this lesson from once.
+
+## Standing rule: BTC is the test bed for building and testing signals
+
+Direct decision from Na (Oct 8). Build, tune, backtest and test every signal on BTC. Do not use other coins as a cross-check or as extra evidence before promotion. Na has watched the market for 9 years and the alts have never moved without BTC, and the Oct 8 lead-lag study (memory/lessons-learned.md) confirmed it with data: the other coins move with BTC in the same bar, so they add little independent evidence. Other coins only matter when checking how a specific entry or stop level fits a coin a customer actually trades. Longer BTC history is the fix for thin samples, not borrowing from alts.

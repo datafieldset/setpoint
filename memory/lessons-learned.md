@@ -103,3 +103,15 @@ single time, with no exception for "it's just an internal tool" or
 "it's just metadata on a card." The pattern doesn't stop just because
 it's been fixed before, each new query is a fresh chance to reintroduce
 it, which is exactly what happened here.
+
+## BTC is the test bed, and there is no tradeable lag between BTC and the alts (Oct 8 study)
+Na's call: always build and test signals on BTC, because the rest of the market follows it. Before locking that in we tested the one reason it might be wrong, a lag between BTC and the other coins that could itself be a signal (read-only study, nothing in the app changed).
+
+What was measured: all 10 watchlist coins against BTC on 1m (14 days), 5m (121 days), 15m (181 days) and 1h (375 days). Trades used the app's own rule (stop 1.5 ATR, target 3 ATR, so breakeven is a 33% win rate), sorted by how strong the BTC move was (z-score of the bar return), with the last 30% of the data held back.
+
+Findings:
+- Same-bar correlation with BTC is high (ETH ~0.86, SOL ~0.8, XRP/DOGE/ADA/LINK/SUI ~0.65-0.77, XLM and AVAX the loosest at ~0.55-0.6). One bar later it is ~0 on 5m, 15m and 1h. On 1m it is ~0.03, and the alts lead BTC by about the same amount, so BTC is not the leader there either.
+- Following BTC, fading BTC, entering one bar late, strong moves, weak moves: all land at 30-38% wins, the same as random entries (32-35%). The few spots that looked good did not hold on the held-back data (1m strong moves 34% then 15%; 1h huge moves 28% then 67% on 21 trades from a handful of events). Alts in one event are not independent trades, so effective samples are much smaller than the trade counts.
+- Limit: Coinbase's finest data is 1 minute. Any lag under a minute is invisible here and could not be acted on from a phone alert anyway.
+
+Takeaways: BTC-only testing is a fair proxy for the alts. Fix thin samples with more BTC history. A lead-lag signal is not worth building. An untested idea: using BTC's direction as a filter on existing signals.
