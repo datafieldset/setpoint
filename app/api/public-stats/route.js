@@ -40,7 +40,8 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, KILLED_COMBOS, LIVE_GATE_WINDOW, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
+import { ALL_SIGNALS, KILLED_COMBOS, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
+import { ensureSignalTrackColumns } from "../../../lib/schema.js";
 import { withCache } from "../../../lib/cache.js";
 
 export const dynamic = "force-dynamic";
@@ -91,9 +92,10 @@ async function computeStats(conn) {
   const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
   const { gate: liveGate, regimeGate } = await getLiveVerifiedGate();
 
+  await ensureSignalTrackColumns(sql);
   const labels = ALL_SIGNALS.map((s) => s.name);
   const rows = await sql`
-    SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime
+    SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime, verified_at_fire
     FROM signal_track
     WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
     ORDER BY resolved_at DESC
@@ -108,27 +110,53 @@ async function computeStats(conn) {
   // 7 verified setups, all-time" while only 3 were actually verified,
   // and nothing on it explained why a month could show one trade.
   const verifiedSetups = new Map();
+  // Whether a setup clears the bar today, by the shared definition: its
+  // overall record, or any market condition where it currently does.
+  // A setup can have verified-at-fire trades here and still be under
+  // the bar now. It stays on the list, marked, rather than vanishing.
+  const isVerifiedNow = (label, tf, dir) => {
+    if (provenContext(label, tf, dir, liveGate, null, regimeGate).tag === "proven") return true;
+    const prefix = `${label}|${tf}|${dir}|`;
+    return Object.entries(regimeGate || {}).some(([k, g]) => k.startsWith(prefix) && g.n >= REGIME_ONLY_MIN_SAMPLE && g.rate >= PROVEN_THRESHOLD);
+  };
+  // When the stamp started being written. Everything fired after this
+  // is locked in at fire time, everything before is judged by today's
+  // status.
+  let stampedSince = null;
+  for (const r of rows) {
+    if (r.verified_at_fire !== null && r.verified_at_fire !== undefined && (!stampedSince || new Date(r.fired_at) < new Date(stampedSince))) stampedSince = r.fired_at;
+  }
   for (const r of rows) {
     // Real, direct fix, found live (Oct 4): a combo that's been
     // deliberately killed can never fire again, but its old, frozen
     // rows logged before the kill still sit in signal_track forever
     // and would keep counting toward the customer-facing win rate.
     if (KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`)) continue;
-    // Same, single, shared definition of verified every other surface
-    // uses: a genuine static promotion, or this specific row's own
-    // regime currently clearing the bar.
-    const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
-    if (pc.tag !== "proven") continue;
-    // Rolling window scoped to how this row earned its verification: a
-    // statically-proven row rolls up with every row of its (label, tf,
-    // dir), a regime-only-proven row only with rows from that regime.
-    const comboKey = pc.verifiedVia === "regime" ? `${r.label}|${r.tf}|${r.dir}|${r.regime}` : `${r.label}|${r.tf}|${r.dir}`;
+    // Oct 9: a trade is judged by whether it was verified WHEN IT FIRED
+    // (verified_at_fire, stamped from the one shared provenContext at
+    // that moment). That's what a customer actually saw, and it stops
+    // history from rewriting itself when a setup is later promoted or
+    // demoted. Trades logged before the stamp existed (null) fall back
+    // to the old rule: verified today, by the same shared definition.
+    let comboKey;
+    if (r.verified_at_fire === true) {
+      comboKey = `${r.label}|${r.tf}|${r.dir}`;
+    } else if (r.verified_at_fire === false) {
+      continue; // wasn't verified when it fired, so it never reached a customer as verified
+    } else {
+      const pc = provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+      if (pc.tag !== "proven") continue;
+      // Rolling window scoped to how this row earned its verification: a
+      // statically-proven row rolls up with every row of its (label, tf,
+      // dir), a regime-only-proven row only with rows from that regime.
+      comboKey = pc.verifiedVia === "regime" ? `${r.label}|${r.tf}|${r.dir}|${r.regime}` : `${r.label}|${r.tf}|${r.dir}`;
+    }
     seenPerCombo[comboKey] = (seenPerCombo[comboKey] || 0) + 1;
     if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue;
 
     r.outcome === "win" ? wins++ : losses++;
     const sKey = `${r.label}|${r.tf}|${r.dir}`;
-    const s = verifiedSetups.get(sKey) || { name: brandName(r.label), tf: r.tf, dir: r.dir, wins: 0, losses: 0, lastAt: r.resolved_at };
+    const s = verifiedSetups.get(sKey) || { name: brandName(r.label), tf: r.tf, dir: r.dir, wins: 0, losses: 0, lastAt: r.resolved_at, verifiedNow: isVerifiedNow(r.label, r.tf, r.dir) };
     r.outcome === "win" ? s.wins++ : s.losses++;
     verifiedSetups.set(sKey, s);
     if (recent.length < 40) recent.push(toCard(r));
@@ -177,6 +205,7 @@ async function computeStats(conn) {
     activeSetups: verifiedSetups.size,
     setups: [...verifiedSetups.values()],
     lastTradeAt: recent[0]?.resolvedAt ?? null,
+    stampedSince,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
   };
 }

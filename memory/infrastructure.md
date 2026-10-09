@@ -194,3 +194,6 @@ All real price/candle data from Coinbase Exchange's public API (`api.exchange.co
 
 ## News feed
 Removed from the Market tab — Reddit and Bluesky both return 403 from Vercel's server IP range (confirmed directly), no fix found. Only RSS + Telegram (watcherguru) still work, and coverage is uneven (BTC decent, XLM/XRP thin).
+
+## signal_track columns added after creation (Oct 9)
+`regime` and `verified_at_fire` were added with real ALTERs, not CREATE TABLE IF NOT EXISTS, which never helps a live table. Both live in `lib/schema.js` (`ensureSignalTrackColumns`), memoized per server instance so it costs nothing per request. Any new column on signal_track goes there, and any route reading it must call that helper first or it will fail until something else has written a row. If the ALTER fails, the cron stops loudly (server_error) instead of letting every insert fail quietly.

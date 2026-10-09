@@ -26,8 +26,9 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS } from "../../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
+import { ensureSignalTrackColumns } from "../../../../lib/schema.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity } from "../../../../lib/marketContext.js";
 
 export const dynamic = "force-dynamic";
@@ -53,6 +54,9 @@ export async function GET(req) {
   const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
 
   try {
+    // Fails loudly (caught below as server_error) instead of letting
+    // every insert quietly fail on a missing column.
+    await ensureSignalTrackColumns(sql);
     // Real accounts with a real, active subscription, joined against
     // their own real, saved watchlist. Nothing here about coins nobody's
     // account actually watches. watchlist is stored as JSON text (same
@@ -195,20 +199,10 @@ export async function GET(req) {
           const isCoilTest = TESTING_SIGNALS.includes(s.label) && s.tier !== "proven";
           const gateKey = `${s.label}|${TF[tf].label}|${s.dir}`;
 
-          let inserted;
-          try {
-            const result = await sql`
-              INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime)
-              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target}, ${s.regimeStage || null})
-              ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
-              RETURNING id
-            `;
-            inserted = result.length > 0;
-          } catch {
-            continue; // a real logging failure here should never crash the whole run
-          }
-          if (!inserted) continue; // the database itself says this isn't actually new
-
+          // Moved above the insert (Oct 9): the same fresh gate now also
+          // decides the verified_at_fire stamp written with the row, so
+          // the stamp and the push decision read identical data. The
+          // 90 second cache makes repeating this per signal free.
           // Real, direct fix (Sep 22): re-fetch the freshest possible
           // live and regime gate data right here, right before the
           // actual push decision, instead of trusting the single
@@ -249,6 +243,20 @@ export async function GET(req) {
             // otherwise-valid push — fall back to the run's own,
             // already-fetched snapshot rather than losing the alert
           }
+          let inserted;
+          try {
+            const result = await sql`
+              INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime, verified_at_fire)
+              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target}, ${s.regimeStage || null}, ${verifiedAtFire(s.label, tf, s.dir, s.regimeStage || null, freshGate, freshRegimeGate)})
+              ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
+              RETURNING id
+            `;
+            inserted = result.length > 0;
+          } catch {
+            continue; // a real logging failure here should never crash the whole run
+          }
+          if (!inserted) continue; // the database itself says this isn't actually new
+
           const freshGateEntry = freshGate[gateKey];
           const freshOverallVerified = !freshGateEntry || freshGateEntry.rate >= PROVEN_THRESHOLD;
           const freshRGate = s.regimeStage ? freshRegimeGate[`${gateKey}|${s.regimeStage}`] : null;

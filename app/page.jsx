@@ -622,7 +622,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         </div>
 
         <div className="guide-glossary">
-          <b>Watch It Live shows two groups.</b> Verified is the headline win rate, and it only counts the setups that clear the bar today, using each one's last 20 trades. Some of those setups fire a few times a month, so the page can go quiet. Emerging is the second group: setups that are working lately, but on fewer trades than a verified one. They're labeled, kept out of the win rate, and never send an alert. If an emerging setup keeps winning, it moves up. If it fades, it drops off.
+          <b>Watch It Live shows two groups.</b> Verified is the headline win rate. A trade counts if its setup was verified at the moment it fired, using each setup's last 20 trades, and it stays on the record even if the setup slips under the bar later (those setups are marked). Trades logged before this rule started only count while their setup is verified today. Some of those setups fire a few times a month, so the page can go quiet. Emerging is the second group: setups that are working lately, but on fewer trades than a verified one. They're labeled, kept out of the win rate, and never send an alert. If an emerging setup keeps winning, it moves up. If it fades, it drops off.
         </div>
       </div>
 

@@ -51,6 +51,7 @@ function SetupRow({ s }) {
       <span className="ws-name">{s.dir === "bull" ? "Buy" : "Sell"} {s.name}</span>
       <span className="wc-tf">{s.tf}</span>
       {s.regime && <span className="ws-regime">in {s.regime.replace("-", " ")} markets</span>}
+      {s.verifiedNow === false && <span className="ws-slipped">under the bar now</span>}
       <span className="ws-rec">{s.wins} won, {s.losses} lost</span>
       <span className="ws-last">last {fmtDay(s.lastAt)}</span>
     </div>
@@ -118,7 +119,7 @@ export default function WatchLiveContent({ onBack }) {
               <div className="watch-legend-total">
                 {data.verifiedTotal === 0
                   ? "No setup clears the verified bar right now."
-                  : `${data.verifiedTotal} trades from the ${activeSetups} setup${activeSetups === 1 ? "" : "s"} verified right now. Real prices, levels locked when each one fired.`}
+                  : `${data.verifiedTotal} trades from ${activeSetups} setup${activeSetups === 1 ? "" : "s"}, each one verified at the moment it fired. Real prices, levels locked when each one fired.`}
               </div>
               {data.lastTradeAt && <div className="watch-legend-total">Latest verified trade: {fmtDay(data.lastTradeAt)}.</div>}
             </div>
@@ -126,11 +127,13 @@ export default function WatchLiveContent({ onBack }) {
 
           {setups.length > 0 && (
             <section className="watch-section">
-              <h2 className="watch-h">Verified right now</h2>
+              <h2 className="watch-h">Verified setups</h2>
               <div className="watch-setups">
                 {setups.map((s, i) => <SetupRow key={i} s={s} />)}
               </div>
-              <p className="watch-note">Each setup counts its last 20 trades. When a setup's recent results fall under the bar, it leaves this list and its trades go with it.</p>
+              <p className="watch-note">
+                Each setup counts its last 20 trades. A trade counts if its setup was verified when the trade fired, and it stays on the record even if the setup slips under the bar later. Those are marked. {data.stampedSince ? `Trades from before ${fmtDay(data.stampedSince)} were logged without that stamp, so they only count while their setup is verified today.` : ""}
+              </p>
             </section>
           )}
 
@@ -254,6 +257,7 @@ const CSS = `
   .ws-name{font-weight:600;flex:1 1 150px}
   .ws-regime{color:var(--dim);font-size:11.5px}
   .ws-rec{font-weight:600;font-variant-numeric:tabular-nums}
+  .ws-slipped{color:var(--amber);font-size:11.5px}
   .ws-last{color:var(--dim);font-size:11.5px;min-width:62px;text-align:right}
   .watch-emerging{margin-top:36px;padding-top:26px;border-top:1px solid var(--border)}
   .watch-emerging .watch-setup{border-left:3px solid var(--amber)}

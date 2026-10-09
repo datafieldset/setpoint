@@ -15,6 +15,8 @@
 // time, enforced by Postgres itself, not by anything client-side. Once
 // that row resolves, a genuinely new fire can create a fresh one.
 import { neon } from "@neondatabase/serverless";
+import { getLiveVerifiedGate, verifiedAtFire } from "../../../lib/signals.js";
+import { ensureSignalTrackColumns } from "../../../lib/schema.js";
 
 export const dynamic = "force-dynamic";
 
@@ -46,12 +48,9 @@ export async function POST(req) {
         resolved_at TIMESTAMPTZ
       )
     `;
-    // Real regime at the moment this fired (bullish-trending,
-    // sideways-ranging, etc, from the exact same marketRegime() the
-    // Market Meter panel already uses) — added after the fact, so a
-    // real ALTER TABLE, not just CREATE TABLE IF NOT EXISTS, which
-    // only ever helps a table that doesn't exist yet.
-    await sql`ALTER TABLE signal_track ADD COLUMN IF NOT EXISTS regime TEXT`;
+    // The regime and verified_at_fire columns were added after the
+    // table existed, so they need real ALTERs (lib/schema.js).
+    await ensureSignalTrackColumns(sql);
     // Partial unique index: only enforced among rows still marked 'open',
     // so once a trade resolves, the same combo is free to fire again
     // later as a genuinely new trade.
@@ -60,9 +59,17 @@ export async function POST(req) {
       ON signal_track (coin, tf, label, dir)
       WHERE outcome = 'open'
     `;
+    // Stamped here on the server from the server's own gate, never from
+    // anything the browser sends, so it can't be faked. NULL if the
+    // check can't run, which readers treat as "judge by today's status".
+    let verified = null;
+    try {
+      const { gate, regimeGate } = await getLiveVerifiedGate();
+      verified = verifiedAtFire(label, tf, dir, regime || null, gate, regimeGate);
+    } catch { /* leave null */ }
     const result = await sql`
-      INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime)
-      VALUES (${coin}, ${tf}, ${label}, ${dir}, ${firedAt ? new Date(firedAt) : new Date()}, ${entry}, ${stop}, ${target}, ${regime || null})
+      INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime, verified_at_fire)
+      VALUES (${coin}, ${tf}, ${label}, ${dir}, ${firedAt ? new Date(firedAt) : new Date()}, ${entry}, ${stop}, ${target}, ${regime || null}, ${verified})
       ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
       RETURNING id
     `;
