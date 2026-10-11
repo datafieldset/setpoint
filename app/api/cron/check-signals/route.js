@@ -26,7 +26,7 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 import { ensureSignalTrackColumns } from "../../../../lib/schema.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity } from "../../../../lib/marketContext.js";
@@ -144,7 +144,7 @@ export async function GET(req) {
         checked++;
         try {
           const candles = await fetchCandles(coin, tf);
-          const th2 = { ...DEFAULT_TH, pctMin: TF[tf].pctMin };
+          const th2 = thresholdsFor(tf);
           const barMsLen = TF[tf].gran * TF[tf].aggFactor * 1000;
           const cutoff = now - LOOKBACK_MS;
           const results = [];

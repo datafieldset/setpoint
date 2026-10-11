@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -947,7 +947,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const fired = useRef({}); // key -> {firstFired, lastSeen}
   const openPositionsRef = useRef([]); // mirrors openPositions state, read inside the detection loop so a stale closure can never see old data
 
-  const th2 = useMemo(() => ({ ...th, pctMin: TF[tfKey].pctMin }), [th, tfKey]);
+  const th2 = useMemo(() => thresholdsFor(tfKey, th), [th, tfKey]);
 
   // Real, current subscription state, checked once on mount, not assumed.
   // A browser can have push permission granted from a previous visit

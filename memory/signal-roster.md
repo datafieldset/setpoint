@@ -143,9 +143,16 @@ found, not a current status — check live for whether they still hold.
 is the reasoning behind each one, current at time of promotion.)
 - Reversal watch | 1h | bull — 100%, thin sample, kept on Na's call,
   from very early in the project
-- Momentum | 4h | bull — 93%, hard-gated in-detector to against-bias
-  fires only (28W/2L on 30 real fires); the blended, ungated number is
-  a much weaker 66%
+- Momentum | 4h | bull — PULLED Oct 11 (v19.20). The old 93% came from
+  a backtest that skipped the per-timeframe move-size rule (Momentum
+  fired every bar). Under the live rule BTC gives 1 fire in a year.
+  Needs a real re-test before it gets a badge again. Full-year live-rule
+  replay of every combo on BTC: all sit near 33% (random entry level);
+  only Swing Early | 15m | bear holds (40% on 225 fires, 43% on the
+  held-back test). Quiet accumulation ratings were all below the bar
+  already, so none changed. Swing Rebound (Reversal watch bull 1h/4h)
+  tested with 2-4x wider stops and 12-72h holds: 22 and 15 fires a year,
+  nothing holds up (avg R between -0.3 and +0.3), nothing built.
 - Swing | 15m | bear — 82%, promoted after deepening a thin, 5-fire,
   BTC-only result across all 4 watchlist coins (14W/3L on 17 combined)
 - Swing Early | 15m | bear — 73%, the one surviving Swing Early combo

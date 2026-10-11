@@ -115,3 +115,8 @@ Findings:
 - Limit: Coinbase's finest data is 1 minute. Any lag under a minute is invisible here and could not be acted on from a phone alert anyway.
 
 Takeaways: BTC-only testing is a fair proxy for the alts. Fix thin samples with more BTC history. A lead-lag signal is not worth building. An untested idea: using BTC's direction as a filter on existing signals.
+
+## Backtest and live scanner drifted apart (Oct 11, v19.20)
+- Backtest routes called computeSignals with plain DEFAULT_TH while live code added the per-timeframe pctMin. Momentum fired every bar in backtests (fake 93% rating) and Quiet accumulation never fired. Another case of two copies of one rule drifting.
+- Fix: one helper, thresholdsFor(tfKey, base), used everywhere. Any new caller of computeSignals must use it.
+- A rating is only as good as the backtest behind it. After any change to detector inputs, re-run the full-year BTC replay.

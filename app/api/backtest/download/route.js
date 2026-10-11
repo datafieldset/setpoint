@@ -3,7 +3,7 @@
 // Regenerates the report each time (same logic as /api/backtest but returns file instead of HTML)
 // Password-protected same as /api/backtest, this exposes the same data as a file.
 
-import { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } from "../../../../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, windowPct, marketBias, reversalRisk } from "../../../../lib/signals.js";
 import { TF, barMs } from "../../../../lib/timeframes.js";
 import { logNewEvents, resolveCheckpoints } from "../../whale-track/route.js";
 import { fetchCoinbaseCandles, fetchMinuteCandles, resolveFromMinuteCandles, walkForwardOutcome } from "../../../../lib/resolve.js";
@@ -46,7 +46,7 @@ async function jointWalkForward(candlesByCoin, tfKey) {
       const slice = candles.slice(0, i + 1);
       let signals;
       try {
-        ({ signals } = computeSignals(slice, tfKey, DEFAULT_TH, { now: simNow, marketBias: bias, reversalRisk: risk }));
+        ({ signals } = computeSignals(slice, tfKey, thresholdsFor(tfKey), { now: simNow, marketBias: bias, reversalRisk: risk }));
       } catch {
         continue;
       }
