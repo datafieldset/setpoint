@@ -89,7 +89,7 @@ export async function POST(req) {
     let verified = null;
     try {
       const { gate, regimeGate } = await getLiveVerifiedGate();
-      verified = verifiedAtFire(label, tf, dir, regime || null, gate, regimeGate);
+      verified = verifiedAtFire(label, tf, dir, regime || null, gate, regimeGate, { entry: e, target: target2 });
     } catch { /* leave null */ }
     const result = await sql`
       INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime, verified_at_fire)

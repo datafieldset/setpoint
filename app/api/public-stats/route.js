@@ -40,7 +40,7 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, KILLED_COMBOS, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
+import { ALL_SIGNALS, KILLED_COMBOS, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
 import { ensureSignalTrackColumns } from "../../../lib/schema.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -132,6 +132,9 @@ async function computeStats(conn) {
     // rows logged before the kill still sit in signal_track forever
     // and would keep counting toward the customer-facing win rate.
     if (KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`)) continue;
+    // v19.20: trades whose target was under the minimum size never count,
+    // including ones logged before the minimum existed.
+    if (belowTargetFloor(r.tf, r.entry, r.target)) continue;
     // Oct 9: a trade is judged by whether it was verified WHEN IT FIRED
     // (verified_at_fire, stamped from the one shared provenContext at
     // that moment). That's what a customer actually saw, and it stops

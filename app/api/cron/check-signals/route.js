@@ -252,7 +252,7 @@ export async function GET(req) {
           try {
             const result = await sql`
               INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime, verified_at_fire)
-              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target}, ${s.regimeStage || null}, ${verifiedAtFire(s.label, tf, s.dir, s.regimeStage || null, freshGate, freshRegimeGate)})
+              VALUES (${coin}, ${TF[tf].label}, ${s.label}, ${s.dir}, now(), ${s.entry}, ${s.stop}, ${s.target}, ${s.regimeStage || null}, ${verifiedAtFire(s.label, tf, s.dir, s.regimeStage || null, freshGate, freshRegimeGate, { entry: s.entry, target: s.target })})
               ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
               RETURNING id
             `;
@@ -266,7 +266,7 @@ export async function GET(req) {
           const freshOverallVerified = !freshGateEntry || freshGateEntry.rate >= PROVEN_THRESHOLD;
           const freshRGate = s.regimeStage ? freshRegimeGate[`${gateKey}|${s.regimeStage}`] : null;
           const freshRegimeVerified = freshRGate && freshRGate.rate >= PROVEN_THRESHOLD;
-          const currentlyVerifiedFresh = s.tier === "proven" && (freshOverallVerified || freshRegimeVerified);
+          const currentlyVerifiedFresh = !s.belowFloor && s.tier === "proven" && (freshOverallVerified || freshRegimeVerified);
           if (!currentlyVerifiedFresh && !isCoilTest) continue; // anything else reaches here only once genuinely, currently verified
 
           const verb = s.dir === "bull" ? "Buy" : "Sell";

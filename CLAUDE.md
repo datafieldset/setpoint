@@ -40,3 +40,7 @@ already learned this lesson from once.
 ## Standing rule: BTC is the test bed for building and testing signals
 
 Direct decision from Na (Oct 8). Build, tune, backtest and test every signal on BTC. Do not use other coins as a cross-check or as extra evidence before promotion. Na has watched the market for 9 years and the alts have never moved without BTC, and the Oct 8 lead-lag study (memory/lessons-learned.md) confirmed it with data: the other coins move with BTC in the same bar, so they add little independent evidence. Other coins only matter when checking how a specific entry or stop level fits a coin a customer actually trades. Longer BTC history is the fix for thin samples, not borrowing from alts.
+
+## Standing rule: prove your work before replying
+
+Direct request from Na (Oct 11). Check and fix everything BEFORE sending it back, so he is not going back and forth after each reply. Follow `memory/review/README.md` and `memory/review/checklist.md`: run `node scripts/review.mjs` before replying, run `node scripts/verify-live.mjs` after every push, recompute every number given to him in the same turn, and say plainly what could not be checked. Use a separate agent to re-check high-stakes work (ratings, verification, alerts, anything customers see).

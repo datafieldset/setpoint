@@ -31,7 +31,7 @@
 // someone hadn't checked recently enough to catch it resolving live, it
 // looked like it disappeared for no reason. This gives real, honest
 // closure either way, win or loss, the next time the dashboard loads.
-import { provenContext, getLiveVerifiedGate, KILLED_COMBOS } from "../../../lib/signals.js";
+import { provenContext, getLiveVerifiedGate, KILLED_COMBOS, belowTargetFloor } from "../../../lib/signals.js";
 import { checkKey } from "../../../lib/access.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -89,7 +89,7 @@ export async function GET(req) {
     // verified-only list), it just can never be mislabeled "proven".
     const killedPc = { tag: null, boost: 0, phrase: null, rate: null, isLive: false, verifiedVia: null };
     const positions = rows.map((r) => {
-      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || belowTargetFloor(r.tf, r.entry, r.target) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       return {
         coin: r.coin,
         tf: r.tf,
@@ -106,7 +106,7 @@ export async function GET(req) {
       };
     });
     const recentlyResolved = resolvedRows.map((r) => {
-      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || belowTargetFloor(r.tf, r.entry, r.target) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       const entry = parseFloat(r.entry);
       const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
       const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;

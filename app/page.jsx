@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, thresholdsFor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -1228,7 +1228,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               // all, as long as its condition-specific record clears the
               // bar on a real, honest sample.
               const freshPc = provenContext(s.label, TF[tfKey].label, s.dir, json.liveGate, regimeHere?.stage, json.regimeGate);
-              const currentlyVerified = freshPc.tag === "proven";
+              const currentlyVerified = freshPc.tag === "proven" && !belowTargetFloor(tfKey, s.entry, s.target);
               // Real, temporary, named exception (Sep 6): Coil is brand
               // new and unverified, but this call already only ever
               // reaches whoever is currently signed in and has their own
