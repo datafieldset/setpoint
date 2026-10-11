@@ -162,6 +162,10 @@ async function computeStats(conn) {
     if (recent.length < 40) recent.push(toCard(r));
   }
 
+  // Every trade is levelled at a 2:1 payoff (a win is +2R, a loss is -1R,
+  // R = the amount risked), so average result per trade follows straight
+  // from the record. Before fees and slippage. Break-even is a 34% win rate.
+  const avgR = (w, l) => (w + l > 0 ? (2 * w - l) / (w + l) : null);
   const verifiedTotal = wins + losses;
   const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
@@ -192,6 +196,7 @@ async function computeStats(conn) {
       name: brandName(label), tf, dir,
       wins: w, losses: scoped.length - w,
       rate: w / scoped.length,
+      avgR: avgR(w, scoped.length - w),
       regime: ct.verifiedVia === "regime" ? ct.regimeStage : null,
       lastAt: scoped[0].resolved_at,
     });
@@ -202,8 +207,9 @@ async function computeStats(conn) {
 
   return {
     verifiedWinRate, verifiedTotal, wins, losses, recent,
+    avgR: avgR(wins, losses),
     activeSetups: verifiedSetups.size,
-    setups: [...verifiedSetups.values()],
+    setups: [...verifiedSetups.values()].map((s) => ({ ...s, avgR: avgR(s.wins, s.losses) })),
     lastTradeAt: recent[0]?.resolvedAt ?? null,
     stampedSince,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },

@@ -655,7 +655,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 5m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Squeezed tight, may be about to break," says the same thing in words instead of just a number.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 5m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Squeezed tight, may be about to break," says the same thing in words instead of just a number. Above it sits a bigger-picture strip with Bitcoin's move over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -901,6 +901,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey]);
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
+  const [btcMoves, setBtcMoves] = useState(null); // BTC's 12h / 24h / 3-day change from 1h candles, the "bigger picture" strip on the Market Meter
+  const btcMovesAt = useRef(0);
   const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 5m regardless of the selected alerts tab, powers the Market Meter below
   const [watchlistMeters15m, setWatchlistMeters15m] = useState({}); // sym -> real meter score, always 15m, powers the Market Meter's confirmation check specifically
   const [loading, setLoading] = useState(true);
@@ -1274,6 +1276,26 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       const coins = json.coins || [];
       const btc = coins.find((c) => c.sym === "BTC");
       if (btc && !btc.error && btc.candles?.length) setBtcRegime(marketRegime(btc.candles, "5m"));
+
+      // Bigger picture, refreshed at most every 5 minutes. The meter's own
+      // read is a short 5m one and can say "calm" in the middle of a
+      // multi-day run, so this puts the larger moves right next to it.
+      if (Date.now() - btcMovesAt.current > 5 * 60 * 1000) {
+        btcMovesAt.current = Date.now();
+        try {
+          const r1 = await fetch(`/api/market?symbols=BTC&tf=1h`, { cache: "no-store" });
+          if (r1.ok) {
+            const j1 = await r1.json();
+            const b1 = (j1.coins || []).find((c) => c.sym === "BTC");
+            const cs = b1?.candles || [];
+            if (cs.length > 73) {
+              const last = cs[cs.length - 1].close;
+              const back = (h) => ((last / cs[cs.length - 1 - h].close) - 1) * 100;
+              setBtcMoves({ h12: back(12), h24: back(24), h72: back(72) });
+            }
+          }
+        } catch { /* leave the strip as it was */ }
+      }
 
       // Real, same real fix, this time for the confirmation check's own
       // watchlist-exhaustion half, not just the BTC stage/level. That
@@ -1768,6 +1790,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <span className="mm-title">Market Meter</span>
                 <span className="mm-sub">BTC · 5m</span>
               </div>
+              {btcMoves && (
+                <div className="mm-moves">
+                  {[["12h", btcMoves.h12], ["24h", btcMoves.h24], ["3 days", btcMoves.h72]].map(([k, v]) => (
+                    <div key={k} className="mm-move"><span className="mm-move-k">{k}</span><span className={`mm-move-v mono ${v >= 0 ? "up" : "down"}`}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span></div>
+                  ))}
+                  {Math.max(Math.abs(btcMoves.h12), Math.abs(btcMoves.h24) * 0.75, Math.abs(btcMoves.h72) * 0.5) >= 4 && (
+                    <div className="mm-move-flag">{btcMoves.h72 + btcMoves.h24 >= 0 ? "Bitcoin is running up." : "Bitcoin is running down."} The 5m read below can look calm during a bigger move.</div>
+                  )}
+                </div>
+              )}
               {synthesizeMarketRead(marketMeter, signalBias) && (
                 <div className="mm-synthesis">{synthesizeMarketRead(marketMeter, signalBias)}</div>
               )}
@@ -2492,6 +2524,13 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mm-sub{font-size:11px;color:var(--dim)}
+.mm-moves{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.mm-move{display:flex;align-items:baseline;gap:6px}
+.mm-move-k{font-size:11px;color:var(--dim)}
+.mm-move-v{font-size:15px;font-weight:700}
+.mm-move-v.up{color:var(--green)}
+.mm-move-v.down{color:var(--red)}
+.mm-move-flag{flex-basis:100%;font-size:12px;color:var(--amber);font-weight:600;line-height:1.4}
 .mm-synthesis{font-size:15px;font-weight:600;line-height:1.4;color:var(--text);background:var(--panel3);border-left:3px solid var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:14px}
 .mm-levels{display:flex;gap:6px;margin-bottom:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
 .mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}

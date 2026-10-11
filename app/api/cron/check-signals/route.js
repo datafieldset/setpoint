@@ -28,6 +28,7 @@ import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
+import { checkBigMove } from "../../../../lib/bigMove.js";
 import { ensureSignalTrackColumns } from "../../../../lib/schema.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity } from "../../../../lib/marketContext.js";
 
@@ -62,6 +63,10 @@ export async function GET(req) {
     // account actually watches. watchlist is stored as JSON text (same
     // as my-watchlist/route.js), not a real Postgres array, so it's
     // parsed here rather than filtered in SQL.
+    // Independent of any watchlist: a plain heads-up when BTC has made a
+    // big, fast move. Must never break the signal run itself.
+    let bigMove = null;
+    try { bigMove = await checkBigMove(sql, webpush); } catch (e) { bigMove = { error: String(e.message || e).slice(0, 80) }; }
     const rawSubs = await sql`
       SELECT DISTINCT u.email, u.watchlist, u.is_admin, ps.endpoint, ps.subscription
       FROM push_subscriptions ps
@@ -75,7 +80,7 @@ export async function GET(req) {
         return { ...r, watchlist: Array.isArray(watchlist) ? watchlist : [] };
       })
       .filter((r) => r.watchlist.length > 0);
-    if (!subs.length) return Response.json({ checked: 0, sent: 0, reason: "no_subscribers_with_watchlists" });
+    if (!subs.length) return Response.json({ checked: 0, sent: 0, reason: "no_subscribers_with_watchlists", bigMove });
 
     // Real market context, fetched once, shared across every coin and
     // every account checked this run, same real inputs the dashboard
@@ -294,7 +299,7 @@ export async function GET(req) {
       await sql`DELETE FROM push_subscriptions WHERE endpoint = ANY(${deadEndpoints})`;
     }
 
-    return Response.json({ checked, sent, coinsChecked: neededCoins.size, accountsWithAlerts: subs.length, fetchErrors: fetchErrors.slice(0, 20) });
+    return Response.json({ checked, sent, coinsChecked: neededCoins.size, accountsWithAlerts: subs.length, fetchErrors: fetchErrors.slice(0, 20), bigMove });
   } catch (e) {
     return Response.json({ error: "server_error", detail: String(e.message || e).slice(0, 200) }, { status: 500 });
   }

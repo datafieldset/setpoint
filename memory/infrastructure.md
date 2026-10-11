@@ -1,5 +1,8 @@
 # Infrastructure
 
+## big_move_alerts table (v19.20)
+Created lazily by lib/bigMove.js: id, dir ('up'/'down'), pct, alerted_at. One row per alert, used for the 12h cooldown per direction. The check runs inside every /api/cron/check-signals call and never blocks it.
+
 ## Database — Neon Postgres
 Key tables: `users`, `signal_track` (core table — every fired signal, `coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime`; `regime` column added later, populated at fire time from `marketRegime()`), `macro_cache`, `whale_track`, `backtest_results` (`run_at, bucket, fired, wins, losses, win_rate` — one row per bucket per run of `/api/backtest`, including condition-split buckets like `"Label · tf · dir · Bias:against"`), `push_subscriptions`.
 Unique index: `signal_track_open_unique` on `(coin, tf, label, dir) WHERE outcome = 'open'` — DB-level guarantee only one open position per combo at a time; this is what makes the cron and a live browser tab safe to both attempt logging the same real fire without racing.

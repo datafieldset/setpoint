@@ -18,6 +18,8 @@ const fmtPrice = (n) => (n >= 1000 ? n.toLocaleString(undefined, { maximumFracti
 const fmtDay = (iso) => new Date(iso).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 const fmtTime = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 
+const fmtR = (r) => `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(2)}R`;
+
 function TradeCard({ t }) {
   return (
     <div className={`watch-card ${t.outcome}`}>
@@ -53,6 +55,7 @@ function SetupRow({ s }) {
       {s.regime && <span className="ws-regime">in {s.regime.replace("-", " ")} markets</span>}
       {s.verifiedNow === false && <span className="ws-slipped">under the bar now</span>}
       <span className="ws-rec">{s.wins} won, {s.losses} lost</span>
+      {s.avgR != null && <span className={`ws-r ${s.avgR >= 0 ? "pos" : "neg"}`}>{fmtR(s.avgR)} per trade</span>}
       <span className="ws-last">last {fmtDay(s.lastAt)}</span>
     </div>
   );
@@ -121,6 +124,11 @@ export default function WatchLiveContent({ onBack }) {
                   ? "No setup clears the verified bar right now."
                   : `${data.verifiedTotal} trades from ${activeSetups} setup${activeSetups === 1 ? "" : "s"}, each one verified at the moment it fired. Real prices, levels locked when each one fired.`}
               </div>
+              {data.avgR != null && (
+                <div className="watch-legend-total">
+                  Average result per trade: <b className={data.avgR >= 0 ? "ws-r pos" : "ws-r neg"}>{fmtR(data.avgR)}</b>. A win pays 2R, a loss costs 1R (R is what you risk), so a setup breaks even at a 34% win rate. Before fees and slippage.
+                </div>
+              )}
               {data.lastTradeAt && <div className="watch-legend-total">Latest verified trade: {fmtDay(data.lastTradeAt)}.</div>}
             </div>
           </div>
@@ -257,6 +265,9 @@ const CSS = `
   .ws-name{font-weight:600;flex:1 1 150px}
   .ws-regime{color:var(--dim);font-size:11.5px}
   .ws-rec{font-weight:600;font-variant-numeric:tabular-nums}
+  .ws-r{font-size:11.5px;font-weight:600;font-variant-numeric:tabular-nums}
+  .ws-r.pos{color:var(--green)}
+  .ws-r.neg{color:var(--red)}
   .ws-slipped{color:var(--amber);font-size:11.5px}
   .ws-last{color:var(--dim);font-size:11.5px;min-width:62px;text-align:right}
   .watch-emerging{margin-top:36px;padding-top:26px;border-top:1px solid var(--border)}

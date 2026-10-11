@@ -161,3 +161,6 @@ is the reasoning behind each one, current at time of promotion.)
   into the detector; a 100%-on-11-fires "ranging" slice was too thin
   to trust, this uses the more robust 46-fire bias-aligned number)
 - Volume spike | 30m | bull — 60% (12W/8L on 22 real fires)
+
+## Killed-combo recheck, first run (Oct 11, 2026)
+Every killed combo from 5m up replayed on fresh BTC history under the live rules: nothing came back. Best was Momentum 15m bear at 51% on 49 fires, but 44% in the second half, too thin and fading. Everything else sits at 29-38%. Runs monthly now (scripts/recheck-killed.mjs); 1m combos are not rechecked.

@@ -4,3 +4,5 @@ out
 .env*
 .DS_Store
 *.log
+recheck-candidates.flag
+report.md
