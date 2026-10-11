@@ -15,7 +15,9 @@
 // time, enforced by Postgres itself, not by anything client-side. Once
 // that row resolves, a genuinely new fire can create a fresh one.
 import { neon } from "@neondatabase/serverless";
-import { getLiveVerifiedGate, verifiedAtFire } from "../../../lib/signals.js";
+import { getLiveVerifiedGate, verifiedAtFire, ALL_SIGNALS } from "../../../lib/signals.js";
+import { TF } from "../../../lib/timeframes.js";
+import { fetchCandles } from "../../../lib/marketContext.js";
 import { ensureSignalTrackColumns } from "../../../lib/schema.js";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +32,28 @@ export async function POST(req) {
   if (!coin || !tf || !label || !dir || entry == null || stop == null || target == null) {
     return Response.json({ error: "missing_fields" }, { status: 400 });
   }
+
+  // v19.20: this route is public, so nothing in the body is trusted.
+  // The label, timeframe and direction must be real, the numbers must be
+  // numbers, and the entry must sit near the coin's actual current price.
+  // The target is then rebuilt on the server as exactly 2x the risk, so a
+  // caller can never hand us a made-up payoff.
+  if (!TF[tf] || (dir !== "bull" && dir !== "bear") || !ALL_SIGNALS.some((x) => x.name === label) || !/^[A-Z0-9]{2,10}$/.test(String(coin))) {
+    return Response.json({ error: "invalid_signal" }, { status: 400 });
+  }
+  const e = Number(entry), st = Number(stop);
+  if (![e, st].every((x) => Number.isFinite(x) && x > 0)) return Response.json({ error: "invalid_numbers" }, { status: 400 });
+  const risk = Math.abs(e - st);
+  if ((dir === "bull" ? st >= e : st <= e) || risk / e < 0.0005 || risk / e > 0.15) {
+    return Response.json({ error: "invalid_levels" }, { status: 400 });
+  }
+  let lastClose;
+  try {
+    const cs = await fetchCandles(String(coin), tf);
+    lastClose = cs[cs.length - 1].close;
+  } catch { return Response.json({ error: "price_unavailable" }, { status: 503 }); }
+  if (Math.abs(e - lastClose) / lastClose > 0.02) return Response.json({ error: "entry_off_market" }, { status: 400 });
+  const target2 = dir === "bull" ? e + 2 * risk : e - 2 * risk;
 
   try {
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
@@ -69,7 +93,7 @@ export async function POST(req) {
     } catch { /* leave null */ }
     const result = await sql`
       INSERT INTO signal_track (coin, tf, label, dir, fired_at, entry, stop, target, regime, verified_at_fire)
-      VALUES (${coin}, ${tf}, ${label}, ${dir}, ${firedAt ? new Date(firedAt) : new Date()}, ${entry}, ${stop}, ${target}, ${regime || null}, ${verified})
+      VALUES (${coin}, ${tf}, ${label}, ${dir}, ${firedAt ? new Date(firedAt) : new Date()}, ${e}, ${st}, ${target2}, ${regime || null}, ${verified})
       ON CONFLICT (coin, tf, label, dir) WHERE outcome = 'open' DO NOTHING
       RETURNING id
     `;
