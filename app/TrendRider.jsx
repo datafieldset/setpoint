@@ -53,11 +53,11 @@ export default function TrendRider() {
                 <ul className="tr-watch">
                   <li className={t.longAllowed ? "" : "off"}>
                     <b>Buy</b> if a 4-hour candle closes above <span className="mono">{money(t.longTrigger)}</span>.
-                    {!t.longAllowed && <span className="tr-why"> Not allowed now: price is under its 200-day average.</span>}
+                    {!t.longAllowed && <span className="tr-why">{t.sma ? " Not allowed now: price is under its 200-day average." : " Paused: the 200-day average isn't available right now."}</span>}
                   </li>
                   <li className={t.shortAllowed ? "" : "off"}>
                     <b>Sell</b> if a 4-hour candle closes below <span className="mono">{money(t.shortTrigger)}</span>.
-                    {!t.shortAllowed && <span className="tr-why"> Not allowed now: price is above its 200-day average of <span className="mono">{money(t.sma)}</span>.</span>}
+                    {!t.shortAllowed && <span className="tr-why">{t.sma ? <> Not allowed now: price is above its 200-day average of <span className="mono">{money(t.sma)}</span>.</> : " Paused: the 200-day average isn't available right now."}</span>}
                   </li>
                 </ul>
               ) : (

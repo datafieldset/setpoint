@@ -36,3 +36,5 @@ v19.21: Trend Rider, admin-only forward test (lib/trend.js pure rules, lib/trend
 
 ## Numbering note
 Version numbers are informal, bumped per real, deployed change, tracked in git commit messages (`vX.Y`) — not tied to a formal release process. Check `git log --oneline` for the authoritative, current sequence.
+
+v19.21 review fixes: open-positions, resolved-positions and scoreboard now hide non-visible signals; Trend Rider close/trail updates guarded against double runs; entries only evaluated when the newest due 4h bar is present; panel says so when the 200-day average is unavailable. Known limits: entry is checked on the latest bar only (a cron outage over 4h can miss a breakout); ATR seed depends on the ~75-bar fetch window.

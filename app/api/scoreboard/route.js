@@ -1,3 +1,4 @@
+import { isSignalVisible } from "../../../lib/signals.js";
 // app/api/scoreboard/route.js
 //
 // The rolling scoreboard. Visit this like /api/backtest, in a browser, any
@@ -183,6 +184,7 @@ export async function GET() {
 
     const bucketMap = new Map();
     for (const r of resolvedRows) {
+      if (!isSignalVisible(r.label)) continue;
       const key = `${r.label} · ${TF[r.tf]?.label || r.tf} · ${r.dir}`;
       const b = bucketMap.get(key) || { key, n: 0, wins: 0, losses: 0 };
       b.n++;

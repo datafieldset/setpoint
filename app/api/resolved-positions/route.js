@@ -1,3 +1,4 @@
+import { isSignalVisible } from "../../../lib/signals.js";
 // app/api/resolved-positions/route.js
 //
 // Shows exactly what a specific fired signal actually resolved to, and
@@ -37,7 +38,7 @@ export async function GET(req) {
           LIMIT ${limit}
         `;
 
-    const resolved = rows.map((r) => ({
+    const resolved = rows.filter((r) => isSignalVisible(r.label)).map((r) => ({
       coin: r.coin,
       tf: r.tf,
       label: r.label,
