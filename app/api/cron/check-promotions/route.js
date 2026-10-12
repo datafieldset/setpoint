@@ -23,7 +23,7 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, KILLED_COMBOS, getFullSignalGate, confidenceTier } from "../../../../lib/signals.js";
+import { ALL_SIGNALS, isSignalVisible, SIGNAL_RATES, PROVEN_THRESHOLD, KILLED_COMBOS, getFullSignalGate, confidenceTier } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +67,7 @@ export async function GET(req) {
     const newlyQualifying = [];
 
     for (const { name } of ALL_SIGNALS) {
+      if (!isSignalVisible(name)) continue; // focus mode: no promotion pings for hidden signals
       for (const tf of tfLabels) {
         for (const dir of dirs) {
           const staticKey = `${name}|${tf}|${dir}`;

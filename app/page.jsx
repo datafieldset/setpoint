@@ -1,9 +1,10 @@
 "use client";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import TrendRider from "./TrendRider.jsx";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, VISIBLE_SIGNALS, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -555,6 +556,12 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, the Market tab, and the news read.</p>
       </div>
 
+      {FOCUS && (
+        <div className="guide-glossary">
+          <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so the dashboard shows one signal at a time. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return.{account?.isAdmin ? " Right now that one signal is Trend Rider, a slow Bitcoin signal on 4-hour candles: it buys when a candle closes above the last 20 candles' high (or sells below the low) with price on the right side of its 200-day average, then trails a stop behind price with no fixed target. It's a test and only you can see it." : ""}
+        </div>
+      )}
+
       {account?.isAdmin && catalogSummary && (
         <div className="guide-section">
           <div className="guide-eyebrow">Admin only</div>
@@ -817,6 +824,8 @@ function AdminPanel({ onBack }) {
 
 /* =============================== DASHBOARD =============================== */
 // DEFAULT_TH now comes from lib/signals.js, imported above.
+// Focus mode (Oct 12): while no original signal is on VISIBLE_SIGNALS, the dashboard shows only Trend Rider.
+const FOCUS = VISIBLE_SIGNALS.length === 0;
 
 // The Push API requires the VAPID public key as a Uint8Array, not the
 // base64url string it's actually stored and shared as. Standard, widely
@@ -1565,7 +1574,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     <div className="dash">
       <div className="topbar">
         <div className="brand"><span className="logo-dot" />Setpoint</div>
-        {dashboardTab === "coins" && (
+        {dashboardTab === "coins" && !FOCUS && (
         <div className="tf-toggle">
           {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
         </div>
@@ -1683,7 +1692,18 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       )}
 
       <div className="dash-body">
-        {dashboardTab === "coins" && (
+        {dashboardTab === "coins" && FOCUS && (
+          <div className="opps">
+            {account.isAdmin ? <TrendRider /> : (
+              <div className="empty">
+                <div className="empty-h">We're rebuilding our signals</div>
+                <div className="empty-d">Every signal is being re-tested from scratch. Each one returns here only after it earns its place, one at a time.</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {dashboardTab === "coins" && !FOCUS && (
         <div className="opps">
           <div className="section-head">
             <h2>Open Alerts</h2>

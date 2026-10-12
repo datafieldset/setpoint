@@ -121,7 +121,7 @@ export default function WatchLiveContent({ onBack }) {
               <div className="watch-legend-row"><span className="dot loss" /> {data.losses} losses</div>
               <div className="watch-legend-total">
                 {data.verifiedTotal === 0
-                  ? "No setup clears the verified bar right now."
+                  ? (data.focusMode ? "We're rebuilding our signals from scratch. Results return here as each one earns its place." : "No setup clears the verified bar right now.")
                   : `${data.verifiedTotal} trades from ${activeSetups} setup${activeSetups === 1 ? "" : "s"}, each one verified at the moment it fired. Real prices, levels locked when each one fired.`}
               </div>
               {data.avgR != null && (

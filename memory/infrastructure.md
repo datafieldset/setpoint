@@ -1,5 +1,8 @@
 # Infrastructure
 
+## trend_positions table (v19.21)
+Created lazily by lib/trendRunner.js: id, coin, dir, status (open/closed), bar_time (open time of the entry 4h bar, ms), opened_at, entry, risk (1R, the opening stop distance), stop (trailing), ext (best price since entry), last_hour (open time of the last hourly candle processed), sma (200-day average at entry), exit, closed_at, r. Unique: one open trade per direction, one trade per (coin, dir, bar_time). Trend Rider state lives only here, not in signal_track.
+
 ## big_move_alerts table (v19.20)
 Created lazily by lib/bigMove.js: id, dir ('up'/'down'), pct, alerted_at. One row per alert, used for the 12h cooldown per direction. The check runs inside every /api/cron/check-signals call and never blocks it.
 

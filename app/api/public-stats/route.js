@@ -40,7 +40,7 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, KILLED_COMBOS, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
+import { ALL_SIGNALS, KILLED_COMBOS, VISIBLE_SIGNALS, isSignalVisible, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
 import { ensureSignalTrackColumns } from "../../../lib/schema.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -135,6 +135,8 @@ async function computeStats(conn) {
     // v19.20: trades whose target was under the minimum size never count,
     // including ones logged before the minimum existed.
     if (belowTargetFloor(r.tf, r.entry, r.target)) continue;
+    // Focus mode (v19.21): hidden signals never appear on Watch Live.
+    if (!isSignalVisible(r.label)) continue;
     // Oct 9: a trade is judged by whether it was verified WHEN IT FIRED
     // (verified_at_fire, stamped from the one shared provenContext at
     // that moment). That's what a customer actually saw, and it stops
@@ -186,6 +188,7 @@ async function computeStats(conn) {
   const emergingTrades = [];
   for (const key of comboKeys) {
     if (KILLED_COMBOS.includes(key)) continue;
+    if (!isSignalVisible(key.split("|")[0])) continue; // focus mode
     if (verifiedSetups.has(key)) continue; // already shown as verified
     const [label, tf, dir] = key.split("|");
     const ct = confidenceTier(label, tf, dir, liveGate, null, regimeGate, fullGate, fullRegimeGate);
@@ -215,6 +218,7 @@ async function computeStats(conn) {
     setups: [...verifiedSetups.values()].map((s) => ({ ...s, avgR: avgR(s.wins, s.losses) })),
     lastTradeAt: recent[0]?.resolvedAt ?? null,
     stampedSince,
+    focusMode: VISIBLE_SIGNALS.length === 0,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
   };
 }

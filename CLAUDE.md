@@ -44,3 +44,7 @@ Direct decision from Na (Oct 8). Build, tune, backtest and test every signal on 
 ## Standing rule: prove your work before replying
 
 Direct request from Na (Oct 11). Check and fix everything BEFORE sending it back, so he is not going back and forth after each reply. Follow `memory/review/README.md` and `memory/review/checklist.md`: run `node scripts/review.mjs` before replying, run `node scripts/verify-live.mjs` after every push, recompute every number given to him in the same turn, and say plainly what could not be checked. Use a separate agent to re-check high-stakes work (ratings, verification, alerts, anything customers see).
+
+## Standing rule: focus mode (Oct 12)
+
+Na asked to hide every original signal and focus on one new signal at a time. `VISIBLE_SIGNALS` in `lib/signals.js` decides which original signals anyone can see (currently none). Bringing one back means adding its label there plus a dated reason in `memory/signal-roster.md`, in the same commit. Hidden signals still detect and log. Trend Rider (`lib/trend.js`) is the one signal shown, admin-only, and runs outside `computeSignals`.
