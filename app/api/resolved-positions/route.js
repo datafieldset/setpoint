@@ -23,7 +23,7 @@ export async function GET(req) {
   }
   try {
     const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn);
+    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
     await ensureSignalTrack(sql);
     const { searchParams } = new URL(req.url);
     const coin = searchParams.get("coin");
