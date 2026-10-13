@@ -13,8 +13,8 @@ export async function GET() {
   if (!conn) return Response.json({ error: "no_database" }, { status: 500 });
   try {
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    return Response.json(await trendState(sql), { headers: { "cache-control": "no-store" } });
+    return Response.json(await trendState(sql), { headers: { "cache-control": "public, s-maxage=15, stale-while-revalidate=30" } });
   } catch (e) {
-    return Response.json({ error: String(e.message || e).slice(0, 150) }, { status: 500 });
+    return Response.json({ error: "unavailable" }, { status: 500 });
   }
 }

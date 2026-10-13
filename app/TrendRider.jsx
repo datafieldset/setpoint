@@ -13,8 +13,8 @@ const fmtR = (r) => (r == null ? "—" : `${r >= 0 ? "+" : "−"}${Math.abs(r).t
 const pct = (n) => (n == null ? "—" : `${n}%`);
 const dayTime = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 const away = (price, level) => (price && level ? Math.abs((level / price - 1) * 100).toFixed(1) + "%" : null);
-const BREAK_EVEN = 34; // win rate where a 2-to-1 trade payoff breaks even
 
+const EARLY = 10; // below this many closed trades a win rate is just an early read
 function Check({ ok, children }) {
   return (
     <li className={ok ? "ok" : "no"}>
@@ -55,8 +55,10 @@ export default function TrendRider() {
         .then((j) => { if (alive) { setD(j); setErr(null); } })
         .catch(() => { if (alive) setErr("Couldn't load Trend Rider right now."); });
     load();
-    const id = setInterval(load, 30000);
-    return () => { alive = false; clearInterval(id); };
+    const id = setInterval(() => { if (!document.hidden) load(); }, 30000);
+    const vis = () => { if (!document.hidden) load(); };
+    document.addEventListener("visibilitychange", vis);
+    return () => { alive = false; clearInterval(id); document.removeEventListener("visibilitychange", vis); };
   }, []);
 
   const cur = d?.tfs?.[sel];
@@ -70,34 +72,35 @@ export default function TrendRider() {
         <span className="tr-sub">Bitcoin · six timeframes · scoreboard updates as trades close</span>
       </div>
 
-      {err && <div className="tr-note tr-err">{err}</div>}
-      {!d && !err && <div className="tr-note">Loading…</div>}
+      <div aria-live="polite">
+        {err && <div className="tr-note tr-err">{err}</div>}
+        {!d && !err && <div className="tr-note">Loading…</div>}
+      </div>
 
       {d && (
         <>
-          <div className="tr-tiles" role="tablist" aria-label="Timeframe">
+          <div className="tr-tiles" role="group" aria-label="Pick a timeframe">
             {d.order.map((k) => {
               const t = d.tfs[k];
               const all = t.record.all;
               const live = t.open.length > 0;
               return (
-                <button key={k} role="tab" aria-selected={sel === k} className={`tr-tile ${sel === k ? "on" : ""}`} onClick={() => setSel(k)}>
+                <button key={k} type="button" aria-pressed={sel === k} className={`tr-tile ${sel === k ? "on" : ""}`} onClick={() => setSel(k)}>
                   <span className="tr-tile-top">
                     <span className="tr-tile-tf">{k}</span>
                     {live && <span className="tr-live">open</span>}
                   </span>
                   <span className="tr-tile-win">{pct(all.winPct)}</span>
-                  <span className="tr-tile-sub">{all.trades ? `${all.wins} won · ${all.losses} lost` : "no trades yet"}</span>
+                  <span className="tr-tile-sub">{all.trades ? `${all.wins} won · ${all.losses} lost${all.trades < EARLY ? " · early" : ""}` : "no trades yet"}</span>
                   <span className="tr-bar" aria-hidden="true">
                     <span className="tr-bar-fill" style={{ width: `${all.winPct ?? 0}%` }} />
-                    <span className="tr-bar-tick" style={{ left: `${BREAK_EVEN}%` }} />
                   </span>
                   <span className="tr-tile-avg">{all.trades ? `${fmtR(all.avgR)} avg` : t.alerts ? "alerts on" : "tracking only"}</span>
                 </button>
               );
             })}
           </div>
-          <div className="tr-legend">Bar = win rate. The tick marks 34%, the win rate where these 2-to-1 trades break even.</div>
+          <div className="tr-legend">Bar = win rate so far. Win rate alone isn't the whole story: the average result per trade (in R) says whether the winners are paying for the losers.</div>
 
           {cur && (
             <div className="tr-detail">
@@ -137,14 +140,14 @@ export default function TrendRider() {
               )}
 
               <div className="tr-record">
-                <div className="tr-rec-h">Real results on {cur.label}</div>
+                <div className="tr-rec-h">Real paper trades on {cur.label}, filled at the breakout level</div>
                 <div className="tr-rec-grid">
                   {[["Buys", cur.record.buys, cur.ref?.buys], ["Sells", cur.record.sells, cur.ref?.sells]].map(([nm, r, ref]) => (
                     <div key={nm} className="tr-rec-card">
                       <div className="tr-rec-nm">{nm}</div>
                       <div className="tr-rec-win">{pct(r.winPct)}<small> win rate</small></div>
                       <div className="tr-rec-sub">{r.trades ? `${r.wins} won, ${r.losses} lost · ${fmtR(r.avgR)} avg` : "no closed trades yet"}</div>
-                      {ref && <div className="tr-rec-ref">History test: {ref.winPct}% wins, {fmtR(ref.avgR)} avg ({ref.window})</div>}
+                      {ref && <div className="tr-rec-ref">History test: {ref.winPct}% wins, {fmtR(ref.avgR)} avg over {ref.trades} trades ({ref.window})</div>}
                     </div>
                   ))}
                 </div>
@@ -154,7 +157,7 @@ export default function TrendRider() {
                   </div>
                 )}
                 {cur.closed.length > 0 && (
-                  <div className="tr-hist">
+                  <div className="tr-hist" tabIndex={0} aria-label="Recent closed trades">
                     {cur.closed.map((c) => (
                       <div key={c.id} className="tr-hist-row">
                         <span className="tr-hist-dir">{c.dir === "long" ? "Buy" : "Sell"}</span>
@@ -170,7 +173,7 @@ export default function TrendRider() {
           )}
 
           <div className="tr-expect">
-            <b>What to expect.</b> About 4 in 10 trades win, and the winners run longer than the losers cost, so a few big wins carry it with a string of small losses between. The slower charts (4 hour, 1 hour) held up over 6 years of history. The faster ones only have months of history behind them, so treat 30 minute and below as experiments. Every number above is real trades from now on, starting at zero.
+            <b>What to expect.</b> About 4 in 10 trades win, and the winners run longer than the losers cost, so a few big wins carry it with a string of small losses between. The 4 hour and 1 hour charts have the most history behind them (6 years), and even there the edge is modest and was close to zero in the last two calm years. 30 minute and below only have months of history, so treat them as experiments. The history tests were tuned on that same history, so live results will probably be lower, and past results never promise future ones. The scoreboard counts only trades from the moment this went live.
           </div>
         </>
       )}
@@ -196,7 +199,6 @@ const CSS = `
 .tr-tile-sub{font-size:11px;color:var(--dim);line-height:1.3}
 .tr-bar{position:relative;display:block;width:100%;height:4px;background:var(--hair);border-radius:2px;margin:3px 0 1px}
 .tr-bar-fill{position:absolute;left:0;top:0;bottom:0;background:var(--green);border-radius:2px}
-.tr-bar-tick{position:absolute;top:-2px;bottom:-2px;width:1.5px;background:var(--muted)}
 .tr-tile-avg{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
 .tr-legend{font-size:11px;color:var(--dim);margin:7px 0 14px}
 .tr-detail{border-top:1px solid var(--hair);padding-top:14px}

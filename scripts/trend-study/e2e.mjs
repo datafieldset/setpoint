@@ -27,6 +27,7 @@ function feed(sec, pages, now) {
 
 // ---- fake sql: matches the exact statements the runner issues
 const rows = [];
+const state = {};
 let nextId = 1;
 const fakeSql = async (strings, ...v) => {
   const q = strings.join("?").replace(/\s+/g, " ").trim();
@@ -37,7 +38,9 @@ const fakeSql = async (strings, ...v) => {
     const row = rows.find((r) => r.id === id && r.status === "open"); if (!row) return [];
     Object.assign(row, { status: "closed", exit, r: rr, stop, ext, last_hour: last }); return [{ id }];
   }
-  if (q.startsWith("UPDATE trend_positions SET stop")) { const [stop, ext, last, id] = v; const row = rows.find((r) => r.id === id && r.status === "open"); if (row) Object.assign(row, { stop, ext, last_hour: last }); return []; }
+  if (q.startsWith("UPDATE trend_positions SET stop")) { const [s1, s2, e1, e2, last, id] = v; const row = rows.find((r) => r.id === id && r.status === "open"); if (row) { const L = row.dir === "long"; Object.assign(row, { stop: L ? Math.max(row.stop, s1) : Math.min(row.stop, s2), ext: L ? Math.max(row.ext, e1) : Math.min(row.ext, e2), last_hour: Math.max(row.last_hour, last) }); } return []; }
+  if (q.startsWith("SELECT val FROM trend_state")) return state.last_run ? [{ val: state.last_run }] : [];
+  if (q.startsWith("INSERT INTO trend_state")) { state.last_run = v[0]; return []; }
   if (q.startsWith("INSERT INTO trend_positions")) {
     const [coin, tf, dir, bar_time, entry, risk, stop, ext, last_hour, sma, fng, stretch] = v;
     if (rows.some((r) => r.tf === tf && r.dir === dir && (r.status === "open" || r.bar_time === bar_time))) return []; // unique indexes

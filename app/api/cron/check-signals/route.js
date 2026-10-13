@@ -68,9 +68,9 @@ export async function GET(req) {
     // big, fast move. Must never break the signal run itself.
     let bigMove = null;
     try { bigMove = await checkBigMove(sql, webpush); } catch (e) { bigMove = { error: String(e.message || e).slice(0, 80) }; }
-    // Trend Rider (v19.21): slow BTC trend signal, admin-only forward test. Same rule, never breaks the run.
+    // Trend Rider (v19.23): public BTC breakout-and-trail signal on six timeframes (alerts to admins only). Never breaks the run, and a hung feed is cut off after 20 seconds.
     let trend = null;
-    try { trend = await runTrend(sql, webpush); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }
+    try { trend = await Promise.race([runTrend(sql, webpush), new Promise((_, rej) => setTimeout(() => rej(new Error("trend timed out")), 20000))]); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }
     const rawSubs = await sql`
       SELECT DISTINCT u.email, u.watchlist, u.is_admin, ps.endpoint, ps.subscription
       FROM push_subscriptions ps
