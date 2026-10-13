@@ -558,7 +558,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
 
       {FOCUS && (
         <div className="guide-glossary">
-          <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so the dashboard shows one signal at a time. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return.{account?.isAdmin ? " Right now that one signal is Trend Rider, a slow Bitcoin signal on 4-hour candles: it buys when a candle closes above the last 20 candles' high (or sells below the low) with price on the right side of its 200-day average, then trails a stop behind price with no fixed target. It's a test and only you can see it." : ""}
+          <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so the dashboard shows one signal at a time. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return.{true ? " Right now that one signal is Trend Rider, a slow Bitcoin signal on 4-hour candles: it buys when a candle closes above the last 20 candles' high (or sells below the low) with price on the right side of its 200-day average, then trails a stop behind price with no fixed target. It's a test, so treat it that way." : ""}
         </div>
       )}
 
@@ -1694,12 +1694,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       <div className="dash-body">
         {dashboardTab === "coins" && FOCUS && (
           <div className="opps">
-            {account.isAdmin ? <TrendRider /> : (
-              <div className="empty">
-                <div className="empty-h">We're rebuilding our signals</div>
-                <div className="empty-d">Every signal is being re-tested from scratch. Each one returns here only after it earns its place, one at a time.</div>
-              </div>
-            )}
+            <TrendRider />
           </div>
         )}
 
