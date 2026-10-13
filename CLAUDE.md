@@ -45,9 +45,9 @@ Direct decision from Na (Oct 8). Build, tune, backtest and test every signal on 
 
 Direct request from Na (Oct 11). Check and fix everything BEFORE sending it back, so he is not going back and forth after each reply. Follow `memory/review/README.md` and `memory/review/checklist.md`: run `node scripts/review.mjs` before replying, run `node scripts/verify-live.mjs` after every push, recompute every number given to him in the same turn, and say plainly what could not be checked. Use a separate agent to re-check high-stakes work (ratings, verification, alerts, anything customers see).
 
-## Standing rule: focus mode is OFF, old dashboard restored (Oct 13)
+## Standing rule: focus mode is ON inside the old dashboard layout (Oct 13)
 
-Oct 12 focus mode (`VISIBLE_SIGNALS`) hid every original signal and put Trend Rider on a standalone panel. Na rejected that layout twice and on Oct 13 asked to go back to the old site. `app/page.jsx` is back to its v19.20 state (commit 5525203), and `FOCUS_MODE = false` in `lib/signals.js` makes `isSignalVisible` true for every label again. Turning focus mode back on means setting `FOCUS_MODE = true` AND bringing the page back (propose first). Trend Rider still runs in the cron (`lib/trend.js`, `lib/trendRunner.js`, public read-only `/api/trend`, admin push for 4h and 1h) but has no dashboard UI right now; `app/TrendRider.jsx` is kept unused. When it comes back it must plug into the existing layout as cards in Open Alerts (rule above), after Na approves a plan.
+Oct 12 focus mode hid every original signal and put Trend Rider on a standalone panel. Na rejected that layout and asked to go back to the old site, but he still wants only Trend Rider visible. So since v19.26: `app/page.jsx` is the old (v19.20) dashboard, `FOCUS_MODE = true` in `lib/signals.js` keeps every original signal hidden (they still detect and log; `isSignalVisible` and `VISIBLE_SIGNALS` decide what shows), and Trend Rider shows as cards in Open Alerts plus rows in Recently resolved via `useTrend`, `TrendCard`, `TrendResolvedRow` from `app/TrendRider.jsx`. Its description lives at the top of the Guide. Bringing an original signal back means adding its label to `VISIBLE_SIGNALS` plus a dated reason in `memory/signal-roster.md`, in the same commit.
 
 ## Standing rule: new signals plug into the existing dashboard layout (Oct 13)
 

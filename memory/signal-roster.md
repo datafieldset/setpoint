@@ -168,4 +168,4 @@ is the reasoning behind each one, current at time of promotion.)
 ## Killed-combo recheck, first run (Oct 11, 2026)
 Every killed combo from 5m up replayed on fresh BTC history under the live rules: nothing came back. Best was Momentum 15m bear at 51% on 49 fires, but 44% in the second half, too thin and fading. Everything else sits at 29-38%. Runs monthly now (scripts/recheck-killed.mjs); 1m combos are not rechecked.
 
-Oct 13 (v19.25): focus mode switched off at Na's request, so every original signal is visible again under its previous rules (SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged). Trend Rider runs separately and is not shown on the dashboard for now.
+Oct 13 (v19.26): old dashboard layout restored but the original signals stay hidden (FOCUS_MODE = true). Trend Rider is the one signal shown, as cards in Open Alerts. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.

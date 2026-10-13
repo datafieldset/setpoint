@@ -7,6 +7,7 @@ import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatility
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
+import { useTrend, TrendCard, TrendResolvedRow } from "./TrendRider.jsx";
 
 /* =========================================================================
    SETPOINT — crypto market terminal
@@ -555,6 +556,10 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, the Market tab, and the news read.</p>
       </div>
 
+      <div className="guide-glossary">
+        <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so right now the dashboard shows one signal: Trend Rider, a Bitcoin signal that runs on six timeframes (4 hour, 1 hour, 30 minute, 15 minute, 5 minute and 1 minute). It buys the moment price touches the highest high of the last 20 candles (or sells at the lowest low), but only when price is on the right side of its 200-day average, momentum and trend strength both confirm (RSI and ADX), the bigger chart agrees, and, for buys, price isn't stretched more than 20% above its 200-day average. Then it trails a stop behind price with no fixed target. Pick a timeframe at the top to see whether it has fired and is still open there. A card appears in Open Alerts only while a trade is open, with its entry, the trailing stop and the result right now, and the win percentage next to the name once it has 10 closed trades. Each timeframe keeps its own record of real results, starting at zero, and closed trades land in Recently resolved. What to expect: about 4 in 10 trades win, and the winners run longer than the losers cost, so a few big wins carry it with a string of small losses between. The 4 hour and 1 hour charts have 6 years of history behind them, and even there the edge is modest and was close to zero in the last two calm years. 30 minute and below only have months of history, so treat them as experiments. The history tests were tuned on that same history, so live results will probably be lower, and past results never promise future ones. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return. It's a test, so treat it that way.
+      </div>
+
       {account?.isAdmin && catalogSummary && (
         <div className="guide-section">
           <div className="guide-eyebrow">Admin only</div>
@@ -908,6 +913,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [now, setNow] = useState(Date.now());
+  const trend = useTrend(); // Trend Rider (BTC): its open trades show as cards in Open Alerts, closed ones in Recently resolved
+  const trendCur = trend.d?.tfs?.[tfKey];
+  const trendOpen = trendCur?.open || [];
+  const trendClosed = trendCur?.closed || [];
+  const trendWatching = !!trendCur && !trendCur.error;
   const [showSettings, setShowSettings] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addText, setAddText] = useState("");
@@ -1687,17 +1697,19 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="opps">
           <div className="section-head">
             <h2>Open Alerts</h2>
-            <span className="sh-sub">{openAlerts.length} active, verified only · {watchlist.length} coins · {TF[tfKey].label}</span>
+            <span className="sh-sub">{openAlerts.length + trendOpen.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
           </div>
-          {openAlerts.length === 0 ? (
-            <div className={`empty ${!anyVerifiedThisTf ? "dead" : ""}`}>
+          {openAlerts.length + trendOpen.length === 0 ? (
+            <div className={`empty ${!anyVerifiedThisTf && !trendWatching ? "dead" : ""}`}>
               <div className="empty-h">
-                {!anyVerifiedThisTf
+                {!anyVerifiedThisTf && !trendWatching
                   ? `Nothing to watch on ${TF[tfKey].label} yet`
                   : <><span className="dot-ok" /> Watching {TF[tfKey].label}</>}
               </div>
               <div className="empty-d">
-                {!anyVerifiedThisTf
+                {!anyVerifiedThisTf && trendWatching
+                  ? `Nothing's fired on ${TF[tfKey].label} right now. It shows up here the moment something does.`
+                  : !anyVerifiedThisTf
                   ? `Nothing's cleared the bar on this timeframe right now. It'll show up here the moment something does, no need to keep checking.`
                   : allSignals.length > 0
                   ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
@@ -1706,6 +1718,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           ) : (
             <div className="cards-grid">
+              {trendOpen.map((p) => <TrendCard key={`trend:${p.id}`} p={p} rec={p.dir === "long" ? trendCur.record.buys : trendCur.record.sells} tf={TF[tfKey].label} price={trendCur.watch?.price ?? trend.d?.price} now={now} />)}
               {openAlerts.map((a) =>
                 a.kind === "open" ? (
                   <SignalCard
@@ -1761,9 +1774,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             )}
           </div>
 
-          {visibleRecentlyResolved.length > 0 && (
+          {(visibleRecentlyResolved.length > 0 || trendClosed.length > 0) && (
             <div className="recently-resolved">
-              <div className="rr-head">Recently resolved</div>
+              <div className="rr-head">Recently resolved{trendClosed.length > 0 && trendCur.record.all.winPct != null ? ` · Trend Rider ${TF[tfKey].label}: ${trendCur.record.all.winPct}% won (${trendCur.record.all.wins} of ${trendCur.record.all.trades})` : ""}</div>
+              {trendClosed.map((c) => <TrendResolvedRow key={`trend:${c.id}`} c={c} tf={TF[tfKey].label} />)}
               {visibleRecentlyResolved.map((r, i) => (
                 <div className={`rr-row ${r.outcome}`} key={i}>
                   <span className="rr-coin">{r.coin}</span>

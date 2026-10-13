@@ -49,4 +49,6 @@ v19.24: Trend Rider moved back into the original dashboard layout after Na point
 
 v19.24b: Na said the scoreboard block and the footnote at the bottom weren't in the original layout. Both removed. Win percentage now shows on the card and in the Recently resolved header only.
 
-v19.25: Na asked to go back to the old site. app/page.jsx restored to the v19.20 version (5525203), focus mode switched off (FOCUS_MODE=false in lib/signals.js), so all original signals are visible again exactly as before Oct 12. Trend Rider keeps running in the cron and /api/trend stays public, but has no dashboard UI for now (app/TrendRider.jsx unused). It returns later as cards in Open Alerts, after Na approves a plan.
+v19.25 (superseded by v19.26): briefly restored the old page with every original signal visible. Na wanted them to stay hidden.
+
+v19.26: old dashboard layout kept (page.jsx back at its v19.20 state), original signals hidden again (FOCUS_MODE = true in lib/signals.js), Trend Rider added the way a signal belongs: cards in Open Alerts (name, win percentage once 10 trades are closed, entry, trailing stop, result now) shown only while a trade is open on the chosen timeframe, closed trades in Recently resolved with the timeframe's win percentage in its header, 'Watching 4h' when nothing is open. Description and what-to-expect text sit at the top of the Guide. No scoreboard block, no panel. Checked by running the real page in a browser with mocked data at phone width.
