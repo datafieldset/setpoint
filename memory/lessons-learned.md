@@ -137,3 +137,10 @@ Takeaways: BTC-only testing is a fair proxy for the alts. Fix thin samples with 
 - About 15 candidates per table were tried, so the top lift is partly luck. Expect smaller live numbers.
 - 1m and 5m: tiny stops (about 0.12% and 0.26%), months of data in a rising market; edges of +0.2R to +0.3R are weak evidence. The cron runs about every 5 minutes, so the fast charts only work because each run scans the last 15 minutes of bars and checks stops on finer candles.
 - Process lessons: an ETH download script re-ran the daily BTC fetch and overwrote BTC_1d.json with ETH prices (caught because shorts returned zero trades; those results were discarded). Never let a fetch script write a filename another asset uses. A backtest and the live runner can agree on every common trade yet differ on the sample if entry order differs, so compare trade lists, not only totals.
+
+## Oct 13: audit of the original signals with the Trend Rider lessons
+- Method: replayed every original signal on BTC (4h 6y, 1h 6y, 15m 1y) with live code, then re-exited with the Trend Rider trailing stop (4 ATR on 4h, 3 ATR elsewhere) and added 200-day side, not-stretched, bigger-chart agreement and RSI/ADX. Compared with an "any bar" baseline using the same exit and filters. Scripts: scripts/trend-study/walk3.mjs, analyze.mjs (need BTC candle files, see README).
+- The trailing exit alone lifted every old signal's win rate about 6 to 10 points versus the fixed 2:1 target. Most still sit near the baseline (about 0R to +0.1R).
+- Only real candidate: Volume spike buys on 4h with price above the 200-day average and not stretched: 52% wins, +0.48R, 54 trades, both halves of history agree (50% and 53%); baseline for the same filters is 38%, +0.14R. Quiet accumulation buys on 4h with the same filters: 53%, +0.31R, 32 trades. Momentum 4h buys look strong but only 10 trades.
+- Nothing useful in sells, 1h, or 15m (all within noise of the baseline). Not yet checked: overlap with Trend Rider 4h buys.
+- No signal changed or brought back. Awaiting Na's go.
