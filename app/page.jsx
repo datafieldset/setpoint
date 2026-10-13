@@ -1,10 +1,9 @@
 "use client";
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
-import TrendRider from "./TrendRider.jsx";
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, VISIBLE_SIGNALS, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -556,12 +555,6 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, the Market tab, and the news read.</p>
       </div>
 
-      {FOCUS && (
-        <div className="guide-glossary">
-          <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so the dashboard shows one signal at a time. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return.{" Right now that one signal is Trend Rider, a Bitcoin signal that runs on six timeframes (4 hour, 1 hour, 30 minute, 15 minute, 5 minute and 1 minute). It buys the moment price touches the highest high of the last 20 candles (or sells at the lowest low), but only when price is on the right side of its 200-day average, momentum and trend strength both confirm (RSI and ADX), the bigger chart agrees, and, for buys, price isn't stretched more than 20% above its 200-day average. Then it trails a stop behind price with no fixed target. Pick a timeframe at the top of the dashboard to see whether Trend Rider has fired and is still open there. A card appears only while a trade is open, with its entry, the trailing stop and the result right now. When nothing's open you'll see \"Watching\" and the card shows up the moment it fires. Each timeframe keeps its own record of real results, starting at zero, shown as the win percentage on a card and in \"Recently resolved\", and \"What it's watching\" shows how close each check is to turning green. What to expect: about 4 in 10 trades win, and the winners run longer than the losers cost, so a few big wins carry it with a string of small losses between. The 4 hour and 1 hour charts have 6 years of history behind them, and even there the edge is modest and was close to zero in the last two calm years. 30 minute and below only have months of history, so treat them as experiments. The history tests were tuned on that same history, so live results will probably be lower, and past results never promise future ones. It's a test, so treat it that way."}
-        </div>
-      )}
-
       {account?.isAdmin && catalogSummary && (
         <div className="guide-section">
           <div className="guide-eyebrow">Admin only</div>
@@ -824,8 +817,6 @@ function AdminPanel({ onBack }) {
 
 /* =============================== DASHBOARD =============================== */
 // DEFAULT_TH now comes from lib/signals.js, imported above.
-// Focus mode (Oct 12): while no original signal is on VISIBLE_SIGNALS, the dashboard shows only Trend Rider.
-const FOCUS = VISIBLE_SIGNALS.length === 0;
 
 // The Push API requires the VAPID public key as a Uint8Array, not the
 // base64url string it's actually stored and shared as. Standard, widely
@@ -1692,13 +1683,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       )}
 
       <div className="dash-body">
-        {dashboardTab === "coins" && FOCUS && (
-          <div className="opps">
-            <TrendRider tfKey={tfKey} />
-          </div>
-        )}
-
-        {dashboardTab === "coins" && !FOCUS && (
+        {dashboardTab === "coins" && (
         <div className="opps">
           <div className="section-head">
             <h2>Open Alerts</h2>

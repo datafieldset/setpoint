@@ -40,7 +40,7 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, KILLED_COMBOS, VISIBLE_SIGNALS, isSignalVisible, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
+import { ALL_SIGNALS, KILLED_COMBOS, FOCUS_MODE, isSignalVisible, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
 import { ensureSignalTrackColumns } from "../../../lib/schema.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -218,7 +218,7 @@ async function computeStats(conn) {
     setups: [...verifiedSetups.values()].map((s) => ({ ...s, avgR: avgR(s.wins, s.losses) })),
     lastTradeAt: recent[0]?.resolvedAt ?? null,
     stampedSince,
-    focusMode: VISIBLE_SIGNALS.length === 0,
+    focusMode: FOCUS_MODE,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
   };
 }
