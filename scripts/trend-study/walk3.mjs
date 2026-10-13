@@ -1,6 +1,6 @@
 import fs from "fs";
 const R="/home/claude/gh-current/repo/lib/";
-const { computeSignals, DEFAULT_TH, windowPct, marketBias, reversalRisk } = await import(R+"signals.js");
+const { computeSignals, thresholdsFor, windowPct, marketBias, reversalRisk } = await import(R+"signals.js");
 const { aggregate } = await import(R+"resolve.js");
 const { barMs, TF } = await import(R+"timeframes.js");
 const D="../trend", TFK=process.argv[2];
@@ -14,7 +14,7 @@ for(let i=WIN;i<c.length-1;i++){
   const slice=c.slice(i-WIN+1,i+1);
   const bias=marketBias([{sym:"BTC",pct:windowPct(slice,8),isBTC:true}]);
   const risk=reversalRisk(bias,null);
-  let out; try{ out=computeSignals(slice,TFK,{...DEFAULT_TH,pctMin:TF[TFK].pctMin},{now:c[i].time+bar,marketBias:bias,reversalRisk:risk}); }catch(e){continue;}
+  let out; try{ out=computeSignals(slice,TFK,thresholdsFor(TFK),{now:c[i].time+bar,marketBias:bias,reversalRisk:risk}); }catch(e){continue;}
   for(const s of out.signals){
     if(s.type==="pace"||!s.target||!s.stop) continue;
     rows.push({i,t:c[i].time,label:s.label,dir:s.dir,entry:s.entry,stop:s.stop,target:s.target});

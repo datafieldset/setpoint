@@ -1,25 +1,37 @@
 "use client";
 // app/TrendRider.jsx
 //
-// The Trend Rider panel (v19.23). Public. One Bitcoin signal on six
-// timeframes, each with its own live scoreboard: win rate, wins and losses,
-// average result, updated from real closed trades. Pick a timeframe to see
-// what it's waiting for, any open trade with its trailing stop, and its
-// history. While focus mode is on this is the only signal on the dashboard.
+// Trend Rider on the coins tab. It plugs into the same dashboard pattern as
+// every signal: the timeframe buttons live in the top bar (the page owns
+// them and passes the picked one in as `tfKey`), "Open Alerts" shows a card
+// only for a trade that has fired and is still open on that timeframe, an
+// empty state says "Watching 4h" when nothing has, and the plain-English
+// description of the signal lives in the Guide, never on the dashboard.
+// The signal's name appears only on its card. Below the cards: the
+// scoreboard (win rate per timeframe, updated as trades close), recent
+// results, and a collapsed "what it's watching" checklist.
 import { useEffect, useState } from "react";
 
-const money = (n) => (n == null ? "—" : "$" + Math.round(n).toLocaleString("en-US"));
+const fmtPrice = (p) => (p == null || isNaN(p) ? "—" : Math.round(p).toLocaleString("en-US"));
 const fmtR = (r) => (r == null ? "—" : `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(2)}R`);
 const pct = (n) => (n == null ? "—" : `${n}%`);
-const dayTime = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const when = (iso) => new Date(iso).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
+const ago = (iso, now) => {
+  const s = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
+  if (s < 60) return s + "s ago";
+  const m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  const h = Math.floor(m / 60);
+  return h < 48 ? h + "h ago" : Math.floor(h / 24) + "d ago";
+};
 const away = (price, level) => (price && level ? Math.abs((level / price - 1) * 100).toFixed(1) + "%" : null);
-
 const EARLY = 10; // below this many closed trades a win rate is just an early read
+
 function Check({ ok, children }) {
   return (
     <li className={ok ? "ok" : "no"}>
       <span className="tr-dot" aria-hidden="true" />
-      <span className="sr">{ok ? "Met: " : "Not met: "}</span>
+      <span className="tr-sr">{ok ? "Met: " : "Not met: "}</span>
       {children}
     </li>
   );
@@ -31,7 +43,7 @@ function Side({ title, level, price, conds, dir }) {
   return (
     <div className={`tr-side ${dir}`}>
       <div className="tr-side-h">
-        <b>{title}</b> if price touches <span className="mono">{money(level)}</span>
+        <b>{title}</b> if price touches <span className="mono">${fmtPrice(level)}</span>
         {dist && <span className="tr-dist"> ({dist} away)</span>}
       </div>
       <ul className="tr-conds">
@@ -42,17 +54,75 @@ function Side({ title, level, price, conds, dir }) {
   );
 }
 
-export default function TrendRider() {
+// Same ladder look as every other card, minus the target: Trend Rider has no
+// fixed target, the stop trails behind price and the trade ends when it's hit.
+function TrailLadder({ entry, stop, price, dir, openR }) {
+  const vals = [entry, stop, price];
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const pad = (max - min) * 0.2 || Math.abs(max) * 0.01 || 1;
+  const lo = min - pad, hi = max + pad;
+  const y = (p) => (1 - (p - lo) / (hi - lo)) * 100;
+  const toStop = ((stop - price) / price) * 100;
+  return (
+    <div className="ladder">
+      <div className="rail">
+        <div className="rail-line" />
+        <div className="mk mk-entry" style={{ top: y(entry) + "%" }}><span className="mk-dot" /><span className="mk-lab">ENTRY</span><span className="mk-val">{fmtPrice(entry)}</span></div>
+        <div className="mk mk-stop" style={{ top: y(stop) + "%" }}><span className="mk-dot" /><span className="mk-lab">STOP</span><span className="mk-val">{fmtPrice(stop)}</span></div>
+        <div className="mk mk-live" style={{ top: y(price) + "%" }}><span className="live-tri" /></div>
+      </div>
+      <div className="ladder-meta">
+        <div className="rr" style={openR < 0 ? { color: "var(--red)" } : dir === "short" ? { color: "var(--green)" } : undefined}>{fmtR(openR)}</div>
+        <div className="rr-sub">result right now</div>
+        <div className="tgt-row"><span className={toStop < 0 === (dir === "long") ? "down" : "up"}>{(toStop > 0 ? "+" : "") + toStop.toFixed(2)}%</span><span className="lab">to trailing stop</span></div>
+        <div className="tgt-row"><span className="lab">no target, stop follows price</span></div>
+      </div>
+    </div>
+  );
+}
+
+function TrendCard({ p, rec, tf, price, now }) {
+  const bull = p.dir === "long";
+  const n = rec.trades;
+  return (
+    <div className={`sig-card ${bull ? "bull" : "bear"}`}>
+      <div className="sig-top">
+        <div className="sig-id">
+          <span className="sym">BTC</span>
+          <span className="sig-type">{bull ? "Buy" : "Sell"} Trend Rider{n >= EARLY && rec.winPct != null ? ` ${rec.winPct}%` : ""}</span>
+          {n > 0 ? (
+            <span className="rate-src live" title="A real number from this timeframe's own closed paper trades">live, {n} trade{n === 1 ? "" : "s"}</span>
+          ) : (
+            <span className="testing-tag">testing, no results yet</span>
+          )}
+          <span className="open-pos-tag">still in motion</span>
+        </div>
+        <span className={`badge ${bull ? "up" : "down"}`}>{bull ? "LONG" : "SHORT"}</span>
+      </div>
+      <div className="sig-note">{bull ? "Price broke above the highest high of the last 20 candles." : "Price broke below the lowest low of the last 20 candles."} The stop trails behind it.</div>
+      <div className="sig-price-row">
+        <div><div className="k">Price</div><div className="v mono">{fmtPrice(price)}</div></div>
+      </div>
+      <TrailLadder entry={p.entry} stop={p.stop} price={price} dir={p.dir} openR={p.openR} />
+      <div className="sig-foot">
+        <span className="tf-pill">{tf}</span>
+        <span className="fired">fired {ago(p.openedAt, now)} · still open</span>
+      </div>
+    </div>
+  );
+}
+
+export default function TrendRider({ tfKey, onPick }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
-  const [sel, setSel] = useState("4h");
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     let alive = true;
     const load = () =>
       fetch("/api/trend", { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
-        .then((j) => { if (alive) { setD(j); setErr(null); } })
+        .then((j) => { if (alive) { setD(j); setErr(null); setNow(Date.now()); } })
         .catch(() => { if (alive) setErr("Couldn't load Trend Rider right now."); });
     load();
     const id = setInterval(() => { if (!document.hidden) load(); }, 30000);
@@ -61,150 +131,108 @@ export default function TrendRider() {
     return () => { alive = false; clearInterval(id); document.removeEventListener("visibilitychange", vis); };
   }, []);
 
-  const cur = d?.tfs?.[sel];
+  const cur = d?.tfs?.[tfKey];
+  const price = cur?.watch?.price ?? d?.price;
+  const open = cur?.open || [];
+  const recFor = (p) => (p.dir === "long" ? cur.record.buys : cur.record.sells);
 
   return (
-    <section className="tr-panel">
+    <>
       <style>{CSS}</style>
-      <div className="tr-head">
-        <h2 className="tr-title">Trend Rider</h2>
-        <span className="tr-pill">test</span>
-        <span className="tr-sub">Bitcoin · six timeframes · scoreboard updates as trades close</span>
+      <div className="section-head">
+        <h2>Open Alerts</h2>
+        <span className="sh-sub">{open.length} active · Bitcoin · {tfKey}</span>
       </div>
 
       <div aria-live="polite">
-        {err && <div className="tr-note tr-err">{err}</div>}
-        {!d && !err && <div className="tr-note">Loading…</div>}
+        {err && <div className="empty"><div className="empty-d">{err}</div></div>}
+        {!d && !err && <div className="empty"><div className="empty-d">Loading…</div></div>}
       </div>
 
-      {d && (
+      {cur && (
         <>
-          <div className="tr-tiles" role="group" aria-label="Pick a timeframe">
-            {d.order.map((k) => {
-              const t = d.tfs[k];
-              const all = t.record.all;
-              const live = t.open.length > 0;
-              return (
-                <button key={k} type="button" aria-pressed={sel === k} className={`tr-tile ${sel === k ? "on" : ""}`} onClick={() => setSel(k)}>
-                  <span className="tr-tile-top">
-                    <span className="tr-tile-tf">{k}</span>
-                    {live && <span className="tr-live">open</span>}
-                  </span>
-                  <span className="tr-tile-win">{pct(all.winPct)}</span>
-                  <span className="tr-tile-sub">{all.trades ? `${all.wins} won · ${all.losses} lost${all.trades < EARLY ? " · early" : ""}` : "no trades yet"}</span>
-                  <span className="tr-bar" aria-hidden="true">
-                    <span className="tr-bar-fill" style={{ width: `${all.winPct ?? 0}%` }} />
-                  </span>
-                  <span className="tr-tile-avg">{all.trades ? `${fmtR(all.avgR)} avg` : t.alerts ? "alerts on" : "tracking only"}</span>
-                </button>
-              );
-            })}
-          </div>
-          <div className="tr-legend">Bar = win rate so far. Win rate alone isn't the whole story: the average result per trade (in R) says whether the winners are paying for the losers.</div>
+          {cur.error && <div className="tr-err">This timeframe couldn't load just now. It retries on its own.</div>}
 
-          {cur && (
-            <div className="tr-detail">
-              <div className="tr-detail-h">
-                <h3>{cur.label}</h3>
-                <span className="tr-sub">{cur.alerts ? "Admin alerts on" : "Tracking only, no alerts yet"} · Bitcoin now <span className="mono">{money(cur.watch?.price ?? d.price)}</span></span>
-              </div>
-
-              {cur.error && <div className="tr-note tr-err">This timeframe couldn't load just now. It retries on its own.</div>}
-
-              {cur.open.map((p) => (
-                <div key={p.id} className={`tr-trade ${p.dir}`}>
-                  <div className="tr-trade-top">
-                    <span className="tr-dir">{p.dir === "long" ? "Buy" : "Sell"} open</span>
-                    <span className="tr-since">since {dayTime(p.openedAt)}</span>
-                    <span className={`tr-now ${p.openR >= 0 ? "pos" : "neg"}`}>{fmtR(p.openR)} now</span>
-                  </div>
-                  <div className="tr-levels">
-                    <div><span className="k">Entry</span><span className="v mono">{money(p.entry)}</span></div>
-                    <div><span className="k">Trailing stop</span><span className="v mono">{money(p.stop)}</span></div>
-                    <div><span className="k">Price</span><span className="v mono">{money(cur.watch?.price ?? d.price)}</span></div>
-                  </div>
-                  <div className="tr-note">No target. The stop follows price {p.dir === "long" ? "up" : "down"} and never backs off. The trade ends when price hits it.</div>
-                </div>
-              ))}
-
-              {cur.watch ? (
-                <div className="tr-waiting">
-                  <div className="tr-state-h">{cur.open.length ? "Watching for the next one" : "Waiting for a breakout"}</div>
-                  <div className="tr-sides">
-                    <Side title="Buy" dir="long" level={cur.watch.buy.level} price={cur.watch.price} conds={cur.watch.buy.conds} />
-                    <Side title="Sell" dir="short" level={cur.watch.sell.level} price={cur.watch.price} conds={cur.watch.sell.conds} />
-                  </div>
-                </div>
-              ) : (
-                !cur.error && <div className="tr-note">Still gathering enough candles to set the levels.</div>
-              )}
-
-              <div className="tr-record">
-                <div className="tr-rec-h">Real paper trades on {cur.label}, filled at the breakout level</div>
-                <div className="tr-rec-grid">
-                  {[["Buys", cur.record.buys, cur.ref?.buys], ["Sells", cur.record.sells, cur.ref?.sells]].map(([nm, r, ref]) => (
-                    <div key={nm} className="tr-rec-card">
-                      <div className="tr-rec-nm">{nm}</div>
-                      <div className="tr-rec-win">{pct(r.winPct)}<small> win rate</small></div>
-                      <div className="tr-rec-sub">{r.trades ? `${r.wins} won, ${r.losses} lost · ${fmtR(r.avgR)} avg` : "no closed trades yet"}</div>
-                      {ref && <div className="tr-rec-ref">History test: {ref.winPct}% wins, {fmtR(ref.avgR)} avg over {ref.trades} trades ({ref.window})</div>}
-                    </div>
-                  ))}
-                </div>
-                {(cur.record.crowd.fearful.trades > 0 || cur.record.crowd.greedy.trades > 0) && (
-                  <div className="tr-note">
-                    By crowd mood when it fired: fearful or neutral {pct(cur.record.crowd.fearful.winPct)} ({cur.record.crowd.fearful.trades} trades), greedy {pct(cur.record.crowd.greedy.winPct)} ({cur.record.crowd.greedy.trades} trades).
-                  </div>
-                )}
-                {cur.closed.length > 0 && (
-                  <div className="tr-hist" tabIndex={0} aria-label="Recent closed trades">
-                    {cur.closed.map((c) => (
-                      <div key={c.id} className="tr-hist-row">
-                        <span className="tr-hist-dir">{c.dir === "long" ? "Buy" : "Sell"}</span>
-                        <span className="mono">{money(c.entry)} → {money(c.exit)}</span>
-                        <span className={`tr-hist-r ${c.r >= 0 ? "pos" : "neg"}`}>{fmtR(c.r)}</span>
-                        <span className="tr-hist-when">{dayTime(c.closedAt)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+          {open.length === 0 ? (
+            <div className="empty">
+              <div className="empty-h"><span className="dot-ok" /> Watching {tfKey}</div>
+              <div className="empty-d">Nothing's fired on {tfKey} right now. It shows up here the moment price breaks out and every check is green.</div>
+            </div>
+          ) : (
+            <div className="cards-grid">
+              {open.map((p) => <TrendCard key={p.id} p={p} rec={recFor(p)} tf={tfKey} price={price} now={now} />)}
             </div>
           )}
 
-          <div className="tr-expect">
-            <b>What to expect.</b> About 4 in 10 trades win, and the winners run longer than the losers cost, so a few big wins carry it with a string of small losses between. The 4 hour and 1 hour charts have the most history behind them (6 years), and even there the edge is modest and was close to zero in the last two calm years. 30 minute and below only have months of history, so treat them as experiments. The history tests were tuned on that same history, so live results will probably be lower, and past results never promise future ones. The scoreboard counts only trades from the moment this went live.
+          <details className="tr-watch">
+            <summary>What it's watching on {tfKey}</summary>
+            {cur.watch ? (
+              <>
+                <div className="tr-sides">
+                  <Side title="Buy" dir="long" level={cur.watch.buy.level} price={cur.watch.price} conds={cur.watch.buy.conds} />
+                  <Side title="Sell" dir="short" level={cur.watch.sell.level} price={cur.watch.price} conds={cur.watch.sell.conds} />
+                </div>
+                {cur.ref && (
+                  <div className="tr-ref">
+                    History test on {cur.label}: buys {cur.ref.buys.winPct}% wins, {fmtR(cur.ref.buys.avgR)} avg over {cur.ref.buys.trades} trades; sells {cur.ref.sells.winPct}% wins, {fmtR(cur.ref.sells.avgR)} avg over {cur.ref.sells.trades} trades. Live results usually come in lower.
+                  </div>
+                )}
+                {(cur.record.crowd.fearful.trades > 0 || cur.record.crowd.greedy.trades > 0) && (
+                  <div className="tr-ref">
+                    By crowd mood when it fired: fearful or neutral {pct(cur.record.crowd.fearful.winPct)} ({cur.record.crowd.fearful.trades} trades), greedy {pct(cur.record.crowd.greedy.winPct)} ({cur.record.crowd.greedy.trades} trades).
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="tr-ref">Still gathering enough candles to set the levels.</div>
+            )}
+          </details>
+
+          <div className="recently-resolved">
+            <div className="rr-head">Scoreboard · Trend Rider, Bitcoin</div>
+            <div role="group" aria-label="Win rate by timeframe">
+              {d.order.map((k) => {
+                const a = d.tfs[k].record.all;
+                return (
+                  <button key={k} type="button" aria-pressed={k === tfKey} className={`tr-sb-row ${k === tfKey ? "on" : ""}`} onClick={() => onPick && onPick(k)}>
+                    <span className="rr-tf">{k}</span>
+                    <span className="tr-sb-win">{pct(a.winPct)}</span>
+                    <span className="tr-sb-bar" aria-hidden="true"><span style={{ width: `${a.winPct ?? 0}%` }} /></span>
+                    <span className="tr-sb-sub">{a.trades ? `${a.wins} won, ${a.losses} lost${a.trades < EARLY ? " · early" : ""} · ${fmtR(a.avgR)} avg` : "no trades yet"}</span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="tr-ref">Win rate alone isn't the whole story. The average result per trade (in R) says whether the winners are paying for the losers. Counts only trades from the moment this went live.</div>
           </div>
+
+          {cur.closed.length > 0 && (
+            <div className="recently-resolved">
+              <div className="rr-head">Recently resolved · {tfKey}</div>
+              {cur.closed.map((c) => (
+                <div className={`rr-row ${c.r > 0 ? "win" : "loss"}`} key={c.id}>
+                  <span className="rr-coin">BTC</span>
+                  <span className="rr-tf">{tfKey}</span>
+                  <span className="rr-name">{c.dir === "long" ? "Buy" : "Sell"} Trend Rider</span>
+                  <span className={`rr-outcome ${c.r > 0 ? "win" : "loss"}`}>{c.r > 0 ? "WIN" : "LOSS"}</span>
+                  <span className={`rr-pct ${c.r > 0 ? "win" : "loss"}`}>{fmtR(c.r)}</span>
+                  <span className="rr-when">{fmtPrice(c.entry)} to {fmtPrice(c.exit)} · resolved {when(c.closedAt)}</span>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
-    </section>
+    </>
   );
 }
 
 const CSS = `
-.tr-panel{background:var(--panel2);border:1px solid var(--border);border-radius:14px;padding:18px 18px 16px;max-width:860px}
-.tr-head{display:flex;align-items:baseline;flex-wrap:wrap;gap:6px 10px;margin-bottom:14px}
-.tr-title{font-family:'Bricolage Grotesque';font-size:22px;font-weight:700;margin:0}
-.tr-pill{font-size:11px;font-weight:600;color:var(--amber);background:rgba(232,176,74,.12);padding:2px 8px;border-radius:999px}
-.tr-sub{font-size:12px;color:var(--dim)}
-.tr-tiles{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
-.tr-tile{display:flex;flex-direction:column;align-items:flex-start;gap:3px;text-align:left;background:var(--panel3);border:1px solid var(--border);border-radius:10px;padding:9px 10px 8px;color:inherit;cursor:pointer;font:inherit;min-width:0}
-.tr-tile:hover{border-color:var(--muted)}
-.tr-tile:focus-visible{outline:2px solid var(--amber);outline-offset:2px}
-.tr-tile.on{border-color:var(--amber);background:var(--panel2);box-shadow:inset 0 0 0 1px var(--amber)}
-.tr-tile-top{display:flex;justify-content:space-between;align-items:center;width:100%}
-.tr-tile-tf{font-size:12px;font-weight:700;color:var(--muted)}
-.tr-live{font-size:10px;font-weight:700;color:var(--green)}
-.tr-tile-win{font-family:'Bricolage Grotesque';font-size:24px;font-weight:700;line-height:1.05;font-variant-numeric:tabular-nums}
-.tr-tile-sub{font-size:11px;color:var(--dim);line-height:1.3}
-.tr-bar{position:relative;display:block;width:100%;height:4px;background:var(--hair);border-radius:2px;margin:3px 0 1px}
-.tr-bar-fill{position:absolute;left:0;top:0;bottom:0;background:var(--green);border-radius:2px}
-.tr-tile-avg{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
-.tr-legend{font-size:11px;color:var(--dim);margin:7px 0 14px}
-.tr-detail{border-top:1px solid var(--hair);padding-top:14px}
-.tr-detail-h{display:flex;align-items:baseline;flex-wrap:wrap;gap:4px 12px;margin-bottom:10px}
-.tr-detail-h h3{font-family:'Bricolage Grotesque';font-size:18px;font-weight:700;margin:0}
-.tr-state-h{font-size:15px;font-weight:600;margin:8px 0}
+.tr-err{color:var(--red);font-size:12.5px;margin-bottom:10px}
+.tr-watch{margin-top:16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;padding:12px 16px}
+.tr-watch summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+.tr-watch summary:focus-visible{outline:2px solid var(--amber);outline-offset:3px;border-radius:4px}
+.tr-watch[open] summary{margin-bottom:12px}
 .tr-sides{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .tr-side{border:1px solid var(--border);border-top:3px solid var(--green);border-radius:10px;padding:10px 12px}
 .tr-side.short{border-top-color:var(--red)}
@@ -216,35 +244,18 @@ const CSS = `
 .tr-dot{flex:none;width:9px;height:9px;border-radius:50%;margin-top:4px;background:var(--red)}
 .tr-conds li.ok .tr-dot{background:var(--green)}
 .tr-side-f{font-size:11.5px;color:var(--dim);line-height:1.4}
-.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
-.tr-trade{border:1px solid var(--border);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;margin-bottom:8px}
-.tr-trade.short{border-left-color:var(--red)}
-.tr-trade-top{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:10px}
-.tr-dir{font-weight:700;font-size:15px}
-.tr-since{font-size:12px;color:var(--dim);flex:1}
-.tr-now{font-weight:700;font-variant-numeric:tabular-nums}
-.tr-levels{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:8px}
-.tr-levels .k{display:block;font-size:11px;color:var(--dim)}
-.tr-levels .v{font-size:15px;font-weight:600}
-.tr-note{font-size:12.5px;color:var(--dim);line-height:1.5}
-.tr-err{color:var(--red)}
-.tr-record{margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
-.tr-rec-h{font-size:12px;color:var(--muted);margin-bottom:8px}
-.tr-rec-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:8px}
-.tr-rec-card{background:var(--panel3);border-radius:10px;padding:10px 12px}
-.tr-rec-nm{font-size:12px;font-weight:600;color:var(--muted)}
-.tr-rec-win{font-family:'Bricolage Grotesque';font-size:26px;font-weight:700;line-height:1.1}
-.tr-rec-win small{font-family:inherit;font-size:12px;font-weight:400;color:var(--dim)}
-.tr-rec-sub{font-size:12.5px;margin-top:2px}
-.tr-rec-ref{font-size:11.5px;color:var(--dim);margin-top:4px}
-.tr-hist{margin-top:10px;display:flex;flex-direction:column;gap:4px;max-height:260px;overflow-y:auto}
-.tr-hist-row{display:grid;grid-template-columns:44px 1fr auto auto;gap:10px;font-size:12.5px;align-items:baseline}
-.tr-hist-dir{font-weight:600}
-.tr-hist-r{font-weight:700;font-variant-numeric:tabular-nums}
-.tr-hist-when{color:var(--dim);font-size:11.5px;text-align:right}
-.tr-expect{margin-top:16px;padding:10px 12px;background:var(--panel3);border-radius:10px;font-size:12.5px;line-height:1.55;color:var(--muted)}
-.tr-panel .pos{color:var(--green)}
-.tr-panel .neg{color:var(--red)}
-@media (max-width:720px){.tr-tiles{grid-template-columns:repeat(3,1fr)}.tr-sides,.tr-rec-grid{grid-template-columns:1fr}}
-@media (max-width:520px){.tr-hist-row{grid-template-columns:40px 1fr auto}.tr-hist-when{display:none}.tr-tile-win{font-size:21px}}
+.tr-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.tr-ref{font-size:12px;color:var(--dim);line-height:1.5;margin-top:10px}
+.tr-sb-row{display:grid;grid-template-columns:44px 52px 1fr;grid-template-areas:"tf win bar" ". sub sub";gap:2px 10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--border);padding:9px 6px;color:inherit;font:inherit;cursor:pointer;border-radius:0}
+.tr-sb-row:first-child{border-top:0}
+.tr-sb-row:hover{background:var(--panel3)}
+.tr-sb-row:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.tr-sb-row.on{background:var(--panel3);box-shadow:inset 3px 0 0 var(--green)}
+.tr-sb-row .rr-tf{grid-area:tf;text-align:center}
+.tr-sb-win{grid-area:win;font-family:'Bricolage Grotesque';font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
+.tr-sb-bar{grid-area:bar;display:block;height:5px;background:var(--panel3);border-radius:3px;overflow:hidden}
+.tr-sb-row.on .tr-sb-bar{background:var(--hair)}
+.tr-sb-bar span{display:block;height:100%;background:var(--green);border-radius:3px}
+.tr-sb-sub{grid-area:sub;font-size:11.5px;color:var(--dim)}
+@media (max-width:640px){.tr-sides{grid-template-columns:1fr}}
 `;
