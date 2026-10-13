@@ -1,6 +1,8 @@
 # Infrastructure
 
-## trend_positions table (v19.21)
+## trend_positions table (v19.21, extended v19.23)
+v19.23: one row per trade PER TIMEFRAME. Added tf (4h,1h,30m,15m,5m,1m), fng (Fear & Greed when it fired), stretch (entry vs 200-day average). last_hour now holds the start of the last CHECK candle already processed (name kept). Unique indexes: one open trade per (coin, tf, dir) and one per (coin, tf, dir, bar_time). runTrend fetches Coinbase candles at 60s, 300s, 900s and 3600s (two pages) once per cron run, shared by all six timeframes.
+
 Created lazily by lib/trendRunner.js: id, coin, dir, status (open/closed), bar_time (open time of the entry 4h bar, ms), opened_at, entry, risk (1R, the opening stop distance), stop (trailing), ext (best price since entry), last_hour (open time of the last hourly candle processed), sma (200-day average at entry), exit, closed_at, r. Unique: one open trade per direction, one trade per (coin, dir, bar_time). Trend Rider state lives only here, not in signal_track.
 
 ## big_move_alerts table (v19.20)

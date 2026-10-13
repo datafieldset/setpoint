@@ -558,7 +558,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
 
       {FOCUS && (
         <div className="guide-glossary">
-          <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so the dashboard shows one signal at a time. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return.{true ? " Right now that one signal is Trend Rider, a slow Bitcoin signal on 4-hour candles: it buys when a candle closes above the last 20 candles' high (or sells below the low) with price on the right side of its 200-day average, then trails a stop behind price with no fixed target. It's a test, so treat it that way." : ""}
+          <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so the dashboard shows one signal at a time. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return.{" Right now that one signal is Trend Rider, a Bitcoin signal that runs on six timeframes (4 hour, 1 hour, 30 minute, 15 minute, 5 minute and 1 minute). It buys the moment price touches the highest high of the last 20 candles (or sells at the lowest low), but only when price is on the right side of its 200-day average, momentum and trend strength both confirm (RSI and ADX), the bigger chart agrees, and, for buys, price isn't stretched more than 20% above its 200-day average. Then it trails a stop behind price with no fixed target. Each timeframe keeps its own scoreboard of real results, starting at zero. It's a test, so treat it that way."}
         </div>
       )}
 

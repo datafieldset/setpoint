@@ -47,4 +47,4 @@ Direct request from Na (Oct 11). Check and fix everything BEFORE sending it back
 
 ## Standing rule: focus mode (Oct 12)
 
-Na asked to hide every original signal and focus on one new signal at a time. `VISIBLE_SIGNALS` in `lib/signals.js` decides which original signals anyone can see (currently none). Bringing one back means adding its label there plus a dated reason in `memory/signal-roster.md`, in the same commit. Hidden signals still detect and log. Trend Rider (`lib/trend.js`) is the one signal shown, admin-only, and runs outside `computeSignals`.
+Na asked to hide every original signal and focus on one new signal at a time. `VISIBLE_SIGNALS` in `lib/signals.js` decides which original signals anyone can see (currently none). Bringing one back means adding its label there plus a dated reason in `memory/signal-roster.md`, in the same commit. Hidden signals still detect and log. Trend Rider (`lib/trend.js`, `lib/trendRunner.js`) is the one signal shown, public since v19.22, on six timeframes with a live scoreboard each (v19.23). It runs outside `computeSignals`. Admin push alerts only for 4h and 1h. Test changes with `scripts/trend-study/` before shipping.

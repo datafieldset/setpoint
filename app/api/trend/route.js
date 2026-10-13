@@ -1,7 +1,8 @@
 // app/api/trend/route.js
 //
-// Public (read-only; alerts to admins only). Everything the Trend Rider panel shows: what it's watching,
-// the open trade with its trailing stop, and the track record so far.
+// Public and read-only (v19.23). Everything the Trend Rider panel shows:
+// per timeframe, what it's waiting for, any open trade with its trailing
+// stop, and the real scoreboard. Push alerts still go to admins only.
 import { neon } from "@neondatabase/serverless";
 import { trendState } from "../../../lib/trendRunner.js";
 
