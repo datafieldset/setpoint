@@ -31,7 +31,7 @@
 // someone hadn't checked recently enough to catch it resolving live, it
 // looked like it disappeared for no reason. This gives real, honest
 // closure either way, win or loss, the next time the dashboard loads.
-import { provenContext, getLiveVerifiedGate, KILLED_COMBOS, belowTargetFloor, isSignalVisible, focusSql } from "../../../lib/signals.js";
+import { provenContext, getLiveVerifiedGate, KILLED_COMBOS, belowTargetFloor, isSignalVisible, focusSql, PUBLIC_TESTING } from "../../../lib/signals.js";
 import { resultR, exitPrice } from "../../../lib/results.js";
 import { ensureSignalTrack } from "../../../lib/schema.js";
 import { checkKey } from "../../../lib/access.js";
@@ -67,7 +67,7 @@ export async function GET(req) {
       const { noFocus, focusLabels } = focusSql;
       const [rows, resolvedRows, liveGateResult] = await Promise.all([
         sql`
-          SELECT coin, tf, label, dir, fired_at, entry, stop, target, risk, regime
+          SELECT coin, tf, label, dir, fired_at, entry, stop, target, regime
           FROM signal_track
           WHERE outcome = 'open' AND (${noFocus} OR label = ANY(${focusLabels}))
           ORDER BY fired_at DESC
@@ -93,7 +93,7 @@ export async function GET(req) {
     // verified-only list), it just can never be mislabeled "proven".
     const killedPc = { tag: null, boost: 0, phrase: null, rate: null, isLive: false, verifiedVia: null };
     const positions = rows.filter((r) => isSignalVisible(r.label)).map((r) => {
-      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || belowTargetFloor(r.tf, r.entry, r.target) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || (!PUBLIC_TESTING.includes(r.label) && belowTargetFloor(r.tf, r.entry, r.target)) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       return {
         coin: r.coin,
         tf: r.tf,
@@ -102,8 +102,7 @@ export async function GET(req) {
         firedAt: new Date(r.fired_at).getTime(),
         entry: parseFloat(r.entry),
         stop: parseFloat(r.stop),
-        target: r.target == null ? null : parseFloat(r.target), // null means the stop trails, no fixed target
-        risk: r.risk == null ? null : parseFloat(r.risk),
+        target: parseFloat(r.target),
         tier: pc.tag,
         tierRate: pc.rate,
         tierIsLive: pc.isLive,
@@ -111,7 +110,7 @@ export async function GET(req) {
       };
     });
     const recentlyResolved = resolvedRows.filter((r) => isSignalVisible(r.label)).map((r) => {
-      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || belowTargetFloor(r.tf, r.entry, r.target) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
+      const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || (!PUBLIC_TESTING.includes(r.label) && belowTargetFloor(r.tf, r.entry, r.target)) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       const entry = parseFloat(r.entry);
       const exit = exitPrice(r);
       const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;

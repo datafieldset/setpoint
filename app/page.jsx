@@ -4,7 +4,6 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
-import { openResult } from "../lib/results.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
@@ -54,40 +53,27 @@ function DirBadge({ dir }) {
   return <span className={`badge ${cls}`}>{t}</span>;
 }
 
-function Ladder({ entry, stop, target, price, dir, risk }) {
-  // No target means a trailing-stop trade: the stop follows price, so the
-  // ladder shows entry, stop and price, and the result so far in R.
-  const trailing = target == null;
-  const vals = trailing ? [entry, stop, price] : [entry, stop, target, price];
+function Ladder({ entry, stop, target, price, dir }) {
+  const vals = [entry, stop, target, price];
   const min = Math.min(...vals), max = Math.max(...vals);
   const pad = (max - min) * 0.14 || Math.abs(max) * 0.01 || 1;
   const lo = min - pad, hi = max + pad;
   const y = (p) => (1 - (p - lo) / (hi - lo)) * 100;
+  const toTarget = ((target - price) / price) * 100;
   const toStop = ((stop - price) / price) * 100;
-  const toTarget = trailing ? 0 : ((target - price) / price) * 100;
-  const now = trailing ? openResult(dir, entry, risk, price) : null;
   return (
     <div className="ladder">
       <div className="rail">
         <div className="rail-line" />
-        {!trailing && <div className="mk mk-target" style={{ top: y(target) + "%" }}><span className="mk-dot" /><span className="mk-lab">TARGET</span><span className="mk-val">{fmtPrice(target)}</span></div>}
+        <div className="mk mk-target" style={{ top: y(target) + "%" }}><span className="mk-dot" /><span className="mk-lab">TARGET</span><span className="mk-val">{fmtPrice(target)}</span></div>
         <div className="mk mk-entry" style={{ top: y(entry) + "%" }}><span className="mk-dot" /><span className="mk-lab">ENTRY</span><span className="mk-val">{fmtPrice(entry)}</span></div>
-        <div className="mk mk-stop" style={{ top: y(stop) + "%" }}><span className="mk-dot" /><span className="mk-lab">{trailing ? "TRAILING STOP" : "STOP"}</span><span className="mk-val">{fmtPrice(stop)}</span></div>
+        <div className="mk mk-stop" style={{ top: y(stop) + "%" }}><span className="mk-dot" /><span className="mk-lab">STOP</span><span className="mk-val">{fmtPrice(stop)}</span></div>
         <div className="mk mk-live" style={{ top: y(price) + "%" }}><span className="live-tri" /></div>
       </div>
       <div className="ladder-meta">
-        {trailing ? (
-          <>
-            <div className="rr" style={now != null && now < 0 ? { color: "var(--red-soft)" } : undefined}>{now == null ? "n/a" : `${now >= 0 ? "+" : ""}${now.toFixed(1)}R`}</div>
-            <div className="rr-sub">so far, no target</div>
-          </>
-        ) : (
-          <>
-            <div className="rr">{(2).toFixed(1)}R</div>
-            <div className="rr-sub">reward : risk</div>
-            <div className="tgt-row"><span className="up">{fmtPct(dir === "bull" ? Math.abs(toTarget) : -Math.abs(toTarget))}</span><span className="lab">to target</span></div>
-          </>
-        )}
+        <div className="rr">{(Math.abs(target - entry) / Math.abs(entry - stop)).toFixed(2).replace(/\.?0+$/, "")}R</div>
+        <div className="rr-sub">reward : risk</div>
+        <div className="tgt-row"><span className="up">{fmtPct(dir === "bull" ? Math.abs(toTarget) : -Math.abs(toTarget))}</span><span className="lab">to target</span></div>
         <div className="tgt-row"><span className="down">{fmtPct(dir === "bull" ? -Math.abs(toStop) : Math.abs(toStop))}</span><span className="lab">to stop</span></div>
       </div>
     </div>
@@ -237,7 +223,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <div><div className="k">Price</div><div className="v mono">{fmtPrice(price)}</div></div>
         <div className="strength"><div className="strength-bar"><span style={{ width: Math.round(s.strength * 100) + "%" }} /></div><div className="k">strength</div></div>
       </div>
-      <Ladder entry={s.entry} stop={s.stop} target={s.target} price={price} dir={s.dir} risk={s.risk} />
+      <Ladder entry={s.entry} stop={s.stop} target={s.target} price={price} dir={s.dir} />
       <div className="sig-foot">
         <span className="tf-pill">{s.tf}</span>
         <span className="fired">{demo ? "triggered 3m ago" : isOpenPosition ? "fired " + timeAgo(firedAt, now) + " · still open" : "triggered " + timeAgo(firedAt, now)}</span>
@@ -1743,7 +1729,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 a.kind === "open" ? (
                   <SignalCard
                     key={`open:${a.data.coin}:${a.data.tf}:${a.data.label}:${a.data.dir}:${a.data.firedAt}`}
-                    s={{ dir: a.data.dir, label: a.data.label, note: a.data.target == null ? "Fired and still open. The stop follows price, there is no target." : "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, risk: a.data.risk, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate, key: `${a.data.tf}:${a.data.label}:${a.data.dir}` }}
+                    s={{ dir: a.data.dir, label: a.data.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate, key: `${a.data.tf}:${a.data.label}:${a.data.dir}` }}
                     sym={a.data.coin}
                     price={data[a.data.coin]?.snap?.price}
                     firedAt={a.data.firedAt}
@@ -1981,7 +1967,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         )}
       </div>
 
-      <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (a stop and, for most signals, a 2R target; Trend Rider has no target and trails its stop), not recommendations.</div>
+      <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (a stop and a target), not recommendations.</div>
 
       {showSettings && (
         <div className="modal-bg" onClick={() => setShowSettings(false)}>

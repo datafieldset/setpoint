@@ -1,9 +1,9 @@
 # Infrastructure
 
-## Trend Rider storage (v19.28)
-Trend Rider is a normal signal: its trades are rows in `signal_track` like every other signal. The old `trend_positions` table is abandoned (history before v19.28 was not migrated, the public test restarted at zero). Only `trend_state` remains as its own table (one key, `last_run`, the scan watermark).
-What makes a Trend Rider row different is only data: `target` is NULL (the stop trails, there is no fixed target), `risk` holds the opening stop distance, `exit_price` and `r` hold where it ended and the result in R, `bar_time` is the candle it belongs to, `meta` (JSON) keeps its extreme price, how far the stop has been checked, and the context at entry. `win` means r > 0.
-`lib/trendRunner.js` is the only writer. `/api/track` rejects any label flagged `serverOnly` in ALL_SIGNALS, so a browser can never log one. Every reader treats rows alike through `lib/results.js` (old fixed-target rows without `r` count as +2R / -1R).
+## Trend Rider storage (v19.31)
+Trend Rider is a normal signal: its trades are rows in `signal_track` like every other signal, with a stop and a target (stop 2 ATR from entry, target 0.75R the other way). The old `trend_positions` table is abandoned. Only `trend_state` remains as its own table (one key, `last_run`, the scan watermark).
+`lib/trendRunner.js` only DETECTS: it inserts a row when price touches a breakout level and pushes to admins. The shared resolver (`resolveOpenTrades` in lib/resolve.js, run by close-alert and at the start of every Trend Rider run) closes it at the stop (r = -1) or the target (r = +0.75). `meta.scanFrom` holds the start of the entry candle so the resolver checks the whole entry bar, and `meta` also keeps the market context at entry (200-day average, Fear and Greed, stretch).
+`/api/track` rejects any label flagged `serverOnly` in ALL_SIGNALS, so a browser can never log one. `signal_track.target` was made nullable during the trailing-stop experiment (v19.23 to v19.30) and left that way; nothing writes a NULL target now.
 
 ## big_move_alerts table (v19.20)
 Created lazily by lib/bigMove.js: id, dir ('up'/'down'), pct, alerted_at. One row per alert, used for the 12h cooldown per direction. The check runs inside every /api/cron/check-signals call and never blocks it.

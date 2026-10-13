@@ -50,7 +50,7 @@ export async function GET(req) {
       hoursOpen: Math.round(((new Date(r.resolved_at).getTime() - new Date(r.fired_at).getTime()) / 3600000) * 10) / 10,
       entry: parseFloat(r.entry),
       stop: parseFloat(r.stop),
-      target: r.target == null ? null : parseFloat(r.target), // null means the stop trailed, no fixed target
+      target: parseFloat(r.target),
       exit: exitPrice(r),
       r: resultR(r),
       outcome: r.outcome,

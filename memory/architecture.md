@@ -31,7 +31,7 @@ Next.js 14 (App Router), deployed on Vercel. Neon Postgres (serverless driver, `
 
 ## Shared trade plumbing (v19.28)
 - `lib/schema.js` `ensureSignalTrack(sql)`: the one definition of `signal_track` (table, columns, unique indexes). Every route and cron calls it.
-- `lib/results.js`: how a closed trade's result is read (`resultR`, `avgResult`, `exitPrice`, `openResult`). Fixed-target trades are +2R / -1R, trailing trades store their real `r`.
-- `lib/resolve.js` `resolveOpenTrades(sql)`: the one resolver for open fixed-target rows (used by close-alert). Trailing trades are managed by `lib/trendRunner.js`.
+- `lib/results.js`: how a closed trade's result is read (`resultR`, `avgResult`, `exitPrice`). The resolver stores each trade's real `r` (-1 at the stop, the target's multiple at the target); older rows count as +2R / -1R.
+- `lib/resolve.js` `resolveOpenTrades(sql)`: the one resolver for every open trade (used by close-alert and by Trend Rider's run).
 - `lib/liveScoreboard.js`: the one live scoreboard query (used by backtest and download).
 - `lib/signals.js` flags: `publicTest`, `serverOnly`, `coins`, `tfs` on an `ALL_SIGNALS` entry drive `PUBLIC_TESTING`, `SERVER_ONLY_SIGNALS`, `canSeeTesting`, `publicTestWatches`. `visibleGates` and `focusSql` keep hidden signals out of anything sent to a browser.

@@ -1,7 +1,9 @@
-// End-to-end test of lib/trendRunner.js with a fake database and fake candle feed.
+// End-to-end test of lib/trendRunner.js and the shared resolver with a real Postgres (pglite) and a fake candle feed.
 // Walks time forward in 5-minute steps through recent history, calling runTrend exactly as the cron would.
 import fs from "fs";
 import * as R from "../../lib/trendRunner.js";
+import { aggregate } from "../../lib/resolve.js";
+import { TF } from "../../lib/timeframes.js";
 import { TREND_ORDER } from "../../lib/trend.js";
 
 const load = (f) => JSON.parse(fs.readFileSync(f)).map((r) => ({ time: r[0] * 1000, low: r[1], high: r[2], open: r[3], close: r[4] })).filter((x) => x.close > 0).sort((a, b) => a.time - b.time);
@@ -48,6 +50,15 @@ for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
     fetchGran: async (sec, pages) => feed(sec, pages, now),
     getDailySMA: async () => smaOf(now),
     crowd: async () => 55,
+    // the shared resolver reads candles for each timeframe, here from the same fake feed
+    resolveIo: {
+      now,
+      fetchCandles: async (_coin, tf) => {
+        const m = TF[tf]; const c = feed(m.gran, m.aggFactor > 1 ? 2 : 1, now);
+        return m.aggFactor > 1 ? aggregate(c, m.gran, m.aggFactor) : c;
+      },
+      fetchMinute: async (_c, start, end) => data[60].filter((x) => x.time >= start && x.time < end).map((x) => ({ time: x.time, low: x.low, high: x.high })),
+    },
   };
   const res = await R.runTrend(fakeSql, webpush, deps);
   stats.runs++;
@@ -56,7 +67,7 @@ for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
 }
 console.log("runs", stats.runs, "opened", stats.opened, "closed", stats.closed);
 console.log("errors", JSON.stringify(stats.errors), "\nskipped", JSON.stringify(stats.skipped));
-const all = await fakeSql`SELECT tf, dir, outcome, r, exit_price, entry, stop, risk, target, label, coin, bar_time FROM signal_track ORDER BY id`;
+const all = await fakeSql`SELECT tf, dir, outcome, r, exit_price, entry, stop, target, label, coin, bar_time FROM signal_track ORDER BY id`;
 for (const tf of TREND_ORDER) {
   for (const dir of ["bull", "bear"]) {
     const z = all.filter((r) => r.tf === tf && r.dir === dir), c = z.filter((r) => r.outcome !== "open");
@@ -64,8 +75,8 @@ for (const tf of TREND_ORDER) {
     console.log(tf.padEnd(4), dir.padEnd(5), "trades", String(z.length).padStart(3), "closed", String(c.length).padStart(3), "win", c.length ? Math.round((100 * w) / c.length) + "%" : "-", "avgR", c.length ? (tot / c.length).toFixed(2) : "-", "open", z.length - c.length);
   }
 }
-// sanity: every row is a Trend Rider trailing trade with a sensible shape
-const bad = all.filter((r) => r.label !== "Trend Rider" || r.coin !== "BTC" || r.target !== null || (r.outcome !== "open" && !(Number(r.r) > -3 && Number(r.r) < 40)));
+// sanity: every row is a Trend Rider trade with a stop and a target, and closes at -1R or +0.75R
+const bad = all.filter((r) => r.label !== "Trend Rider" || r.coin !== "BTC" || r.target === null || (r.outcome !== "open" && ![-1, 0.75].includes(Number(r.r))));
 const byTfPush = {}; for (const t of pushes) { const k = t.split(":")[0]; byTfPush[k] = (byTfPush[k] || 0) + 1; }
 console.log("pushes", pushes.length, JSON.stringify(byTfPush), "sample:", pushes.slice(0, 3).join(" || "));
 console.log("rows", all.length, "bad", bad.length, bad.map((r) => JSON.stringify(r)).join(" "));

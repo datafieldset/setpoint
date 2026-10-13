@@ -1,4 +1,4 @@
-// Runs the REAL repo engine (lib/trend.js) over history, one timeframe at a time.
+// Runs the REAL repo engine (lib/trend.js) over history, one timeframe at a time, with the live exit rules (2 ATR stop, 0.75R target).
 import fs from "fs";
 import * as T from "../../lib/trend.js";
 const load = (f) => JSON.parse(fs.readFileSync(f)).map((r) => ({ time: r[0] * 1000, low: r[1], high: r[2], open: r[3], close: r[4] })).filter((x) => x.close > 0).sort((a, b) => a.time - b.time);
@@ -20,15 +20,14 @@ export function replay(tf, opts = {}) {
   const { done: bars } = T.splitBars(src[tf], cfg.baseSec, partSec[tf], FAR);
   const pre = T.precompute(bars);
   const out = { bull: [], bear: [] };
-  const rcfg = { ...cfg, checkSec: cfg.baseSec }; // replay checks at bar resolution, like the study
   for (const dir of ["bull", "bear"]) {
     let open = null;
     for (let i = 0; i < bars.length - 1; i++) {
-      // 1. advance the open trade through bar i (check candle = base bar)
+      // 1. check the open trade against bar i (the entry bar counts too, cautious: both levels in one bar = a loss)
       if (open) {
-        const res = T.advance(open, rcfg, [bars[i]], bars, pre.atr, FAR);
-        if (res.closed) { out[dir].push({ t: open.t, r: res.r, bars: i - open.i, tag: open.tag }); open = null; }
-        else { open.stop = res.stop; open.ext = res.ext; open.lastCheck = res.lastCheck; }
+        const b = bars[i], L = dir === "bull";
+        const hitStop = L ? b.low <= open.stop : b.high >= open.stop, hitTarget = L ? b.high >= open.target : b.low <= open.target;
+        if (hitStop || hitTarget) { out[dir].push({ t: open.t, r: hitStop ? -1 : T.TARGET_R }); open = null; }
       }
       // 2. a new entry on bar i+1 (the forming bar), indicators from bar i
       if (!open) {
@@ -37,9 +36,7 @@ export function replay(tf, opts = {}) {
         const a = T.analyze(cfg, bars, pre, i, { time: fb.time, open: fb.open, high: fb.high, low: fb.low, close: fb.open }, { sma, htf });
         if (!a) continue;
         const e = dir === "bull" ? a.bull : a.bear;
-        if (e.fire) open = { t: fb.time, i: i + 1, dir, entry: e.entry, risk: e.risk, stop: e.stop, ext: e.entry, lastCheck: bars[i].time, tag: { stretch: e.stretch } };
-        // the entry bar itself is processed as the first check candle on the next loop turn
-        if (open) { i = i; }
+        if (e.fire) open = { t: fb.time, dir, stop: e.stop, target: e.target }; // the entry bar itself is checked on the next loop turn
       }
     }
   }

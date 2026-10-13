@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { isValidTf } from "../../../lib/timeframes.js";
-import { reversalRisk, getLiveVerifiedGate, visibleGates } from "../../../lib/signals.js";
+import { reversalRisk, getLiveVerifiedGate, visibleGates, PUBLIC_TESTING } from "../../../lib/signals.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -84,8 +84,6 @@ const BIAS_MIN_SAMPLE = 5;
 // already used for getLiveVerifiedGate, with a real, moderate TTL.
 const SIGNAL_BIAS_CACHE_MS = 10 * 60 * 1000; // 10 real minutes
 
-// Fixed-target trades only (target IS NOT NULL): this read compares how often longs and shorts win
-// at the same 2:1 payoff. A trailing-stop trade has no fixed payoff, so its win rate isn't comparable.
 async function fetchSignalBiasFromDB() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return null;
@@ -95,7 +93,8 @@ async function fetchSignalBiasFromDB() {
     const rows = await sql`
       SELECT dir, outcome
       FROM signal_track
-      WHERE outcome IN ('win', 'loss') AND target IS NOT NULL
+      WHERE outcome IN ('win', 'loss')
+        AND NOT (label = ANY(${PUBLIC_TESTING}))
       ORDER BY resolved_at DESC
       LIMIT 400
     `;

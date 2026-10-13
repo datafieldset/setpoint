@@ -59,7 +59,7 @@ export async function GET(req) {
     // every insert quietly fail on a missing column.
     await ensureSignalTrack(sql);
     // Server-side trade logging comes first and never depends on push
-    // being configured: a trade must open, trail and close whether or not
+    // being configured: a trade must open and close whether or not
     // anyone can be notified. A hung feed is cut off after 20 seconds.
     let trend = null;
     try { trend = await Promise.race([runTrend(sql, hasVapid ? webpush : null), new Promise((_, rej) => setTimeout(() => rej(new Error("trend timed out")), 20000))]); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }

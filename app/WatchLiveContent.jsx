@@ -162,7 +162,7 @@ export default function WatchLiveContent({ onBack }) {
           {testing.names.length > 0 && (
             <section className="watch-section watch-emerging">
               <h2 className="watch-h">In public testing <span className="watch-pill">not verified</span></h2>
-              <p className="watch-note">{testing.names.join(", ")} {testing.names.length === 1 ? "is" : "are"} live while {testing.names.length === 1 ? "it proves" : "they prove"} {testing.names.length === 1 ? "itself" : "themselves"}. Win percentage is only part of the story here: these trades have no fixed target, a stop trails behind price, so one big win can pay for several small losses. The average result per trade (in R, the amount risked) is the number to watch. These don't count toward the win rate above.</p>
+              <p className="watch-note">{testing.names.join(", ")} {testing.names.length === 1 ? "is" : "are"} live while {testing.names.length === 1 ? "it proves" : "they prove"} {testing.names.length === 1 ? "itself" : "themselves"}. Each one sets its own target size, so the average result per trade (in R, the amount risked) matters as much as the win percentage. These don't count toward the win rate above.</p>
               {testing.setups.length === 0 ? (
                 <div className="watch-empty">No trades have finished yet. They'll show up here as they do.</div>
               ) : (

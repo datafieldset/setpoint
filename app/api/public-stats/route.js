@@ -135,7 +135,8 @@ async function computeStats(conn) {
     if (KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`)) continue;
     // v19.20: trades whose target was under the minimum size never count,
     // including ones logged before the minimum existed.
-    if (belowTargetFloor(r.tf, r.entry, r.target)) continue;
+    // (A public test sets its own target size, so the minimum doesn't apply to it. It never counts toward the verified win rate anyway.)
+    if (!PUBLIC_TESTING.includes(r.label) && belowTargetFloor(r.tf, r.entry, r.target)) continue;
     // Focus mode (v19.21): hidden signals never appear on Watch Live.
     if (!isSignalVisible(r.label)) continue;
     // Oct 9: a trade is judged by whether it was verified WHEN IT FIRED
@@ -170,9 +171,8 @@ async function computeStats(conn) {
     if (recent.length < 40) recent.push(toCard(r));
   }
 
-  // Average result per trade: every fixed-target trade is a 2:1 payoff (a
-  // win is +2R, a loss is -1R, R = the amount risked), trailing-stop
-  // trades carry their real result (lib/results.js).
+  // Average result per trade in R (R = the amount risked), read from each
+  // trade's stored result (lib/results.js).
   const verifiedTotal = wins + losses;
   const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
@@ -213,7 +213,7 @@ async function computeStats(conn) {
   // ---- Public tests: signals shown to everyone while they prove themselves ----
   // Never counted in the verified win rate. Their own group, with the
   // real record per timeframe and direction and the average result per
-  // trade (the number to watch when there's no fixed target).
+  // trade (the number to watch when a signal's target isn't the usual 2R).
   const testingRows = rows.filter((r) => PUBLIC_TESTING.includes(r.label) && isSignalVisible(r.label));
   const testingMap = new Map();
   for (const r of testingRows) {
