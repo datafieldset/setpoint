@@ -8,8 +8,7 @@
 // empty state says "Watching 4h" when nothing has, and the plain-English
 // description of the signal lives in the Guide, never on the dashboard.
 // The signal's name appears only on its card. Below the cards: the
-// scoreboard (win rate per timeframe, updated as trades close), recent
-// results, and a collapsed "what it's watching" checklist.
+// recent results (with the win rate), and a collapsed "what it's watching" checklist.
 import { useEffect, useState } from "react";
 
 const fmtPrice = (p) => (p == null || isNaN(p) ? "—" : Math.round(p).toLocaleString("en-US"));
@@ -112,7 +111,7 @@ function TrendCard({ p, rec, tf, price, now }) {
   );
 }
 
-export default function TrendRider({ tfKey, onPick }) {
+export default function TrendRider({ tfKey }) {
   const [d, setD] = useState(null);
   const [err, setErr] = useState(null);
   const [now, setNow] = useState(() => Date.now());
@@ -188,27 +187,9 @@ export default function TrendRider({ tfKey, onPick }) {
             )}
           </details>
 
-          <div className="recently-resolved">
-            <div className="rr-head">Scoreboard · Trend Rider, Bitcoin</div>
-            <div role="group" aria-label="Win rate by timeframe">
-              {d.order.map((k) => {
-                const a = d.tfs[k].record.all;
-                return (
-                  <button key={k} type="button" aria-pressed={k === tfKey} className={`tr-sb-row ${k === tfKey ? "on" : ""}`} onClick={() => onPick && onPick(k)}>
-                    <span className="rr-tf">{k}</span>
-                    <span className="tr-sb-win">{pct(a.winPct)}</span>
-                    <span className="tr-sb-bar" aria-hidden="true"><span style={{ width: `${a.winPct ?? 0}%` }} /></span>
-                    <span className="tr-sb-sub">{a.trades ? `${a.wins} won, ${a.losses} lost${a.trades < EARLY ? " · early" : ""} · ${fmtR(a.avgR)} avg` : "no trades yet"}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <div className="tr-ref">Win rate alone isn't the whole story. The average result per trade (in R) says whether the winners are paying for the losers. Counts only trades from the moment this went live.</div>
-          </div>
-
           {cur.closed.length > 0 && (
             <div className="recently-resolved">
-              <div className="rr-head">Recently resolved · {tfKey}</div>
+              <div className="rr-head">Recently resolved · {tfKey}{cur.record.all.winPct != null ? ` · ${cur.record.all.winPct}% won (${cur.record.all.wins} of ${cur.record.all.trades})` : ""}</div>
               {cur.closed.map((c) => (
                 <div className={`rr-row ${c.r > 0 ? "win" : "loss"}`} key={c.id}>
                   <span className="rr-coin">BTC</span>
@@ -246,16 +227,5 @@ const CSS = `
 .tr-side-f{font-size:11.5px;color:var(--dim);line-height:1.4}
 .tr-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
 .tr-ref{font-size:12px;color:var(--dim);line-height:1.5;margin-top:10px}
-.tr-sb-row{display:grid;grid-template-columns:44px 52px 1fr;grid-template-areas:"tf win bar" ". sub sub";gap:2px 10px;align-items:center;width:100%;text-align:left;background:none;border:0;border-top:1px solid var(--border);padding:9px 6px;color:inherit;font:inherit;cursor:pointer;border-radius:0}
-.tr-sb-row:first-child{border-top:0}
-.tr-sb-row:hover{background:var(--panel3)}
-.tr-sb-row:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
-.tr-sb-row.on{background:var(--panel3);box-shadow:inset 3px 0 0 var(--green)}
-.tr-sb-row .rr-tf{grid-area:tf;text-align:center}
-.tr-sb-win{grid-area:win;font-family:'Bricolage Grotesque';font-size:18px;font-weight:700;font-variant-numeric:tabular-nums}
-.tr-sb-bar{grid-area:bar;display:block;height:5px;background:var(--panel3);border-radius:3px;overflow:hidden}
-.tr-sb-row.on .tr-sb-bar{background:var(--hair)}
-.tr-sb-bar span{display:block;height:100%;background:var(--green);border-radius:3px}
-.tr-sb-sub{grid-area:sub;font-size:11.5px;color:var(--dim)}
 @media (max-width:640px){.tr-sides{grid-template-columns:1fr}}
 `;
