@@ -46,10 +46,11 @@
 //   sample size is naturally smaller on slower timeframes (1h ≈ 12 days of
 //   history, 5m ≈ 25 hours). Read low-sample buckets accordingly.
 
-import { computeSignals, DEFAULT_TH, thresholdsFor, windowPct, marketBias, reversalRisk, ALL_SIGNALS } from "../../../lib/signals.js";
+import { computeSignals, thresholdsFor, windowPct, marketBias, reversalRisk } from "../../../lib/signals.js";
 import { TF, barMs } from "../../../lib/timeframes.js";
 import { logNewEvents, resolveCheckpoints, aggregateWhaleDirection } from "../whale-track/route.js";
-import { fetchCoinbaseCandles, fetchMinuteCandles, resolveFromMinuteCandles, walkForwardOutcome } from "../../../lib/resolve.js";
+import { fetchCoinbaseCandles, fetchMinuteCandles, resolveFromMinuteCandles } from "../../../lib/resolve.js";
+import { getLiveScoreboard, ROLLING_N } from "../../../lib/liveScoreboard.js";
 import { checkAuth } from "../../../lib/access.js";
 
 export const dynamic = "force-dynamic";
@@ -339,7 +340,6 @@ async function getWhaleDirectionStats() {
 // live, not a replay of history like the rest of this page. The two are
 // kept clearly labeled apart everywhere they're shown, since confusing a
 // real outcome for a simulated one would be a real mistake to make.
-const ROLLING_N = 20;
 // Recent-vs-all-time drift check. Two numbers for every signal that's
 // ever resolved a trade: the full, all-time win rate (the honest,
 // stable long-run record), and a recent window (last 20 resolved trades)
@@ -395,96 +395,6 @@ async function getSignalDrift() {
   }
 }
 
-
-async function getLiveScoreboard() {
-  const conn = process.env.DATABASE_URL;
-  if (!conn) return { buckets: [], totalTracked: 0, totalOpen: 0, resolveInfo: { checked: 0, resolved: 0, errors: [] } };
-  const minuteCache = new Map();
-  try {
-    const { neon } = await import("@neondatabase/serverless");
-    const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    await sql`
-      CREATE TABLE IF NOT EXISTS signal_track (
-        id SERIAL PRIMARY KEY,
-        coin TEXT NOT NULL,
-        tf TEXT NOT NULL,
-        label TEXT NOT NULL,
-        dir TEXT NOT NULL,
-        fired_at TIMESTAMPTZ NOT NULL,
-        entry NUMERIC NOT NULL,
-        stop NUMERIC NOT NULL,
-        target NUMERIC NOT NULL,
-        outcome TEXT NOT NULL DEFAULT 'open',
-        resolved_at TIMESTAMPTZ
-      )
-    `;
-
-    const open = await sql`SELECT id, coin, tf, dir, fired_at, entry, stop, target FROM signal_track WHERE outcome = 'open'`;
-    const resolveInfo = { checked: open.length, resolved: 0, errors: [] };
-    const groups = new Map();
-    for (const row of open) {
-      const key = `${row.coin}:${row.tf}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(row);
-    }
-    for (const [key, rows] of groups) {
-      const [coin, tf] = key.split(":");
-      let candles;
-      try {
-        candles = await fetchCoinbaseCandles(coin, tf);
-      } catch (e) {
-        resolveInfo.errors.push(`${key}: ${String(e.message || e).slice(0, 100)}`);
-        continue;
-      }
-      for (const row of rows) {
-        const firedMs = new Date(row.fired_at).getTime();
-        const target = parseFloat(row.target), stop = parseFloat(row.stop);
-        const outcome = await walkForwardOutcome(candles, firedMs, row.dir, target, stop, row.coin, tf, minuteCache);
-        if (outcome) {
-          await sql`UPDATE signal_track SET outcome = ${outcome}, resolved_at = now() WHERE id = ${row.id}`;
-          resolveInfo.resolved++;
-        }
-      }
-    }
-
-    const totalTrackedRows = await sql`SELECT COUNT(*)::int AS n FROM signal_track`;
-    const totalOpenRows = await sql`SELECT COUNT(*)::int AS n FROM signal_track WHERE outcome = 'open'`;
-    // Real, direct fix (Oct 2): this used to scan every real row in
-    // signal_track with no filter at all, meaning a fully-retired
-    // signal's old, frozen history (Whale Flow, EMA cross — both
-    // removed from ALL_SIGNALS, neither can ever log a new, real
-    // trade again) kept showing up here forever, confusingly looking
-    // active since the rolling window was still full. Filtered by
-    // ALL_SIGNALS now, same, direct fix already applied to
-    // public-stats.
-    const activeLabels = ALL_SIGNALS.map((s) => s.name);
-    const resolvedRows = await sql`
-      SELECT label, tf, dir, outcome
-      FROM (
-        SELECT label, tf, dir, outcome,
-               ROW_NUMBER() OVER (PARTITION BY label, tf, dir ORDER BY resolved_at DESC) AS rn
-        FROM signal_track
-        WHERE outcome IN ('win', 'loss') AND label = ANY(${activeLabels})
-      ) t
-      WHERE rn <= ${ROLLING_N}
-    `;
-    const bucketMap = new Map();
-    for (const r of resolvedRows) {
-      const key = `${r.label} · ${TF[r.tf]?.label || r.tf} · ${r.dir}`;
-      const b = bucketMap.get(key) || { key, n: 0, wins: 0, losses: 0 };
-      b.n++;
-      if (r.outcome === "win") b.wins++; else b.losses++;
-      bucketMap.set(key, b);
-    }
-    const buckets = [...bucketMap.values()]
-      .map((b) => ({ ...b, winRate: b.wins + b.losses > 0 ? b.wins / (b.wins + b.losses) : null }))
-      .sort((a, b) => (b.winRate ?? -1) - (a.winRate ?? -1));
-
-    return { buckets, totalTracked: totalTrackedRows[0]?.n || 0, totalOpen: totalOpenRows[0]?.n || 0, resolveInfo };
-  } catch (e) {
-    return { buckets: [], totalTracked: 0, totalOpen: 0, resolveInfo: { checked: 0, resolved: 0, errors: [String(e.message || e).slice(0, 200)] } };
-  }
-}
 
 function renderHtml({ buckets, runAt, dbInfo, errors, totalFired, turns, consistency, live, whale, drift }) {
   const withSample = buckets.filter((b) => b.fired >= 5 && b.winRate != null && !b.key.includes(" · Trend:") && !b.key.includes(" · Bias:"));

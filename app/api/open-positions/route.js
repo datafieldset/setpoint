@@ -31,7 +31,9 @@
 // someone hadn't checked recently enough to catch it resolving live, it
 // looked like it disappeared for no reason. This gives real, honest
 // closure either way, win or loss, the next time the dashboard loads.
-import { provenContext, getLiveVerifiedGate, KILLED_COMBOS, belowTargetFloor, isSignalVisible } from "../../../lib/signals.js";
+import { provenContext, getLiveVerifiedGate, KILLED_COMBOS, belowTargetFloor, isSignalVisible, focusSql } from "../../../lib/signals.js";
+import { resultR, exitPrice } from "../../../lib/results.js";
+import { ensureSignalTrack } from "../../../lib/schema.js";
 import { checkKey } from "../../../lib/access.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -61,18 +63,20 @@ export async function GET(req) {
     const result = await withCache("open-positions", CACHE_MS, async () => {
       const { neon } = await import("@neondatabase/serverless");
       const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
+      await ensureSignalTrack(sql);
+      const { noFocus, focusLabels } = focusSql;
       const [rows, resolvedRows, liveGateResult] = await Promise.all([
         sql`
-          SELECT coin, tf, label, dir, fired_at, entry, stop, target, regime
+          SELECT coin, tf, label, dir, fired_at, entry, stop, target, risk, regime
           FROM signal_track
-          WHERE outcome = 'open'
+          WHERE outcome = 'open' AND (${noFocus} OR label = ANY(${focusLabels}))
           ORDER BY fired_at DESC
           LIMIT 100
         `,
         sql`
-          SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime
+          SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, exit_price, r, outcome, regime
           FROM signal_track
-          WHERE outcome IN ('win', 'loss')
+          WHERE outcome IN ('win', 'loss') AND (${noFocus} OR label = ANY(${focusLabels}))
           ORDER BY resolved_at DESC
           LIMIT 30
         `,
@@ -98,7 +102,8 @@ export async function GET(req) {
         firedAt: new Date(r.fired_at).getTime(),
         entry: parseFloat(r.entry),
         stop: parseFloat(r.stop),
-        target: parseFloat(r.target),
+        target: r.target == null ? null : parseFloat(r.target), // null means the stop trails, no fixed target
+        risk: r.risk == null ? null : parseFloat(r.risk),
         tier: pc.tag,
         tierRate: pc.rate,
         tierIsLive: pc.isLive,
@@ -108,7 +113,7 @@ export async function GET(req) {
     const recentlyResolved = resolvedRows.filter((r) => isSignalVisible(r.label)).map((r) => {
       const pc = KILLED_COMBOS.includes(`${r.label}|${r.tf}|${r.dir}`) || belowTargetFloor(r.tf, r.entry, r.target) ? killedPc : provenContext(r.label, r.tf, r.dir, liveGate, r.regime, regimeGate);
       const entry = parseFloat(r.entry);
-      const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
+      const exit = exitPrice(r);
       const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
       return {
         coin: r.coin,
@@ -118,7 +123,7 @@ export async function GET(req) {
         outcome: r.outcome,
         firedAt: new Date(r.fired_at).getTime(),
         resolvedAt: new Date(r.resolved_at).getTime(),
-        entry, exit, pctMove,
+        entry, exit, pctMove, r: resultR(r),
         tier: pc.tag,
         tierRate: pc.rate,
         tierIsLive: pc.isLive,

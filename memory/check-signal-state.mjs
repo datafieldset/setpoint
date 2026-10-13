@@ -13,7 +13,7 @@
 // Usage: node memory/check-signal-state.mjs
 // (run from the repo root, or anywhere — the import path below is
 // relative to this file's own location)
-import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, KILLED_COMBOS, TESTING_SIGNALS } from "../lib/signals.js";
+import { ALL_SIGNALS, SIGNAL_RATES, PROVEN_THRESHOLD, KILLED_COMBOS, TESTING_SIGNALS, PUBLIC_TESTING, VISIBLE_SIGNALS, FOCUS_MODE } from "../lib/signals.js";
 
 console.log(`Total real signals (ALL_SIGNALS): ${ALL_SIGNALS.length}`);
 console.log(ALL_SIGNALS.map((s) => s.name).join(", "));
@@ -29,7 +29,9 @@ console.log(`\nKILLED_COMBOS (${KILLED_COMBOS.length} total, never fire again):`
 for (const c of KILLED_COMBOS) console.log(`  ${typeof c === "string" ? c : c}`);
 
 const promotedNames = new Set(promoted.map(([key]) => key.split("|")[0]));
-const darkNames = ALL_SIGNALS.map((s) => s.name).filter((n) => !promotedNames.has(n) && !TESTING_SIGNALS.includes(n));
+const darkNames = ALL_SIGNALS.map((s) => s.name).filter((n) => !promotedNames.has(n) && !TESTING_SIGNALS.includes(n) && !PUBLIC_TESTING.includes(n));
+console.log(`\nPublic tests (shown to everyone with a testing tag, no verified badge): ${PUBLIC_TESTING.join(", ") || "(none)"}`);
+console.log(`Focus mode: ${FOCUS_MODE ? "ON, visible: " + VISIBLE_SIGNALS.join(", ") : "off"}`);
 console.log(`\nCurrently dark / collecting-only (no STATIC entry, not in TESTING_SIGNALS):`);
 console.log(darkNames.length ? `  ${darkNames.join(", ")}` : "  (none)");
 console.log(`(a name here can still be genuinely, dynamically verified right now via the regime-only path — check /api/market's regimeGate directly for any of these before assuming it's truly invisible)`);

@@ -26,11 +26,11 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
+import { computeSignals, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 import { checkBigMove } from "../../../../lib/bigMove.js";
 import { runTrend } from "../../../../lib/trendRunner.js";
-import { ensureSignalTrackColumns } from "../../../../lib/schema.js";
+import { ensureSignalTrack } from "../../../../lib/schema.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity } from "../../../../lib/marketContext.js";
 
 export const dynamic = "force-dynamic";
@@ -51,14 +51,19 @@ export async function GET(req) {
   const conn = process.env.DATABASE_URL;
   if (!conn) return Response.json({ error: "no_database" }, { status: 500 });
   const hasVapid = configureWebPush();
-  if (!hasVapid) return Response.json({ error: "not_configured", checked: 0, sent: 0 });
 
   const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
 
   try {
     // Fails loudly (caught below as server_error) instead of letting
     // every insert quietly fail on a missing column.
-    await ensureSignalTrackColumns(sql);
+    await ensureSignalTrack(sql);
+    // Server-side trade logging comes first and never depends on push
+    // being configured: a trade must open, trail and close whether or not
+    // anyone can be notified. A hung feed is cut off after 20 seconds.
+    let trend = null;
+    try { trend = await Promise.race([runTrend(sql, hasVapid ? webpush : null), new Promise((_, rej) => setTimeout(() => rej(new Error("trend timed out")), 20000))]); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }
+    if (!hasVapid) return Response.json({ error: "not_configured", checked: 0, sent: 0, trend });
     // Real accounts with a real, active subscription, joined against
     // their own real, saved watchlist. Nothing here about coins nobody's
     // account actually watches. watchlist is stored as JSON text (same
@@ -68,9 +73,6 @@ export async function GET(req) {
     // big, fast move. Must never break the signal run itself.
     let bigMove = null;
     try { bigMove = await checkBigMove(sql, webpush); } catch (e) { bigMove = { error: String(e.message || e).slice(0, 80) }; }
-    // Trend Rider (v19.23): public BTC breakout-and-trail signal on six timeframes (alerts to admins only). Never breaks the run, and a hung feed is cut off after 20 seconds.
-    let trend = null;
-    try { trend = await Promise.race([runTrend(sql, webpush), new Promise((_, rej) => setTimeout(() => rej(new Error("trend timed out")), 20000))]); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }
     const rawSubs = await sql`
       SELECT DISTINCT u.email, u.watchlist, u.is_admin, ps.endpoint, ps.subscription
       FROM push_subscriptions ps
@@ -102,19 +104,8 @@ export async function GET(req) {
     const recentWhaleInflowOverbought = whaleActivity.inflowOverbought;
     const risk = reversalRisk(bias, fng?.value);
 
-    // Real, database-level protection, not an application-level guess.
-    // The exact same partial unique index /api/track already relies on:
-    // only one 'open' row allowed per (coin, tf, label, dir) at a time,
-    // enforced by Postgres itself. This means the cron and a real,
-    // actively-open browser tab can genuinely never both log or notify
-    // about the same real fire, even if they both attempt it in the same
-    // instant, the database itself is the single source of truth, not a
-    // snapshot either side happened to read a moment earlier.
-    await sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS signal_track_open_unique
-      ON signal_track (coin, tf, label, dir)
-      WHERE outcome = 'open'
-    `;
+    // The database itself (the unique index in lib/schema.js) guarantees the cron and a
+    // browser tab can never both log the same fire.
 
     const now = Date.now();
     let checked = 0;

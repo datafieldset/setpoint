@@ -1,16 +1,16 @@
 # Infrastructure
 
-## trend_positions table (v19.21, extended v19.23)
-v19.23: one row per trade PER TIMEFRAME. Added tf (4h,1h,30m,15m,5m,1m), fng (Fear & Greed when it fired), stretch (entry vs 200-day average). last_hour now holds the start of the last CHECK candle already processed (name kept). Unique indexes: one open trade per (coin, tf, dir) and one per (coin, tf, dir, bar_time). runTrend fetches Coinbase candles at 60s, 300s, 900s and 3600s (two pages) once per cron run, shared by all six timeframes.
-
-Created lazily by lib/trendRunner.js: id, coin, dir, status (open/closed), bar_time (open time of the entry 4h bar, ms), opened_at, entry, risk (1R, the opening stop distance), stop (trailing), ext (best price since entry), last_hour (open time of the last hourly candle processed), sma (200-day average at entry), exit, closed_at, r. Unique: one open trade per direction, one trade per (coin, dir, bar_time). Trend Rider state lives only here, not in signal_track.
+## Trend Rider storage (v19.28)
+Trend Rider is a normal signal: its trades are rows in `signal_track` like every other signal. The old `trend_positions` table is abandoned (history before v19.28 was not migrated, the public test restarted at zero). Only `trend_state` remains as its own table (one key, `last_run`, the scan watermark).
+What makes a Trend Rider row different is only data: `target` is NULL (the stop trails, there is no fixed target), `risk` holds the opening stop distance, `exit_price` and `r` hold where it ended and the result in R, `bar_time` is the candle it belongs to, `meta` (JSON) keeps its extreme price, how far the stop has been checked, and the context at entry. `win` means r > 0.
+`lib/trendRunner.js` is the only writer. `/api/track` rejects any label flagged `serverOnly` in ALL_SIGNALS, so a browser can never log one. Every reader treats rows alike through `lib/results.js` (old fixed-target rows without `r` count as +2R / -1R).
 
 ## big_move_alerts table (v19.20)
 Created lazily by lib/bigMove.js: id, dir ('up'/'down'), pct, alerted_at. One row per alert, used for the 12h cooldown per direction. The check runs inside every /api/cron/check-signals call and never blocks it.
 
 ## Database — Neon Postgres
-Key tables: `users`, `signal_track` (core table — every fired signal, `coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime`; `regime` column added later, populated at fire time from `marketRegime()`), `macro_cache`, `whale_track`, `backtest_results` (`run_at, bucket, fired, wins, losses, win_rate` — one row per bucket per run of `/api/backtest`, including condition-split buckets like `"Label · tf · dir · Bias:against"`), `push_subscriptions`.
-Unique index: `signal_track_open_unique` on `(coin, tf, label, dir) WHERE outcome = 'open'` — DB-level guarantee only one open position per combo at a time; this is what makes the cron and a live browser tab safe to both attempt logging the same real fire without racing.
+Key tables: `users`, `signal_track` (core table — every fired signal, `coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome, regime, verified_at_fire, risk, exit_price, r, bar_time, meta`; defined once in `lib/schema.js` `ensureSignalTrack(sql)`, which every route and cron calls instead of carrying its own CREATE TABLE; `target` is nullable for trailing-stop signals), `macro_cache`, `whale_track`, `backtest_results` (`run_at, bucket, fired, wins, losses, win_rate` — one row per bucket per run of `/api/backtest`, including condition-split buckets like `"Label · tf · dir · Bias:against"`), `push_subscriptions`.
+Unique indexes: `signal_track_one_per_bar` on `(coin, tf, label, dir, bar_time) WHERE bar_time IS NOT NULL` (one touch of a level is recorded once) and `signal_track_open_unique` on `(coin, tf, label, dir) WHERE outcome = 'open'` — DB-level guarantee only one open position per combo at a time; this is what makes the cron and a live browser tab safe to both attempt logging the same real fire without racing.
 
 ## Auth & payments
 Auth.js, email/password. Admin: nokanetmail@gmail.com. Stripe live (NOKANET account). Pricing single source of truth: `lib/pricing.js` — Starter $19.99 (1 coin), Trader $49.99 (3 coins), Pro $99.99 (10 coins). Admin accounts exempt from coin limits.

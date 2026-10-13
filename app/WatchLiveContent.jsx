@@ -33,7 +33,7 @@ function TradeCard({ t }) {
         <div className="wc-level"><span className="wc-level-k">Entry</span><span className="wc-level-v mono">{fmtPrice(t.entry)}</span></div>
         <div className="wc-arrow">→</div>
         <div className="wc-level"><span className="wc-level-k">Exit</span><span className="wc-level-v mono">{fmtPrice(t.exit)}</span></div>
-        <div className={`wc-pct ${t.outcome}`}>{t.pctMove >= 0 ? "+" : ""}{t.pctMove.toFixed(2)}%</div>
+        <div className={`wc-pct ${t.outcome}`}>{t.pctMove >= 0 ? "+" : ""}{t.pctMove.toFixed(2)}%{t.r != null ? ` (${fmtR(t.r)})` : ""}</div>
       </div>
       <div className="wc-times">
         <span>Fired {fmtTime(t.firedAt)}</span>
@@ -81,6 +81,7 @@ export default function WatchLiveContent({ onBack }) {
   const winRatePct = data?.verifiedWinRate != null ? Math.round(data.verifiedWinRate * 100) : null;
   const setups = data?.setups || [];
   const emerging = data?.emerging || { setups: [], recent: [] };
+  const testing = data?.testing || { names: [], setups: [], recent: [] };
   const activeSetups = data?.activeSetups ?? setups.length;
 
   return (
@@ -157,6 +158,27 @@ export default function WatchLiveContent({ onBack }) {
               </div>
             )}
           </section>
+
+          {testing.names.length > 0 && (
+            <section className="watch-section watch-emerging">
+              <h2 className="watch-h">In public testing <span className="watch-pill">not verified</span></h2>
+              <p className="watch-note">{testing.names.join(", ")} {testing.names.length === 1 ? "is" : "are"} live while {testing.names.length === 1 ? "it proves" : "they prove"} {testing.names.length === 1 ? "itself" : "themselves"}. Win percentage is only part of the story here: these trades have no fixed target, a stop trails behind price, so one big win can pay for several small losses. The average result per trade (in R, the amount risked) is the number to watch. These don't count toward the win rate above.</p>
+              {testing.setups.length === 0 ? (
+                <div className="watch-empty">No trades have finished yet. They'll show up here as they do.</div>
+              ) : (
+                <div className="watch-setups">
+                  {testing.setups.map((s, i) => <SetupRow key={i} s={s} />)}
+                </div>
+              )}
+              {testing.recent.length > 0 && (
+                <div className="watch-scroll">
+                  <div className="watch-grid">
+                    {testing.recent.map((t, i) => <TradeCard key={i} t={t} />)}
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
 
           {emerging.setups.length > 0 && (
             <section className="watch-section watch-emerging">

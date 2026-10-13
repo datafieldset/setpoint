@@ -6,8 +6,8 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import { TF, isValidTf } from "../../../lib/timeframes.js";
-import { marketBias, reversalRisk, getLiveVerifiedGate } from "../../../lib/signals.js";
+import { isValidTf } from "../../../lib/timeframes.js";
+import { reversalRisk, getLiveVerifiedGate, visibleGates } from "../../../lib/signals.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -84,6 +84,8 @@ const BIAS_MIN_SAMPLE = 5;
 // already used for getLiveVerifiedGate, with a real, moderate TTL.
 const SIGNAL_BIAS_CACHE_MS = 10 * 60 * 1000; // 10 real minutes
 
+// Fixed-target trades only (target IS NOT NULL): this read compares how often longs and shorts win
+// at the same 2:1 payoff. A trailing-stop trade has no fixed payoff, so its win rate isn't comparable.
 async function fetchSignalBiasFromDB() {
   const conn = process.env.DATABASE_URL;
   if (!conn) return null;
@@ -93,7 +95,7 @@ async function fetchSignalBiasFromDB() {
     const rows = await sql`
       SELECT dir, outcome
       FROM signal_track
-      WHERE outcome IN ('win', 'loss')
+      WHERE outcome IN ('win', 'loss') AND target IS NOT NULL
       ORDER BY resolved_at DESC
       LIMIT 400
     `;
@@ -159,7 +161,7 @@ export async function GET(req) {
 
   const risk = reversalRisk(bias, fng?.value);
   return Response.json(
-    { coins, fng, bias, risk, weekly200, signalBias, liveGate, regimeGate, recentWhaleOutflowOversold: whaleActivity.outflowOversold, recentWhaleInflowOverbought: whaleActivity.inflowOverbought, tf, at: Date.now() },
+    { coins, fng, bias, risk, weekly200, signalBias, liveGate: visibleGates(liveGate), regimeGate: visibleGates(regimeGate), recentWhaleOutflowOversold: whaleActivity.outflowOversold, recentWhaleInflowOverbought: whaleActivity.inflowOverbought, tf, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }

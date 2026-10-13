@@ -1,4 +1,3 @@
-import { isSignalVisible } from "../../../lib/signals.js";
 // app/api/resolved-positions/route.js
 //
 // Shows exactly what a specific fired signal actually resolved to, and
@@ -7,9 +6,16 @@ import { isSignalVisible } from "../../../lib/signals.js";
 // resolved correctly, only that something did. This lets a specific
 // trade (matched by coin, timeframe, label, direction, entry/stop/target)
 // be looked up directly against its real outcome and timestamps.
+import { isSignalVisible, focusSql } from "../../../lib/signals.js";
+import { checkKey } from "../../../lib/access.js";
+import { resultR, exitPrice } from "../../../lib/results.js";
+import { ensureSignalTrack } from "../../../lib/schema.js";
+
 export const dynamic = "force-dynamic";
 
 export async function GET(req) {
+  const authFail = checkKey(req);
+  if (authFail) return authFail;
   const noCache = { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" };
   const conn = process.env.DATABASE_URL;
   if (!conn) {
@@ -18,25 +24,21 @@ export async function GET(req) {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn);
+    await ensureSignalTrack(sql);
     const { searchParams } = new URL(req.url);
     const coin = searchParams.get("coin");
     const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10) || 50, 200);
 
-    const rows = coin
-      ? await sql`
-          SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome
-          FROM signal_track
-          WHERE outcome IN ('win', 'loss') AND coin = ${coin}
-          ORDER BY resolved_at DESC
-          LIMIT ${limit}
-        `
-      : await sql`
-          SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, outcome
-          FROM signal_track
-          WHERE outcome IN ('win', 'loss')
-          ORDER BY resolved_at DESC
-          LIMIT ${limit}
-        `;
+    const { noFocus, focusLabels } = focusSql;
+    const rows = await sql`
+      SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, exit_price, r, outcome
+      FROM signal_track
+      WHERE outcome IN ('win', 'loss')
+        AND (${coin}::text IS NULL OR coin = ${coin})
+        AND (${noFocus} OR label = ANY(${focusLabels}))
+      ORDER BY resolved_at DESC
+      LIMIT ${limit}
+    `;
 
     const resolved = rows.filter((r) => isSignalVisible(r.label)).map((r) => ({
       coin: r.coin,
@@ -48,7 +50,9 @@ export async function GET(req) {
       hoursOpen: Math.round(((new Date(r.resolved_at).getTime() - new Date(r.fired_at).getTime()) / 3600000) * 10) / 10,
       entry: parseFloat(r.entry),
       stop: parseFloat(r.stop),
-      target: parseFloat(r.target),
+      target: r.target == null ? null : parseFloat(r.target), // null means the stop trailed, no fixed target
+      exit: exitPrice(r),
+      r: resultR(r),
       outcome: r.outcome,
     }));
 

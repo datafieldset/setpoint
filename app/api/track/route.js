@@ -15,10 +15,10 @@
 // time, enforced by Postgres itself, not by anything client-side. Once
 // that row resolves, a genuinely new fire can create a fresh one.
 import { neon } from "@neondatabase/serverless";
-import { getLiveVerifiedGate, verifiedAtFire, ALL_SIGNALS } from "../../../lib/signals.js";
+import { getLiveVerifiedGate, verifiedAtFire, ALL_SIGNALS, SERVER_ONLY_SIGNALS } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
 import { fetchCandles } from "../../../lib/marketContext.js";
-import { ensureSignalTrackColumns } from "../../../lib/schema.js";
+import { ensureSignalTrack } from "../../../lib/schema.js";
 
 export const dynamic = "force-dynamic";
 
@@ -38,7 +38,9 @@ export async function POST(req) {
   // numbers, and the entry must sit near the coin's actual current price.
   // The target is then rebuilt on the server as exactly 2x the risk, so a
   // caller can never hand us a made-up payoff.
-  if (!TF[tf] || (dir !== "bull" && dir !== "bear") || !ALL_SIGNALS.some((x) => x.name === label) || !/^[A-Z0-9]{2,10}$/.test(String(coin))) {
+  // Signals the server logs itself (Trend Rider) are refused here: this
+  // route is public, and a made-up trade must never reach a public record.
+  if (!TF[tf] || (dir !== "bull" && dir !== "bear") || !ALL_SIGNALS.some((x) => x.name === label) || SERVER_ONLY_SIGNALS.includes(label) || !/^[A-Z0-9]{2,10}$/.test(String(coin))) {
     return Response.json({ error: "invalid_signal" }, { status: 400 });
   }
   const e = Number(entry), st = Number(stop);
@@ -57,32 +59,7 @@ export async function POST(req) {
 
   try {
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    await sql`
-      CREATE TABLE IF NOT EXISTS signal_track (
-        id SERIAL PRIMARY KEY,
-        coin TEXT NOT NULL,
-        tf TEXT NOT NULL,
-        label TEXT NOT NULL,
-        dir TEXT NOT NULL,
-        fired_at TIMESTAMPTZ NOT NULL,
-        entry NUMERIC NOT NULL,
-        stop NUMERIC NOT NULL,
-        target NUMERIC NOT NULL,
-        outcome TEXT NOT NULL DEFAULT 'open',
-        resolved_at TIMESTAMPTZ
-      )
-    `;
-    // The regime and verified_at_fire columns were added after the
-    // table existed, so they need real ALTERs (lib/schema.js).
-    await ensureSignalTrackColumns(sql);
-    // Partial unique index: only enforced among rows still marked 'open',
-    // so once a trade resolves, the same combo is free to fire again
-    // later as a genuinely new trade.
-    await sql`
-      CREATE UNIQUE INDEX IF NOT EXISTS signal_track_open_unique
-      ON signal_track (coin, tf, label, dir)
-      WHERE outcome = 'open'
-    `;
+    await ensureSignalTrack(sql);
     // Stamped here on the server from the server's own gate, never from
     // anything the browser sends, so it can't be faked. NULL if the
     // check can't run, which readers treat as "judge by today's status".

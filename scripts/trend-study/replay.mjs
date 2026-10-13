@@ -19,9 +19,9 @@ export function replay(tf, opts = {}) {
   const cfg = { ...T.TREND_TFS[tf], ...(opts.cfg || {}) };
   const { done: bars } = T.splitBars(src[tf], cfg.baseSec, partSec[tf], FAR);
   const pre = T.precompute(bars);
-  const out = { long: [], short: [] };
+  const out = { bull: [], bear: [] };
   const rcfg = { ...cfg, checkSec: cfg.baseSec }; // replay checks at bar resolution, like the study
-  for (const dir of ["long", "short"]) {
+  for (const dir of ["bull", "bear"]) {
     let open = null;
     for (let i = 0; i < bars.length - 1; i++) {
       // 1. advance the open trade through bar i (check candle = base bar)
@@ -36,7 +36,7 @@ export function replay(tf, opts = {}) {
         const sma = smaFor(fb.time);
         const a = T.analyze(cfg, bars, pre, i, { time: fb.time, open: fb.open, high: fb.high, low: fb.low, close: fb.open }, { sma, htf });
         if (!a) continue;
-        const e = dir === "long" ? a.long : a.short;
+        const e = dir === "bull" ? a.bull : a.bear;
         if (e.fire) open = { t: fb.time, i: i + 1, dir, entry: e.entry, risk: e.risk, stop: e.stop, ext: e.entry, lastCheck: bars[i].time, tag: { stretch: e.stretch } };
         // the entry bar itself is processed as the first check candle on the next loop turn
         if (open) { i = i; }
@@ -57,6 +57,6 @@ if (process.argv[2]) {
   for (const tf of process.argv[2].split(",")) {
     const { bars, out } = replay(tf);
     const days = (bars[bars.length - 1].time - bars[0].time) / 864e5;
-    console.log(`\n== ${tf} (${f(days, 0)} days) ==\n buys : ${sum(out.long, days)}\n sells: ${sum(out.short, days)}`);
+    console.log(`\n== ${tf} (${f(days, 0)} days) ==\n buys : ${sum(out.bull, days)}\n sells: ${sum(out.bear, days)}`);
   }
 }

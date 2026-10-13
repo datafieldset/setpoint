@@ -1,6 +1,6 @@
 // app/api/whale-track/route.js
 //
-// Whale flow price-impact tracker. Visit this like /api/scoreboard, any
+// Whale flow price-impact tracker. Visit this like /api/backtest, any
 // time. Two things happen on every visit:
 //
 // 1. Log: real, individual large trades on Coinbase (BTC, $500k+) get

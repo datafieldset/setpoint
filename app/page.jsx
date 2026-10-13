@@ -3,11 +3,11 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { useSession, signIn, signOut } from "next-auth/react";
 import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
-import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, provenContext } from "../lib/signals.js";
+import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
+import { openResult } from "../lib/results.js";
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
-import { useTrend, TrendCard, TrendResolvedRow } from "./TrendRider.jsx";
 
 /* =========================================================================
    SETPOINT — crypto market terminal
@@ -54,27 +54,40 @@ function DirBadge({ dir }) {
   return <span className={`badge ${cls}`}>{t}</span>;
 }
 
-function Ladder({ entry, stop, target, price, dir }) {
-  const vals = [entry, stop, target, price];
+function Ladder({ entry, stop, target, price, dir, risk }) {
+  // No target means a trailing-stop trade: the stop follows price, so the
+  // ladder shows entry, stop and price, and the result so far in R.
+  const trailing = target == null;
+  const vals = trailing ? [entry, stop, price] : [entry, stop, target, price];
   const min = Math.min(...vals), max = Math.max(...vals);
   const pad = (max - min) * 0.14 || Math.abs(max) * 0.01 || 1;
   const lo = min - pad, hi = max + pad;
   const y = (p) => (1 - (p - lo) / (hi - lo)) * 100;
-  const toTarget = ((target - price) / price) * 100;
   const toStop = ((stop - price) / price) * 100;
+  const toTarget = trailing ? 0 : ((target - price) / price) * 100;
+  const now = trailing ? openResult(dir, entry, risk, price) : null;
   return (
     <div className="ladder">
       <div className="rail">
         <div className="rail-line" />
-        <div className="mk mk-target" style={{ top: y(target) + "%" }}><span className="mk-dot" /><span className="mk-lab">TARGET</span><span className="mk-val">{fmtPrice(target)}</span></div>
+        {!trailing && <div className="mk mk-target" style={{ top: y(target) + "%" }}><span className="mk-dot" /><span className="mk-lab">TARGET</span><span className="mk-val">{fmtPrice(target)}</span></div>}
         <div className="mk mk-entry" style={{ top: y(entry) + "%" }}><span className="mk-dot" /><span className="mk-lab">ENTRY</span><span className="mk-val">{fmtPrice(entry)}</span></div>
-        <div className="mk mk-stop" style={{ top: y(stop) + "%" }}><span className="mk-dot" /><span className="mk-lab">STOP</span><span className="mk-val">{fmtPrice(stop)}</span></div>
+        <div className="mk mk-stop" style={{ top: y(stop) + "%" }}><span className="mk-dot" /><span className="mk-lab">{trailing ? "TRAILING STOP" : "STOP"}</span><span className="mk-val">{fmtPrice(stop)}</span></div>
         <div className="mk mk-live" style={{ top: y(price) + "%" }}><span className="live-tri" /></div>
       </div>
       <div className="ladder-meta">
-        <div className="rr">{(2).toFixed(1)}R</div>
-        <div className="rr-sub">reward : risk</div>
-        <div className="tgt-row"><span className="up">{fmtPct(dir === "bull" ? Math.abs(toTarget) : -Math.abs(toTarget))}</span><span className="lab">to target</span></div>
+        {trailing ? (
+          <>
+            <div className="rr" style={now != null && now < 0 ? { color: "var(--red-soft)" } : undefined}>{now == null ? "n/a" : `${now >= 0 ? "+" : ""}${now.toFixed(1)}R`}</div>
+            <div className="rr-sub">so far, no target</div>
+          </>
+        ) : (
+          <>
+            <div className="rr">{(2).toFixed(1)}R</div>
+            <div className="rr-sub">reward : risk</div>
+            <div className="tgt-row"><span className="up">{fmtPct(dir === "bull" ? Math.abs(toTarget) : -Math.abs(toTarget))}</span><span className="lab">to target</span></div>
+          </>
+        )}
         <div className="tgt-row"><span className="down">{fmtPct(dir === "bull" ? -Math.abs(toStop) : Math.abs(toStop))}</span><span className="lab">to stop</span></div>
       </div>
     </div>
@@ -224,7 +237,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
         <div><div className="k">Price</div><div className="v mono">{fmtPrice(price)}</div></div>
         <div className="strength"><div className="strength-bar"><span style={{ width: Math.round(s.strength * 100) + "%" }} /></div><div className="k">strength</div></div>
       </div>
-      <Ladder entry={s.entry} stop={s.stop} target={s.target} price={price} dir={s.dir} />
+      <Ladder entry={s.entry} stop={s.stop} target={s.target} price={price} dir={s.dir} risk={s.risk} />
       <div className="sig-foot">
         <span className="tf-pill">{s.tf}</span>
         <span className="fired">{demo ? "triggered 3m ago" : isOpenPosition ? "fired " + timeAgo(firedAt, now) + " · still open" : "triggered " + timeAgo(firedAt, now)}</span>
@@ -490,7 +503,6 @@ const GUIDE_DESC = {
 
 function Guide({ onBack, account, liveGate, regimeGate }) {
   const [catalogSummary, setCatalogSummary] = useState(null);
-  const trend = useTrend(); // Trend Rider's live records, shown in the admin signal count below
   const [catalogFull, setCatalogFull] = useState(null);
   const [showFullFeed, setShowFullFeed] = useState(false);
   useEffect(() => {
@@ -500,6 +512,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
       .then((json) => {
         if (!json?.signals) return;
         const counts = {
+          live: json.signals.filter((s) => s.liveForCustomers).length,
           established: json.signals.filter((s) => s.bestTier === "established").length,
           emerging: json.signals.filter((s) => s.bestTier === "emerging").length,
           early: json.signals.filter((s) => s.bestTier === "early").length,
@@ -546,6 +559,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
     if (s.rate > g.best) g.best = s.rate;
   }
   grouped.sort((a, b) => b.best - a.best);
+  const publicTests = ALL_SIGNALS.filter((x) => x.publicTest && isSignalVisible(x.name));
 
   return (
     <div className="dash">
@@ -557,41 +571,18 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <p>A plain-English guide to the parts of your dashboard that need the most explaining: verified alerts, the lean meter, the Market tab, and the news read.</p>
       </div>
 
-      <div className="guide-glossary">
-        <b>Where things stand.</b> We're rebuilding Setpoint's signals from scratch, so right now the dashboard shows one signal: Trend Rider, a Bitcoin signal that runs on six timeframes (4 hour, 1 hour, 30 minute, 15 minute, 5 minute and 1 minute). It buys the moment price touches the highest high of the last 20 candles (or sells at the lowest low), but only when price is on the right side of its 200-day average, momentum and trend strength both confirm (RSI and ADX), the bigger chart agrees, and, for buys, price isn't stretched more than 20% above its 200-day average. Then it trails a stop behind price with no fixed target. Pick a timeframe at the top to see whether it has fired and is still open there. A card appears in Open Alerts only while a trade is open, with its entry, the trailing stop and the result right now, and the win percentage next to the name once it has 10 closed trades. Each timeframe keeps its own record of real results, starting at zero, and closed trades land in Recently resolved. What to expect: about 4 in 10 trades win, and the winners run longer than the losers cost, so a few big wins carry it with a string of small losses between. The 4 hour and 1 hour charts have 6 years of history behind them, and even there the edge is modest and was close to zero in the last two calm years. 30 minute and below only have months of history, so treat them as experiments. The history tests were tuned on that same history, so live results will probably be lower, and past results never promise future ones. Every earlier signal comes back only after it's re-tested and earns its place, and the parts of this guide that describe them apply once they return. It's a test, so treat it that way.
-      </div>
-
       {account?.isAdmin && catalogSummary && (
         <div className="guide-section">
           <div className="guide-eyebrow">Admin only</div>
           <h2>The real, total signal count</h2>
           <p className="guide-lede">Every real signal Setpoint currently runs, and where each one honestly stands right now. Three real tiers, not a binary promoted-or-invisible split: <b>established</b> is the same, strict bar real customers see. <b>Emerging</b> is a real, current edge, genuine but under that bar, admin-only. <b>Early read</b> is any real data at all, even a single trade, always honestly labeled as thin. A separate, automated check runs every 6 hours and sends a real, direct push the moment something newly qualifies for established or emerging — it never promotes anything on its own, a real promotion still means a real, deliberate decision, this just means that decision no longer waits on someone noticing by accident.</p>
           <div className="admin-stat-row">
-            <div className="admin-stat"><div className="admin-stat-n">1</div><div className="admin-stat-k">live for customers: Trend Rider, 6 timeframes</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">original signals built (hidden for now)</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.established}</div><div className="admin-stat-k">original, established</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">total signals built</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.live}</div><div className="admin-stat-k">live for customers right now</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.established}</div><div className="admin-stat-k">established — clears the bar</div></div>
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.emerging}</div><div className="admin-stat-k">emerging — real, under the bar</div></div>
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.early}</div><div className="admin-stat-k">early read — real, very thin</div></div>
           </div>
-          {trend.d && (
-            <div className="signal-feed-card" style={{ marginBottom: 14 }}>
-              <div className="signal-feed-head">
-                <span className="guide-card-name">Trend Rider</span>
-                <span className="rate-src live">live for customers</span>
-              </div>
-              {trend.d.order.map((k) => {
-                const a = trend.d.tfs[k].record.all;
-                return (
-                  <div key={k} className="signal-feed-row">
-                    <span className={`rate-src ${a.trades ? "live" : "backtest"}`}>{a.trades ? "live" : "no trades yet"}</span>
-                    <span className="signal-feed-combo">Long and short · {k}</span>
-                    <span className="signal-feed-rate">{a.winPct != null ? `${a.winPct}%` : "—"}</span>
-                    <span className="signal-feed-n">{a.trades ? `${a.trades} real trade${a.trades === 1 ? "" : "s"}${a.avgR != null ? `, ${a.avgR >= 0 ? "+" : "−"}${Math.abs(a.avgR).toFixed(2)}R avg` : ""}` : "alerts " + (trend.d.tfs[k].alerts ? "on" : "off")}</span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
           <button className="guide-admin-link" onClick={() => setShowFullFeed((v) => !v)}>
             {showFullFeed ? "Hide the full, real feed ↑" : "See every real signal, every timeframe, right now →"}
           </button>
@@ -599,12 +590,13 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
             <div className="signal-feed">
               <p className="guide-lede" style={{ marginTop: 10 }}>Every real signal, every real combo with any real data at all, best tier first. Never shown to a real customer, never used to decide what a push notification sends — same, strict bar as always there. This is purely for watching.</p>
               {catalogFull.signals
-                .filter((s) => s.bestTier !== "none")
+                .filter((s) => s.bestTier !== "none" || s.isPublic)
                 .sort((a, b) => catalogFull.tiers[b.bestTier].order - catalogFull.tiers[a.bestTier].order)
                 .map((s) => (
                   <div key={s.name} className="signal-feed-card">
                     <div className="signal-feed-head">
                       <span className="guide-card-name">{s.name}{s.brandedName && s.brandedName !== s.name ? ` ("${s.brandedName}")` : ""}</span>
+                      {s.isPublic && <span className="rate-src live">public test</span>}
                       {s.isTesting && <span className="rate-src regime">testing list</span>}
                     </div>
                     {s.combos.map((c) => (
@@ -612,7 +604,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
                         <span className={`rate-src ${c.tier === "established" ? "live" : c.tier === "emerging" ? "regime" : "backtest"}`}>{catalogFull.tiers[c.tier].label}</span>
                         <span className="signal-feed-combo">{c.dir === "bull" ? "Long" : "Short"} · {c.tf}</span>
                         <span className="signal-feed-rate">{c.rate != null ? `${Math.round(c.rate * 100)}%` : "—"}</span>
-                        <span className="signal-feed-n">{c.n != null ? `${c.n} real trades` : "static only"}</span>
+                        <span className="signal-feed-n">{c.n != null ? `${c.n} real trades` : "static only"}{c.avgR != null ? ` · ${c.avgR >= 0 ? "+" : ""}${Number(c.avgR).toFixed(2)}R avg` : ""}</span>
                       </div>
                     ))}
                   </div>
@@ -639,8 +631,21 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
               ))}
             </div>
           </div>
-        )) : (
+        )) : publicTests.length === 0 ? (
           <div className="guide-card"><div className="guide-card-desc">Nothing's currently verified at 58% or higher. This updates automatically as the data changes.</div></div>
+        ) : null}
+
+        {publicTests.length > 0 && (
+          <>
+            <h3 className="guide-sub">In public testing</h3>
+            <p className="guide-lede">{FOCUS_MODE ? "Setpoint is being rebuilt one signal at a time, so this is the only signal live right now. " : ""}A public test is shown to everyone with its real record while it proves itself. It carries a "testing" tag, not a verified badge, until its live results clear the same bar as everything else.</p>
+            {publicTests.map((x) => (
+              <div className="guide-card" key={x.name}>
+                <div className="guide-card-top"><span className="guide-card-name">{x.name}</span></div>
+                <div className="guide-card-desc">{x.what}</div>
+              </div>
+            ))}
+          </>
         )}
 
         <div className="guide-glossary">
@@ -934,11 +939,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [loading, setLoading] = useState(true);
   const [lastUpdate, setLastUpdate] = useState(null);
   const [now, setNow] = useState(Date.now());
-  const trend = useTrend(); // Trend Rider (BTC): its open trades show as cards in Open Alerts, closed ones in Recently resolved
-  const trendCur = trend.d?.tfs?.[tfKey];
-  const trendOpen = trendCur?.open || [];
-  const trendClosed = trendCur?.closed || [];
-  const trendWatching = !!trendCur && !trendCur.error;
   const [showSettings, setShowSettings] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [addText, setAddText] = useState("");
@@ -1228,7 +1228,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
           if (isNew) fired.current[key] = { firstFired: t, lastSeen: t };
           else fired.current[key] = { firstFired: rec?.firstFired || serverMatch?.firedAt || t, lastSeen: t };
           if (isNew) {
-            // Log to the rolling scoreboard (now part of /api/backtest, the standalone /api/scoreboard page is retired).
+            // Log to the rolling scoreboard (lib/liveScoreboard.js, served by /api/backtest).
             // Real, important fix (Sep 6): the push notification below now
             // waits for this call to genuinely, directly confirm the
             // insert actually succeeded before ever firing, matching the
@@ -1407,11 +1407,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   // hasn't fired yet."
   const anyVerifiedThisTf = useMemo(() => {
     const tfLabel = TF[tfKey].label;
-    return Object.keys(SIGNAL_RATES).some((key) => {
+    return publicTestWatches(tfLabel, watchlist) || Object.keys(SIGNAL_RATES).some((key) => {
       const [label, tf, dir] = key.split("|");
       return tf === tfLabel && isLiveVerified({ label, tf, dir });
     });
-  }, [tfKey, isLiveVerified]);
+  }, [tfKey, isLiveVerified, watchlist]);
 
   const visibleSignals = useMemo(() => {
     const testing = account.isAdmin ? allSignals.filter((s) => TESTING_SIGNALS.includes(s.label) && s.tier !== "proven").map((s) => {
@@ -1435,7 +1435,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const visibleOpenPositions = useMemo(
     () => openPositions.filter((p) => watchlist.includes(p.coin) && p.tf === TF[tfKey].label && (
       (p.tier === "proven" && isLiveVerified(p)) ||
-      (TESTING_SIGNALS.includes(p.label) && account.isAdmin)
+      canSeeTesting(p.label, account.isAdmin)
     )).map((p) => {
       if (p.tier === "proven") return p;
       const gate = liveGate[`${p.label}|${p.tf}|${p.dir}`];
@@ -1455,7 +1455,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const visibleRecentlyResolved = useMemo(
     () => recentlyResolved.filter((p) => watchlist.includes(p.coin) && (
       (p.tier === "proven" && isLiveVerified(p)) ||
-      (TESTING_SIGNALS.includes(p.label) && account.isAdmin)
+      canSeeTesting(p.label, account.isAdmin)
     )).map((p) => {
       if (p.tier === "proven") return p;
       const gate = liveGate[`${p.label}|${p.tf}|${p.dir}`];
@@ -1718,20 +1718,20 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="opps">
           <div className="section-head">
             <h2>Open Alerts</h2>
-            <span className="sh-sub">{openAlerts.length + trendOpen.length} active · {watchlist.length} coins · {TF[tfKey].label}</span>
+            <span className="sh-sub">{openAlerts.length} active, verified or in public testing · {watchlist.length} coins · {TF[tfKey].label}</span>
           </div>
-          {openAlerts.length + trendOpen.length === 0 ? (
-            <div className={`empty ${!anyVerifiedThisTf && !trendWatching ? "dead" : ""}`}>
+          {openAlerts.length === 0 ? (
+            <div className={`empty ${!anyVerifiedThisTf ? "dead" : ""}`}>
               <div className="empty-h">
-                {!anyVerifiedThisTf && !trendWatching
+                {!anyVerifiedThisTf
                   ? `Nothing to watch on ${TF[tfKey].label} yet`
                   : <><span className="dot-ok" /> Watching {TF[tfKey].label}</>}
               </div>
               <div className="empty-d">
-                {!anyVerifiedThisTf && trendWatching
-                  ? `Nothing's fired on ${TF[tfKey].label} right now. It shows up here the moment something does.`
-                  : !anyVerifiedThisTf
+                {!anyVerifiedThisTf
                   ? `Nothing's cleared the bar on this timeframe right now. It'll show up here the moment something does, no need to keep checking.`
+                  : publicTestWatches(TF[tfKey].label, watchlist)
+                  ? `Nothing has fired on ${watchlist.join(", ")} here yet. Setpoint is watching ${TF[tfKey].label} and a setup will show up here the moment one appears.`
                   : allSignals.length > 0
                   ? `${allSignals.length} signal${allSignals.length === 1 ? "" : "s"} fired, but none matched a setup that's actually verified yet. That's the point, not a bug, only verified setups ever show here.`
                   : `Setpoint only shows setups verified by backtest, and it stays quiet until one of those exact conditions shows up on ${watchlist.join(", ")}.`}
@@ -1739,12 +1739,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           ) : (
             <div className="cards-grid">
-              {trendOpen.map((p) => <TrendCard key={`trend:${p.id}`} p={p} rec={p.dir === "long" ? trendCur.record.buys : trendCur.record.sells} tf={TF[tfKey].label} price={trendCur.watch?.price ?? trend.d?.price} now={now} />)}
               {openAlerts.map((a) =>
                 a.kind === "open" ? (
                   <SignalCard
                     key={`open:${a.data.coin}:${a.data.tf}:${a.data.label}:${a.data.dir}:${a.data.firedAt}`}
-                    s={{ dir: a.data.dir, label: a.data.label, note: "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate, key: `${a.data.tf}:${a.data.label}:${a.data.dir}` }}
+                    s={{ dir: a.data.dir, label: a.data.label, note: a.data.target == null ? "Fired and still open. The stop follows price, there is no target." : "Fired and still open, tracking toward target or stop.", strength: 0.5, entry: a.data.entry, stop: a.data.stop, target: a.data.target, risk: a.data.risk, tf: a.data.tf, tier: a.data.tier, tierRate: a.data.tierRate, key: `${a.data.tf}:${a.data.label}:${a.data.dir}` }}
                     sym={a.data.coin}
                     price={data[a.data.coin]?.snap?.price}
                     firedAt={a.data.firedAt}
@@ -1795,17 +1794,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             )}
           </div>
 
-          {(visibleRecentlyResolved.length > 0 || trendClosed.length > 0) && (
+          {visibleRecentlyResolved.length > 0 && (
             <div className="recently-resolved">
-              <div className="rr-head">Recently resolved{trendClosed.length > 0 && trendCur.record.all.winPct != null ? ` · Trend Rider ${TF[tfKey].label}: ${trendCur.record.all.winPct}% won (${trendCur.record.all.wins} of ${trendCur.record.all.trades})` : ""}</div>
-              {trendClosed.map((c) => <TrendResolvedRow key={`trend:${c.id}`} c={c} tf={TF[tfKey].label} />)}
+              <div className="rr-head">Recently resolved</div>
               {visibleRecentlyResolved.map((r, i) => (
                 <div className={`rr-row ${r.outcome}`} key={i}>
                   <span className="rr-coin">{r.coin}</span>
                   <span className="rr-tf">{r.tf}</span>
                   <span className="rr-name">{r.dir === "bull" ? "Buy" : "Sell"} {brandName(r.label)}</span>
                   <span className={`rr-outcome ${r.outcome}`}>{r.outcome === "win" ? "WIN" : "LOSS"}</span>
-                  <span className={`rr-pct ${r.outcome}`}>{r.pctMove >= 0 ? "+" : ""}{r.pctMove.toFixed(2)}%</span>
+                  <span className={`rr-pct ${r.outcome}`}>{r.pctMove >= 0 ? "+" : ""}{r.pctMove.toFixed(2)}%{r.r != null ? ` (${r.r >= 0 ? "+" : ""}${r.r.toFixed(1)}R)` : ""}</span>
                   <span className="rr-when">resolved {new Date(r.resolvedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}</span>
                 </div>
               ))}
@@ -1983,7 +1981,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         )}
       </div>
 
-      <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (1.5x ATR stop, 2R target), not recommendations.</div>
+      <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (a stop and, for most signals, a 2R target; Trend Rider has no target and trails its stop), not recommendations.</div>
 
       {showSettings && (
         <div className="modal-bg" onClick={() => setShowSettings(false)}>
@@ -2710,6 +2708,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .guide-eyebrow{color:var(--green-soft);font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:6px}
 .guide-section h2{font-size:18px;margin:0 0 8px}
 .guide-lede{color:var(--muted);font-size:13.5px;margin-bottom:18px;line-height:1.5}
+.guide-sub{font-size:15px;font-weight:700;margin:22px 0 6px}
 .guide-admin-link{background:none;border:none;color:var(--green-soft);font-size:13px;font-weight:600;cursor:pointer;padding:8px 0;text-align:left;font-family:inherit}
 .signal-feed{margin-top:14px}
 .signal-feed-card{background:var(--panel2);border-radius:10px;padding:12px 14px;margin-bottom:10px}

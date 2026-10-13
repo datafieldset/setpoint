@@ -25,33 +25,18 @@ function feed(sec, pages, now) {
   return out.slice(-300 * pages);
 }
 
-// ---- fake sql: matches the exact statements the runner issues
-const rows = [];
-const state = {};
-let nextId = 1;
+// ---- real Postgres (pglite) behind the same tagged-template call the app uses (neon).
+// pglite isn't a repo dependency: point PGLITE at an installed copy, e.g.
+//   PGLITE=/path/to/node_modules/@electric-sql/pglite/dist/index.js node e2e.mjs
+const { PGlite } = await import(process.env.PGLITE || "@electric-sql/pglite");
+const db = new PGlite();
 const fakeSql = async (strings, ...v) => {
-  const q = strings.join("?").replace(/\s+/g, " ").trim();
-  if (q.startsWith("CREATE TABLE") || q.startsWith("ALTER TABLE") || q.startsWith("DROP INDEX") || q.startsWith("CREATE UNIQUE INDEX")) return [];
-  if (q.startsWith("SELECT * FROM trend_positions WHERE coin = ? AND tf = ? AND status = 'open'")) return rows.filter((r) => r.tf === v[1] && r.status === "open").map((r) => ({ ...r }));
-  if (q.startsWith("UPDATE trend_positions SET status = 'closed'")) {
-    const [exit, rr, stop, ext, last, id] = v;
-    const row = rows.find((r) => r.id === id && r.status === "open"); if (!row) return [];
-    Object.assign(row, { status: "closed", exit, r: rr, stop, ext, last_hour: last }); return [{ id }];
-  }
-  if (q.startsWith("UPDATE trend_positions SET stop")) { const [s1, s2, e1, e2, last, id] = v; const row = rows.find((r) => r.id === id && r.status === "open"); if (row) { const L = row.dir === "long"; Object.assign(row, { stop: L ? Math.max(row.stop, s1) : Math.min(row.stop, s2), ext: L ? Math.max(row.ext, e1) : Math.min(row.ext, e2), last_hour: Math.max(row.last_hour, last) }); } return []; }
-  if (q.startsWith("SELECT val FROM trend_state")) return state.last_run ? [{ val: state.last_run }] : [];
-  if (q.startsWith("INSERT INTO trend_state")) { state.last_run = v[0]; return []; }
-  if (q.startsWith("INSERT INTO trend_positions")) {
-    const [coin, tf, dir, bar_time, entry, risk, stop, ext, last_hour, sma, fng, stretch] = v;
-    if (rows.some((r) => r.tf === tf && r.dir === dir && (r.status === "open" || r.bar_time === bar_time))) return []; // unique indexes
-    const row = { id: nextId++, coin, tf, dir, bar_time, entry, risk, stop, ext, last_hour, sma, fng, stretch, status: "open" };
-    rows.push(row); return [{ id: row.id }];
-  }
-  if (q.startsWith("SELECT dir, max(last_hour)")) { const out = []; for (const dir of ["long","short"]) { const z = rows.filter(r => r.tf === v[1] && r.dir === dir && r.status === "closed"); if (z.length) out.push({ dir, lh: Math.max(...z.map(r => r.last_hour)) }); } return out; }
-  if (q.includes("FROM push_subscriptions")) return [];
-  throw new Error("unexpected sql: " + q.slice(0, 100));
+  let text = strings[0];
+  for (let i = 0; i < v.length; i++) text += `$${i + 1}` + strings[i + 1];
+  const params = v.map((x) => (x instanceof Date ? x.toISOString() : x));
+  const r = await db.query(text, params);
+  return r.rows;
 };
-
 const webpush = { sendNotification: async () => {} };
 const start = Date.parse(process.argv[2] || "2026-09-01T00:00:00Z"), end = Date.parse(process.argv[3] || "2026-10-12T17:00:00Z");
 const stats = { runs: 0, errors: {}, skipped: {}, opened: 0, closed: 0 };
@@ -69,15 +54,17 @@ for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
 }
 console.log("runs", stats.runs, "opened", stats.opened, "closed", stats.closed);
 console.log("errors", JSON.stringify(stats.errors), "\nskipped", JSON.stringify(stats.skipped));
+const all = await fakeSql`SELECT tf, dir, outcome, r, exit_price, entry, stop, risk, target, label, coin, bar_time FROM signal_track ORDER BY id`;
 for (const tf of TREND_ORDER) {
-  const mine = rows.filter((r) => r.tf === tf);
-  for (const dir of ["long", "short"]) {
-    const z = mine.filter((r) => r.dir === dir), c = z.filter((r) => r.status === "closed");
-    const w = c.filter((r) => r.r > 0).length, tot = c.reduce((s, r) => s + r.r, 0);
+  for (const dir of ["bull", "bear"]) {
+    const z = all.filter((r) => r.tf === tf && r.dir === dir), c = z.filter((r) => r.outcome !== "open");
+    const w = c.filter((r) => Number(r.r) > 0).length, tot = c.reduce((s, r) => s + Number(r.r), 0);
     console.log(tf.padEnd(4), dir.padEnd(5), "trades", String(z.length).padStart(3), "closed", String(c.length).padStart(3), "win", c.length ? Math.round((100 * w) / c.length) + "%" : "-", "avgR", c.length ? (tot / c.length).toFixed(2) : "-", "open", z.length - c.length);
   }
 }
-// sanity: no row with a nonsense stop side or R
-const bad = rows.filter((r) => (r.dir === "long" ? r.stop >= r.entry && r.status === "open" && r.stop > r.ext : false) || (r.status === "closed" && !(r.r > -1.6 && r.r < 40)));
-console.log("rows", rows.length); if (process.argv[4]) console.log(JSON.stringify(rows.filter(r=>r.tf==="1m").map(r=>({id:r.id,dir:r.dir,bar:new Date(r.bar_time).toISOString().slice(11,16),entry:r.entry,exit:r.exit,r:r.r,last:r.last_hour?new Date(r.last_hour).toISOString().slice(11,16):null}))));
-fs.writeFileSync("e2e_1m.json", JSON.stringify(rows.filter(r => r.tf === "1m" && r.dir === "long").map(r => ({ t: r.bar_time, entry: r.entry, exit: r.exit, r: r.r }))));
+// sanity: every row is a Trend Rider trailing trade with a sensible shape
+const bad = all.filter((r) => r.label !== "Trend Rider" || r.coin !== "BTC" || r.target !== null || (r.outcome !== "open" && !(Number(r.r) > -3 && Number(r.r) < 40)));
+console.log("rows", all.length, "bad", bad.length, bad.map((r) => JSON.stringify(r)).join(" "));
+const outcomeOk = all.every((r) => r.outcome === "open" || (r.outcome === "win") === (Number(r.r) > 0));
+console.log("win/loss matches sign of r:", outcomeOk);
+fs.writeFileSync("e2e_1m.json", JSON.stringify(all.filter((r) => r.tf === "1m" && r.dir === "bull").map((r) => ({ t: Number(r.bar_time), entry: Number(r.entry), exit: Number(r.exit_price), r: Number(r.r) }))));

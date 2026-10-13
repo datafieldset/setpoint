@@ -22,9 +22,11 @@
 // actually supports.
 import { auth } from "../../../auth.js";
 import { neon } from "@neondatabase/serverless";
-import { ALL_SIGNALS, TESTING_SIGNALS, KILLED_COMBOS, getLiveVerifiedGate, getFullSignalGate, confidenceTier, CONFIDENCE_TIERS } from "../../../lib/signals.js";
+import { ALL_SIGNALS, TESTING_SIGNALS, KILLED_COMBOS, isSignalVisible, getLiveVerifiedGate, getFullSignalGate, confidenceTier, CONFIDENCE_TIERS } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
 import { brandName } from "../../../lib/brand.js";
+import { ensureSignalTrack } from "../../../lib/schema.js";
+import { FIXED_WIN_R, FIXED_LOSS_R } from "../../../lib/results.js";
 
 export const dynamic = "force-dynamic";
 
@@ -37,8 +39,13 @@ export async function GET() {
 
   try {
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    const [totalsRows, latestRunRow, liveGateResult, fullGateResult] = await Promise.all([
+    await ensureSignalTrack(sql);
+    const [totalsRows, avgRRows, latestRunRow, liveGateResult, fullGateResult] = await Promise.all([
       sql`SELECT label, COUNT(*)::int AS n FROM signal_track GROUP BY label`,
+      sql`
+        SELECT label, tf, dir, AVG(COALESCE(r, CASE WHEN outcome = 'win' THEN ${FIXED_WIN_R}::numeric ELSE ${FIXED_LOSS_R}::numeric END))::float AS avg_r
+        FROM signal_track WHERE outcome IN ('win', 'loss') GROUP BY label, tf, dir
+      `,
       sql`SELECT MAX(run_at) AS run_at FROM backtest_results`,
       getLiveVerifiedGate(),
       getFullSignalGate(),
@@ -51,10 +58,11 @@ export async function GET() {
       : [];
 
     const totalsByLabel = Object.fromEntries(totalsRows.map((r) => [r.label, r.n]));
+    const avgRByCombo = Object.fromEntries(avgRRows.map((r) => [`${r.label}|${r.tf}|${r.dir}`, r.avg_r]));
     const tfLabels = Object.values(TF).map((t) => t.label);
     const dirs = ["bull", "bear"];
 
-    const signals = ALL_SIGNALS.map(({ name, what }) => {
+    const signals = ALL_SIGNALS.map(({ name, what, publicTest }) => {
       // Every real (tf, dir) combination, always, the moment any real
       // data exists at all — the real, honest point of this rebuild.
       const combos = [];
@@ -67,7 +75,7 @@ export async function GET() {
           if (KILLED_COMBOS.includes(`${name}|${tf}|${dir}`)) continue;
           const ct = confidenceTier(name, tf, dir, liveGate, null, regimeGate, fullGate, fullRegimeGate);
           if (ct.tier === "none") continue;
-          combos.push({ tf, dir, ...ct });
+          combos.push({ tf, dir, ...ct, avgR: avgRByCombo[`${name}|${tf}|${dir}`] ?? null });
         }
       }
       // The real, honest, condition-specific breakdown, straight from
@@ -84,9 +92,13 @@ export async function GET() {
       const bestTierOrder = combos.reduce((max, c) => Math.max(max, CONFIDENCE_TIERS[c.tier].order), 0);
       const bestTier = Object.entries(CONFIDENCE_TIERS).find(([, v]) => v.order === bestTierOrder)?.[0] || "none";
 
+      // Live for customers right now: a signal that clears the verified bar,
+      // or a public test, and is not hidden by focus mode.
+      const isPublic = !!publicTest && isSignalVisible(name);
+      const liveForCustomers = isSignalVisible(name) && (isPublic || bestTier === "established");
       return {
         name, brandedName: brandName(name), what,
-        isTesting, bestTier,
+        isTesting, isPublic, liveForCustomers, bestTier,
         totalFired: totalsByLabel[name] || 0,
         combos: combos.sort((a, b) => CONFIDENCE_TIERS[b.tier].order - CONFIDENCE_TIERS[a.tier].order || (b.rate ?? -1) - (a.rate ?? -1)),
         conditions,

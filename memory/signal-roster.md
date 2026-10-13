@@ -138,7 +138,7 @@ These specific numbers are a historical snapshot from when they were
 found, not a current status — check live for whether they still hold.
 
 ## FOCUS MODE (Oct 12, 2026, v19.21)
-Na was overwhelmed by too many signals and didn't know which to watch. `VISIBLE_SIGNALS` in lib/signals.js is now an empty list. Every original signal keeps being detected and logged (records keep building) but is hidden everywhere: no verified badge (provenContext returns null for hidden labels), no dashboard cards, no Watch Live rows, no push, no promotion pings. The only signal on the dashboard is Trend Rider (lib/trend.js, lib/trendRunner.js), public on six timeframes since v19.22 and v19.23. To bring a signal back: add its exact label to VISIBLE_SIGNALS and add a dated line here saying why it earned it. Coil, Swing and Swing Early are the testing candidates; Swing Early 15m bear is the only one that held up in the full-year live-rule replay, so it is the natural first to return, after a re-test.
+Na was overwhelmed by too many signals and didn't know which to watch. (History: at v19.21 `VISIBLE_SIGNALS` was an empty list, since v19.26 it holds Trend Rider.) Every original signal keeps being detected and logged (records keep building) but is hidden everywhere: no verified badge (provenContext returns null for hidden labels), no dashboard cards, no Watch Live rows, no push, no promotion pings. The only signal on the dashboard is Trend Rider (lib/trend.js, lib/trendRunner.js), public on six timeframes since v19.22 and v19.23. To bring a signal back: add its exact label to VISIBLE_SIGNALS and add a dated line here saying why it earned it. Coil, Swing and Swing Early are the testing candidates; Swing Early 15m bear is the only one that held up in the full-year live-rule replay, so it is the natural first to return, after a re-test.
 
 ## Promotions — the real, dated evidence behind each one still live as of last check
 
@@ -169,3 +169,5 @@ is the reasoning behind each one, current at time of promotion.)
 Every killed combo from 5m up replayed on fresh BTC history under the live rules: nothing came back. Best was Momentum 15m bear at 51% on 49 fires, but 44% in the second half, too thin and fading. Everything else sits at 29-38%. Runs monthly now (scripts/recheck-killed.mjs); 1m combos are not rechecked.
 
 Oct 13 (v19.26): old dashboard layout restored but the original signals stay hidden (FOCUS_MODE = true). Trend Rider is the one signal shown, as cards in Open Alerts. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.
+
+Oct 13 (v19.28): Trend Rider registered as a public test in ALL_SIGNALS (publicTest, serverOnly, coins BTC, tfs six). It is visible to admin and public with a 'testing' tag and its real record, with no verified badge, because it has no SIGNAL_RATES entry. It only becomes verified through the same live bar as everything else. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.

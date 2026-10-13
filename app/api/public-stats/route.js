@@ -40,8 +40,9 @@
 // against the one, real, shared definition of verified, static or
 // regime, exactly matching what a real customer's own dashboard shows.
 import { brandName } from "../../../lib/brand.js";
-import { ALL_SIGNALS, KILLED_COMBOS, FOCUS_MODE, isSignalVisible, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
-import { ensureSignalTrackColumns } from "../../../lib/schema.js";
+import { ALL_SIGNALS, KILLED_COMBOS, FOCUS_MODE, PUBLIC_TESTING, isSignalVisible, belowTargetFloor, LIVE_GATE_WINDOW, PROVEN_THRESHOLD, REGIME_ONLY_MIN_SAMPLE, getLiveVerifiedGate, provenContext, buildGatesFromRows, confidenceTier } from "../../../lib/signals.js";
+import { ensureSignalTrack } from "../../../lib/schema.js";
+import { resultR, avgResult, exitPrice } from "../../../lib/results.js";
 import { withCache } from "../../../lib/cache.js";
 
 export const dynamic = "force-dynamic";
@@ -72,7 +73,7 @@ export async function GET() {
 
 function toCard(r) {
   const entry = parseFloat(r.entry);
-  const exit = r.outcome === "win" ? parseFloat(r.target) : parseFloat(r.stop);
+  const exit = exitPrice(r);
   const pctMove = r.dir === "bull" ? ((exit - entry) / entry) * 100 : ((entry - exit) / entry) * 100;
   return {
     coin: r.coin,
@@ -81,7 +82,7 @@ function toCard(r) {
     dir: r.dir,
     outcome: r.outcome,
     entry, exit,
-    pctMove,
+    pctMove, r: resultR(r),
     firedAt: r.fired_at,
     resolvedAt: r.resolved_at,
   };
@@ -92,17 +93,17 @@ async function computeStats(conn) {
   const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
   const { gate: liveGate, regimeGate } = await getLiveVerifiedGate();
 
-  await ensureSignalTrackColumns(sql);
+  await ensureSignalTrack(sql);
   const labels = ALL_SIGNALS.map((s) => s.name);
   const rows = await sql`
-    SELECT coin, tf, label, dir, outcome, entry, stop, target, fired_at, resolved_at, regime, verified_at_fire
+    SELECT coin, tf, label, dir, outcome, entry, stop, target, exit_price, r, fired_at, resolved_at, regime, verified_at_fire
     FROM signal_track
     WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
     ORDER BY resolved_at DESC
   `;
 
   // ---- Verified record: the headline number and the cards under it ----
-  let wins = 0, losses = 0;
+  let wins = 0, losses = 0, sumR = 0;
   const recent = [];
   const seenPerCombo = {};
   // Which setups are behind the headline right now, with their own
@@ -160,17 +161,18 @@ async function computeStats(conn) {
     if (seenPerCombo[comboKey] > LIVE_GATE_WINDOW) continue;
 
     r.outcome === "win" ? wins++ : losses++;
+    sumR += resultR(r);
     const sKey = `${r.label}|${r.tf}|${r.dir}`;
-    const s = verifiedSetups.get(sKey) || { name: brandName(r.label), tf: r.tf, dir: r.dir, wins: 0, losses: 0, lastAt: r.resolved_at, verifiedNow: isVerifiedNow(r.label, r.tf, r.dir) };
+    const s = verifiedSetups.get(sKey) || { name: brandName(r.label), tf: r.tf, dir: r.dir, wins: 0, losses: 0, lastAt: r.resolved_at, sumR: 0, verifiedNow: isVerifiedNow(r.label, r.tf, r.dir) };
     r.outcome === "win" ? s.wins++ : s.losses++;
+    s.sumR += resultR(r);
     verifiedSetups.set(sKey, s);
     if (recent.length < 40) recent.push(toCard(r));
   }
 
-  // Every trade is levelled at a 2:1 payoff (a win is +2R, a loss is -1R,
-  // R = the amount risked), so average result per trade follows straight
-  // from the record. Before fees and slippage. Break-even is a 34% win rate.
-  const avgR = (w, l) => (w + l > 0 ? (2 * w - l) / (w + l) : null);
+  // Average result per trade: every fixed-target trade is a 2:1 payoff (a
+  // win is +2R, a loss is -1R, R = the amount risked), trailing-stop
+  // trades carry their real result (lib/results.js).
   const verifiedTotal = wins + losses;
   const verifiedWinRate = verifiedTotal > 0 ? wins / verifiedTotal : null;
 
@@ -188,7 +190,7 @@ async function computeStats(conn) {
   const emergingTrades = [];
   for (const key of comboKeys) {
     if (KILLED_COMBOS.includes(key)) continue;
-    if (!isSignalVisible(key.split("|")[0])) continue; // focus mode
+    if (!isSignalVisible(key.split("|")[0]) || PUBLIC_TESTING.includes(key.split("|")[0])) continue; // focus mode, and public tests have their own group below
     if (verifiedSetups.has(key)) continue; // already shown as verified
     const [label, tf, dir] = key.split("|");
     const ct = confidenceTier(label, tf, dir, liveGate, null, regimeGate, fullGate, fullRegimeGate);
@@ -202,23 +204,43 @@ async function computeStats(conn) {
       name: brandName(label), tf, dir,
       wins: w, losses: scoped.length - w,
       rate: w / scoped.length,
-      avgR: avgR(w, scoped.length - w),
+      avgR: avgResult(scoped),
       regime: ct.verifiedVia === "regime" ? ct.regimeStage : null,
       lastAt: scoped[0].resolved_at,
     });
     for (const r of scoped.slice(0, 6)) emergingTrades.push(toCard(r));
   }
+  // ---- Public tests: signals shown to everyone while they prove themselves ----
+  // Never counted in the verified win rate. Their own group, with the
+  // real record per timeframe and direction and the average result per
+  // trade (the number to watch when there's no fixed target).
+  const testingRows = rows.filter((r) => PUBLIC_TESTING.includes(r.label) && isSignalVisible(r.label));
+  const testingMap = new Map();
+  for (const r of testingRows) {
+    const key = `${r.label}|${r.tf}|${r.dir}`;
+    const t = testingMap.get(key) || { name: brandName(r.label), tf: r.tf, dir: r.dir, rows: [], lastAt: r.resolved_at };
+    t.rows.push(r);
+    testingMap.set(key, t);
+  }
+  const testingSetups = [...testingMap.values()]
+    .map((t) => {
+      const w = t.rows.filter((r) => r.outcome === "win").length;
+      return { name: t.name, tf: t.tf, dir: t.dir, wins: w, losses: t.rows.length - w, avgR: avgResult(t.rows), lastAt: t.lastAt };
+    })
+    .sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
+  const testingRecent = testingRows.slice(0, 24).map(toCard);
   emergingSetups.sort((a, b) => b.rate - a.rate || (b.wins + b.losses) - (a.wins + a.losses));
   emergingTrades.sort((a, b) => String(b.resolvedAt).localeCompare(String(a.resolvedAt)));
 
   return {
     verifiedWinRate, verifiedTotal, wins, losses, recent,
-    avgR: avgR(wins, losses),
+    avgR: verifiedTotal > 0 ? sumR / verifiedTotal : null,
     activeSetups: verifiedSetups.size,
-    setups: [...verifiedSetups.values()].map((s) => ({ ...s, avgR: avgR(s.wins, s.losses) })),
+    setups: [...verifiedSetups.values()].map(({ sumR: setupR, ...s }) => ({ ...s, avgR: setupR / (s.wins + s.losses) })),
     lastTradeAt: recent[0]?.resolvedAt ?? null,
     stampedSince,
     focusMode: FOCUS_MODE,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
+    testing: { names: PUBLIC_TESTING.filter(isSignalVisible).map(brandName), setups: testingSetups, recent: testingRecent },
   };
 }
