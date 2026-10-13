@@ -490,6 +490,7 @@ const GUIDE_DESC = {
 
 function Guide({ onBack, account, liveGate, regimeGate }) {
   const [catalogSummary, setCatalogSummary] = useState(null);
+  const trend = useTrend(); // Trend Rider's live records, shown in the admin signal count below
   const [catalogFull, setCatalogFull] = useState(null);
   const [showFullFeed, setShowFullFeed] = useState(false);
   useEffect(() => {
@@ -566,11 +567,31 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
           <h2>The real, total signal count</h2>
           <p className="guide-lede">Every real signal Setpoint currently runs, and where each one honestly stands right now. Three real tiers, not a binary promoted-or-invisible split: <b>established</b> is the same, strict bar real customers see. <b>Emerging</b> is a real, current edge, genuine but under that bar, admin-only. <b>Early read</b> is any real data at all, even a single trade, always honestly labeled as thin. A separate, automated check runs every 6 hours and sends a real, direct push the moment something newly qualifies for established or emerging — it never promotes anything on its own, a real promotion still means a real, deliberate decision, this just means that decision no longer waits on someone noticing by accident.</p>
           <div className="admin-stat-row">
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">total signals built</div></div>
-            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.established}</div><div className="admin-stat-k">established — live for customers</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">1</div><div className="admin-stat-k">live for customers: Trend Rider, 6 timeframes</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.total}</div><div className="admin-stat-k">original signals built (hidden for now)</div></div>
+            <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.established}</div><div className="admin-stat-k">original, established</div></div>
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.emerging}</div><div className="admin-stat-k">emerging — real, under the bar</div></div>
             <div className="admin-stat"><div className="admin-stat-n">{catalogSummary.early}</div><div className="admin-stat-k">early read — real, very thin</div></div>
           </div>
+          {trend.d && (
+            <div className="signal-feed-card" style={{ marginBottom: 14 }}>
+              <div className="signal-feed-head">
+                <span className="guide-card-name">Trend Rider</span>
+                <span className="rate-src live">live for customers</span>
+              </div>
+              {trend.d.order.map((k) => {
+                const a = trend.d.tfs[k].record.all;
+                return (
+                  <div key={k} className="signal-feed-row">
+                    <span className={`rate-src ${a.trades ? "live" : "backtest"}`}>{a.trades ? "live" : "no trades yet"}</span>
+                    <span className="signal-feed-combo">Long and short · {k}</span>
+                    <span className="signal-feed-rate">{a.winPct != null ? `${a.winPct}%` : "—"}</span>
+                    <span className="signal-feed-n">{a.trades ? `${a.trades} real trade${a.trades === 1 ? "" : "s"}${a.avgR != null ? `, ${a.avgR >= 0 ? "+" : "−"}${Math.abs(a.avgR).toFixed(2)}R avg` : ""}` : "alerts " + (trend.d.tfs[k].alerts ? "on" : "off")}</span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
           <button className="guide-admin-link" onClick={() => setShowFullFeed((v) => !v)}>
             {showFullFeed ? "Hide the full, real feed ↑" : "See every real signal, every timeframe, right now →"}
           </button>

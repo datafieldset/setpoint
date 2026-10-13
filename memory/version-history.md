@@ -52,3 +52,6 @@ v19.24b: Na said the scoreboard block and the footnote at the bottom weren't in 
 v19.25 (superseded by v19.26): briefly restored the old page with every original signal visible. Na wanted them to stay hidden.
 
 v19.26: old dashboard layout kept (page.jsx back at its v19.20 state), original signals hidden again (FOCUS_MODE = true in lib/signals.js), Trend Rider added the way a signal belongs: cards in Open Alerts (name, win percentage once 10 trades are closed, entry, trailing stop, result now) shown only while a trade is open on the chosen timeframe, closed trades in Recently resolved with the timeframe's win percentage in its header, 'Watching 4h' when nothing is open. Description and what-to-expect text sit at the top of the Guide. No scoreboard block, no panel. Checked by running the real page in a browser with mocked data at phone width.
+
+v19.27: Guide's admin-only signal count now shows Trend Rider (1 live for customers, plus a card with each timeframe's live win percentage and trade count) and labels the original-signal counts as hidden for now. Previously it showed 0 live and no Trend Rider.
+
