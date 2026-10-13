@@ -59,3 +59,5 @@ v19.28: Trend Rider rebuilt as a normal signal instead of a patch. One shared tr
 
 
 v19.29: Trend Rider admin push alerts now on all six timeframes (30m, 15m, 5m, 1m added to 4h and 1h), each notification tagged by its own title so a 1 minute alert can't replace a 4 hour one on the phone. Replayed the last week through the real runner and a real Postgres: 70 trades, 140 pushes (open and close each), 106 of them from the 1 minute chart, about 15 a day. Customers still don't get Trend Rider push (admin only), their dashboard already shows all six timeframes.
+
+v19.30: Trend Rider no longer pushes when a trade closes, only when it opens (Na: the trader sets their own trailing stop once in). Closes still log and show on the dashboard and Watch Live. Last week replayed: 70 pushes instead of 140, 53 of them from the 1 minute chart.
