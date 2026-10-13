@@ -37,7 +37,9 @@ const fakeSql = async (strings, ...v) => {
   const r = await db.query(text, params);
   return r.rows;
 };
-const webpush = { sendNotification: async () => {} };
+await db.exec("CREATE TABLE users (email TEXT, is_admin BOOLEAN); CREATE TABLE push_subscriptions (email TEXT, endpoint TEXT, subscription JSONB); INSERT INTO users VALUES ('a@x', true); INSERT INTO push_subscriptions VALUES ('a@x','e','{}')");
+const pushes = [];
+const webpush = { sendNotification: async (_s, payload) => { pushes.push(JSON.parse(payload).title); } };
 const start = Date.parse(process.argv[2] || "2026-09-01T00:00:00Z"), end = Date.parse(process.argv[3] || "2026-10-12T17:00:00Z");
 const stats = { runs: 0, errors: {}, skipped: {}, opened: 0, closed: 0 };
 for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
@@ -64,6 +66,8 @@ for (const tf of TREND_ORDER) {
 }
 // sanity: every row is a Trend Rider trailing trade with a sensible shape
 const bad = all.filter((r) => r.label !== "Trend Rider" || r.coin !== "BTC" || r.target !== null || (r.outcome !== "open" && !(Number(r.r) > -3 && Number(r.r) < 40)));
+const byTfPush = {}; for (const t of pushes) { const k = t.split(":")[0]; byTfPush[k] = (byTfPush[k] || 0) + 1; }
+console.log("pushes", pushes.length, JSON.stringify(byTfPush), "sample:", pushes.slice(0, 3).join(" || "));
 console.log("rows", all.length, "bad", bad.length, bad.map((r) => JSON.stringify(r)).join(" "));
 const outcomeOk = all.every((r) => r.outcome === "open" || (r.outcome === "win") === (Number(r.r) > 0));
 console.log("win/loss matches sign of r:", outcomeOk);
