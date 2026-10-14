@@ -179,3 +179,5 @@ Na asked that Trend Rider include every coin he adds, not just Bitcoin. The ALL_
 
 ## Oct 13 (v19.36): Rebound Rider registered
 New ALL_SIGNALS entry "Rebound Rider": publicTest + serverOnly, tfs ["1h"], no coins list (every watched coin), added to VISIBLE_SIGNALS. No SIGNAL_RATES entry, so it is a public test (not verified) until it clears the live bar. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged. Reason: Na asked for the bounce catcher back; the Oct 13 rebound study found a thin edge on the 1h chart only.
+
+Oct 14 (v19.38): Trend Rider description updated (1 minute chart no longer checks the 1 hour chart). SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.
