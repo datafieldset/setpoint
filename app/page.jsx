@@ -474,6 +474,35 @@ function synthesizeMarketRead(marketMeter, signalBias) {
   return null;
 }
 
+// v19.37: the Market Meter's one-sentence headline. Combines the bigger picture
+// (Bitcoin's move over 12h / 24h / 3 days) with the 5m read, so the card never
+// looks like it disagrees with itself. Plain words, never a prediction.
+function meterHeadline(m, moves) {
+  if (!m) return null;
+  const big = !moves ? "flat"
+    : Math.max(Math.abs(moves.h12), Math.abs(moves.h24) * 0.75, Math.abs(moves.h72) * 0.5) < 1 ? "flat"
+    : moves.h24 + moves.h72 >= 0 ? "up" : "down";
+  const short = {
+    "bullish-trending": "rising",
+    "bearish-trending": "falling",
+    "sideways-ranging": m.phase === "ending" ? "squeezed tight, may be about to break" : "moving sideways",
+    "high-volatility": "swinging hard",
+    "low-volatility": "quiet",
+  }[m.stage] || "mixed";
+  const trending = m.stage === "bullish-trending" || m.stage === "bearish-trending";
+  const sDir = m.stage === "bullish-trending" ? "up" : m.stage === "bearish-trending" ? "down" : null;
+  const bigWords = big === "up" ? "running up" : "running down";
+  let line;
+  if (!moves) line = `Short term, Bitcoin is ${short}.`;
+  else if (big === "flat") line = trending ? `Bitcoin is flat over the last few days, but short term it's ${short}.` : `Bitcoin is flat over the last few days, and short term it's ${short}.`;
+  else if (sDir === big) line = `Bitcoin is ${bigWords}, and short term it's still ${short}.`;
+  else line = `Bitcoin is ${bigWords} over the last few days, but short term it's ${short}.`;
+  if (m.level >= 4 && trending) line += " It's stretched, so chasing is risky.";
+  return line;
+}
+// Where the marker sits on the bearish-to-bullish bar, 0 to 100.
+const meterPos = (m) => m.stage === "bullish-trending" ? 50 + m.level * 9 : m.stage === "bearish-trending" ? 50 - m.level * 9 : 50;
+
 const GUIDE_DESC = {
   "Volume spike": "A sudden burst of trading, way more than usual, in the direction shown.",
   "Quiet accumulation": "Trading volume is quietly climbing while the price barely moves at all. Often the calm before a real move starts.",
@@ -672,7 +701,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">A real, 1 to 5 read on Bitcoin specifically, always on the 5m, no matter which timeframe you're actually trading. Level 1 means genuinely calm, quiet, nothing stretched. Level 5 means a real, established move that's gotten stretched enough it may be running out of room. The plain-language line underneath, "Bullish, trending" or "Squeezed tight, may be about to break," says the same thing in words instead of just a number. Above it sits a bigger-picture strip with Bitcoin's move over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence about Bitcoin, then a bar from Falling to Rising with a marker showing the short-term read (always the 5m chart, no matter which timeframe you trade). The marker sits further out when the move is stronger and more stretched. Underneath are Bitcoin's moves over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -918,6 +947,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   }, [tfKey]);
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
+  const [mmWhy, setMmWhy] = useState(false); // Market Meter 'Why' details open/closed
   const [btcMoves, setBtcMoves] = useState(null); // BTC's 12h / 24h / 3-day change from 1h candles, the "bigger picture" strip on the Market Meter
   const btcMovesAt = useRef(0);
   const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 5m regardless of the selected alerts tab, powers the Market Meter below
@@ -1807,39 +1837,36 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
               <div className="mm-head">
                 <span className="mm-title">Market Meter</span>
-                <span className="mm-sub">BTC · 5m</span>
+                <span className="mm-sub">Bitcoin</span>
               </div>
+              <div className="mm-headline">{meterHeadline(marketMeter, btcMoves)}</div>
+              <div className="mm-gauge" role="img" aria-label={`Short-term read: ${marketMeter.label}`}>
+                <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter)}%` }} /></div>
+                <div className="mm-gauge-ends"><span>Falling</span><span>Rising</span></div>
+              </div>
+              <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{marketMeter.label}</div>
               {btcMoves && (
                 <div className="mm-moves">
                   {[["12h", btcMoves.h12], ["24h", btcMoves.h24], ["3 days", btcMoves.h72]].map(([k, v]) => (
                     <div key={k} className="mm-move"><span className="mm-move-k">{k}</span><span className={`mm-move-v mono ${v >= 0 ? "up" : "down"}`}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span></div>
                   ))}
-                  {Math.max(Math.abs(btcMoves.h12), Math.abs(btcMoves.h24) * 0.75, Math.abs(btcMoves.h72) * 0.5) >= 4 && (
-                    <div className="mm-move-flag">{btcMoves.h72 + btcMoves.h24 >= 0 ? "Bitcoin is running up." : "Bitcoin is running down."} The 5m read below can look calm during a bigger move.</div>
-                  )}
                 </div>
               )}
-              {synthesizeMarketRead(marketMeter, signalBias) && (
-                <div className="mm-synthesis">{synthesizeMarketRead(marketMeter, signalBias)}</div>
-              )}
-              <div className="sb-head">
-                <span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span>
-              </div>
-              <div className="sb-sub">
-                {signalBias.bullRate != null
-                  ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
-                  : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
-              </div>
-              <div className="mm-levels">
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <span key={n} className={`mm-dot ${n <= marketMeter.level ? "on" : ""} ${marketMeter.stage === "bullish-trending" ? "up" : marketMeter.stage === "bearish-trending" ? "down" : "neutral"} ${n === 5 ? "extreme" : ""}`} />
-                ))}
-              </div>
-              <div className="mm-level-text">Level {marketMeter.level} of 5</div>
-              <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{marketMeter.label}</div>
-              <div className="mm-scope-note">A short-term, 5m read. Can genuinely differ from the day's overall move, both are real, they're just answering different questions.</div>
               {marketMeter.confirmed && (
                 <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
+              )}
+              <button className="mm-why-btn" onClick={() => setMmWhy((v) => !v)} aria-expanded={mmWhy}>{mmWhy ? "Hide the details" : "Why this read?"}</button>
+              {mmWhy && (
+                <div className="mm-why">
+                  {synthesizeMarketRead(marketMeter, signalBias) && <div className="mm-synthesis">{synthesizeMarketRead(marketMeter, signalBias)}</div>}
+                  <div className="sb-head"><span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span></div>
+                  <div className="sb-sub">
+                    {signalBias.bullRate != null
+                      ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
+                      : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
+                  </div>
+                  <div className="mm-scope-note">The marker is a short-term, 5 minute read (strength {marketMeter.level} of 5). It can differ from the bigger move above, they answer different questions.</div>
+                </div>
               )}
             </div>
           )}
@@ -2538,15 +2565,22 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.mm-headline{font-family:'Bricolage Grotesque';font-weight:700;font-size:21px;line-height:1.25;margin:2px 0 16px}
+.mm-gauge{margin-bottom:10px}
+.mm-gauge-bar{position:relative;height:8px;border-radius:6px;background:linear-gradient(90deg,var(--red-soft),var(--panel3) 50%,var(--green-soft))}
+.mm-marker{position:absolute;top:-5px;width:6px;height:18px;margin-left:-3px;border-radius:3px;background:var(--text);box-shadow:0 0 0 3px var(--panel2)}
+.mm-gauge-ends{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
+.mm-why-btn{margin-top:12px;background:none;border:none;padding:6px 0;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
+.mm-why{margin-top:8px;padding-top:12px;border-top:1px solid var(--hair)}
 .mm-panel{padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
 .mm-panel.confirmed{border-color:rgba(245,184,81,.5);background:linear-gradient(180deg,rgba(245,184,81,.08),var(--panel2))}
 .mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mm-sub{font-size:11px;color:var(--dim)}
-.mm-moves{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid var(--hair)}
+.mm-moves{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;margin-top:10px}
 .mm-move{display:flex;align-items:baseline;gap:6px}
 .mm-move-k{font-size:11px;color:var(--dim)}
-.mm-move-v{font-size:15px;font-weight:700}
+.mm-move-v{font-size:14px;font-weight:700}
 .mm-move-v.up{color:var(--green)}
 .mm-move-v.down{color:var(--red)}
 .mm-move-flag{flex-basis:100%;font-size:12px;color:var(--amber);font-weight:600;line-height:1.4}
@@ -2558,7 +2592,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-dot.on.neutral{background:var(--muted)}
 .mm-dot.on.extreme{background:var(--amber)}
 .mm-level-text{font-family:'Bricolage Grotesque';font-weight:700;font-size:20px;margin-bottom:6px}
-.mm-stage{font-family:'Bricolage Grotesque';font-weight:700;font-size:18px;margin-bottom:4px}
+.mm-stage{font-size:14px;font-weight:600;color:var(--muted);margin-bottom:2px}
 .mm-stage.ending{color:var(--amber)}
 .mm-scope-note{margin-top:6px;font-size:11px;color:var(--dim);line-height:1.4}
 .mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
