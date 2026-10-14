@@ -500,8 +500,14 @@ function meterHeadline(m, moves) {
   if (m.level >= 4 && trending) line += " It's stretched, so chasing is risky.";
   return line;
 }
-// Where the marker sits on the bearish-to-bullish bar, 0 to 100.
-const meterPos = (m) => m.stage === "bullish-trending" ? 50 + m.level * 9 : m.stage === "bearish-trending" ? 50 - m.level * 9 : 50;
+// Where the marker sits on the bearish-to-bullish bar, 0 to 100. Blends the 5m
+// read (stage and strength) with the bigger picture (12h / 24h / 3 day move),
+// so a falling market can never show a centered marker.
+const meterPos = (m, moves) => {
+  const short = m.stage === "bullish-trending" ? m.level * 9 : m.stage === "bearish-trending" ? -m.level * 9 : 0;
+  const big = moves ? Math.max(-35, Math.min(35, moves.h12 * 3 + moves.h24 * 3 + moves.h72 * 1.5)) : 0;
+  return Math.round(Math.max(4, Math.min(96, 50 + short + big)));
+};
 
 const GUIDE_DESC = {
   "Volume spike": "A sudden burst of trading, way more than usual, in the direction shown.",
@@ -1841,7 +1847,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </div>
               <div className="mm-headline">{meterHeadline(marketMeter, btcMoves)}</div>
               <div className="mm-gauge" role="img" aria-label={`Short-term read: ${marketMeter.label}`}>
-                <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter)}%` }} /></div>
+                <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, btcMoves)}%` }} /></div>
                 <div className="mm-gauge-ends"><span>Falling</span><span>Rising</span></div>
               </div>
               <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{marketMeter.label}</div>
