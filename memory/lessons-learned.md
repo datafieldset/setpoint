@@ -150,3 +150,6 @@ Na wanted Trend Rider to look like every other signal: Entry, Stop, Target. Side
 
 ## Oct 13: rebound study (v19.36)
 Tested ideas for catching a bounce on BTC and XLM (entry at next bar open, stop 2 ATR, target 0.75R, sells mirrored). Fading bands loses. Plain dip entries are a coin flip. Adding the 200-day side and the 1h-chart-agrees rule lifts it. Chosen: dip more than 2 ATR below the 20-bar average within 4 bars, then a green bar back above (average minus 1 ATR), 1h chart only. 1h was the only timeframe that held on both coins; 30m and faster showed nothing. About 116 BTC and 41 XLM trades historically, small and thin, picked from many tests, BTC's second half about flat. Treat live results as the real test.
+
+## Oct 14: look at the real screen before replying
+The Open Alerts ladder shipped looking smashed (labels stacked on each other) because a missing live price turned every position into NaN and tiny 1 minute XLM levels sat on top of each other. I had changed the 1 minute rules without ever looking at a real open-position card, and Na found it. Fix: v19.38c, plus a new checklist section in memory/review/checklist.md (log into the live site, inject test data if needed, try tiny and not-yet-loaded values, report what was and was not seen).

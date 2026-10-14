@@ -20,6 +20,12 @@
 - [ ] Mobile layout considered
 - [ ] Nothing exposes admin-only data
 
+## Anything that changes what Na sees on screen (added Oct 14, after the smashed ladder card)
+- [ ] Log into the LIVE site (admin account) and look at the real screen at phone width after the push, before replying. A mock of the component is not enough
+- [ ] If the thing only appears sometimes (an open trade, an alert), inject test data in my own browser session (Playwright route on the API response, nothing saved) and look at the real card
+- [ ] Try the awkward cases: tiny numbers (1 minute XLM levels a fraction of a cent apart), a value that has not loaded yet (slow the API with a route delay), a very long or very short label
+- [ ] Say in the reply what I saw and what I could not see (for example a live open trade on his phone)
+
 ## After pushing
 - [ ] `node scripts/verify-live.mjs` passes (waits for the deploy)
 - [ ] Looked at a real response from the changed route, not just the status code
