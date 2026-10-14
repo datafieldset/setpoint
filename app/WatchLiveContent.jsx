@@ -61,6 +61,29 @@ function SetupRow({ s }) {
   );
 }
 
+// One live signal: its win rate and average result, with each timeframe underneath.
+function SignalRow({ s }) {
+  const n = s.wins + s.losses;
+  return (
+    <div className="watch-sig">
+      <div className="watch-setup">
+        <span className="ws-name">{s.name}</span>
+        <span className="ws-rec">{s.rate != null ? `${Math.round(s.rate * 100)}%` : "—"} win rate</span>
+        <span className="ws-rec">{s.wins} won, {s.losses} lost</span>
+        {s.avgR != null && <span className={`ws-r ${s.avgR >= 0 ? "pos" : "neg"}`}>{fmtR(s.avgR)} per trade</span>}
+        <span className="ws-last">last {fmtDay(s.lastAt)}</span>
+      </div>
+      {s.tfs.length > 1 && (
+        <div className="watch-tfs">
+          {s.tfs.map((t) => (
+            <span key={t.tf} className="watch-tfchip"><b>{t.tf}</b> {Math.round(t.rate * 100)}% <i>({t.wins}-{t.losses})</i></span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function WatchLiveContent({ onBack }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
@@ -78,11 +101,9 @@ export default function WatchLiveContent({ onBack }) {
     return () => { alive = false; clearInterval(id); };
   }, []);
 
-  const winRatePct = data?.verifiedWinRate != null ? Math.round(data.verifiedWinRate * 100) : null;
-  const setups = data?.setups || [];
+  const live = data?.live || { wins: 0, losses: 0, rate: null, avgR: null, total: 0, names: [], signals: [], recent: [] };
+  const winRatePct = live.rate != null ? Math.round(live.rate * 100) : null;
   const emerging = data?.emerging || { setups: [], recent: [] };
-  const testing = data?.testing || { names: [], setups: [], recent: [] };
-  const activeSetups = data?.activeSetups ?? setups.length;
 
   return (
     <div className="watch-page">
@@ -114,71 +135,46 @@ export default function WatchLiveContent({ onBack }) {
               </svg>
               <div className="watch-donut-label">
                 <div className="watch-big-num">{winRatePct != null ? `${winRatePct}%` : "—"}</div>
-                <div className="watch-big-sub">verified win rate</div>
+                <div className="watch-big-sub">win rate</div>
               </div>
             </div>
             <div className="watch-stat-legend">
-              <div className="watch-legend-row"><span className="dot win" /> {data.wins} wins</div>
-              <div className="watch-legend-row"><span className="dot loss" /> {data.losses} losses</div>
+              <div className="watch-legend-row"><span className="dot win" /> {live.wins} wins</div>
+              <div className="watch-legend-row"><span className="dot loss" /> {live.losses} losses</div>
               <div className="watch-legend-total">
-                {data.verifiedTotal === 0
-                  ? (data.focusMode ? "We're rebuilding our signals from scratch. Results return here as each one earns its place." : "No setup clears the verified bar right now.")
-                  : `${data.verifiedTotal} trades from ${activeSetups} setup${activeSetups === 1 ? "" : "s"}, each one verified at the moment it fired. Real prices, levels locked when each one fired.`}
+                {live.total === 0
+                  ? `${live.names.join(" and ")} ${live.names.length === 1 ? "is" : "are"} live. The first results show up here as trades finish.`
+                  : `${live.total} finished trade${live.total === 1 ? "" : "s"} from ${live.signals.length} live signal${live.signals.length === 1 ? "" : "s"}. Real prices, levels locked when each one fired.`}
               </div>
-              {data.avgR != null && (
+              {live.avgR != null && (
                 <div className="watch-legend-total">
-                  Average result per trade: <b className={data.avgR >= 0 ? "ws-r pos" : "ws-r neg"}>{fmtR(data.avgR)}</b>. A win pays 2R, a loss costs 1R (R is what you risk), so a setup breaks even at a 34% win rate. Before fees and slippage.
+                  Average result per trade: <b className={live.avgR >= 0 ? "ws-r pos" : "ws-r neg"}>{fmtR(live.avgR)}</b> (R is the amount risked on a trade).
                 </div>
               )}
-              {data.lastTradeAt && <div className="watch-legend-total">Latest verified trade: {fmtDay(data.lastTradeAt)}.</div>}
             </div>
           </div>
 
-          {setups.length > 0 && (
+          {live.signals.length > 0 && (
             <section className="watch-section">
-              <h2 className="watch-h">Verified setups</h2>
+              <h2 className="watch-h">Each signal</h2>
               <div className="watch-setups">
-                {setups.map((s, i) => <SetupRow key={i} s={s} />)}
+                {live.signals.map((s, i) => <SignalRow key={i} s={s} />)}
               </div>
-              <p className="watch-note">
-                Each setup counts its last 20 trades. A trade counts if its setup was verified when the trade fired, and it stays on the record even if the setup slips under the bar later. Those are marked. {data.stampedSince ? `Trades from before ${fmtDay(data.stampedSince)} were logged without that stamp, so they only count while their setup is verified today.` : ""}
-              </p>
             </section>
           )}
 
           <section className="watch-section">
-            <h2 className="watch-h">Verified trades, newest first</h2>
-            {data.recent.length === 0 ? (
-              <div className="watch-empty">Nothing resolved yet. Check back soon.</div>
+            <h2 className="watch-h">Finished trades, newest first</h2>
+            {live.recent.length === 0 ? (
+              <div className="watch-empty">No trades have finished yet. They'll show up here as they do.</div>
             ) : (
               <div className="watch-scroll">
                 <div className="watch-grid">
-                  {data.recent.map((t, i) => <TradeCard key={i} t={t} />)}
+                  {live.recent.map((t, i) => <TradeCard key={i} t={t} />)}
                 </div>
               </div>
             )}
           </section>
-
-          {testing.names.length > 0 && (
-            <section className="watch-section watch-emerging">
-              <h2 className="watch-h">In public testing <span className="watch-pill">not verified</span></h2>
-              <p className="watch-note">{testing.names.join(", ")} {testing.names.length === 1 ? "is" : "are"} live while {testing.names.length === 1 ? "it proves" : "they prove"} {testing.names.length === 1 ? "itself" : "themselves"}. Each one sets its own target size, so the average result per trade (in R, the amount risked) matters as much as the win percentage. These don't count toward the win rate above.</p>
-              {testing.setups.length === 0 ? (
-                <div className="watch-empty">No trades have finished yet. They'll show up here as they do.</div>
-              ) : (
-                <div className="watch-setups">
-                  {testing.setups.map((s, i) => <SetupRow key={i} s={s} />)}
-                </div>
-              )}
-              {testing.recent.length > 0 && (
-                <div className="watch-scroll">
-                  <div className="watch-grid">
-                    {testing.recent.map((t, i) => <TradeCard key={i} t={t} />)}
-                  </div>
-                </div>
-              )}
-            </section>
-          )}
 
           {emerging.setups.length > 0 && (
             <section className="watch-section watch-emerging">
@@ -199,8 +195,8 @@ export default function WatchLiveContent({ onBack }) {
 
           {!onBack && (
             <div className="watch-cta">
-              <h2>This is what verified actually means.</h2>
-              <p>Every trade above, real, resolved, checkable against your own chart. Create a free account to save your spot, then upgrade whenever you're ready, live signals on your own coins.</p>
+              <h2>Real trades, checkable against your own chart.</h2>
+              <p>Every trade above is real and resolved. Create a free account to save your spot, then upgrade whenever you're ready, live signals on your own coins.</p>
               <a className="watch-cta-btn" href="/?signup=watch">Create a free account</a>
               <a className="watch-cta-link" href="/#pricing">Or see plans and pricing →</a>
             </div>
@@ -292,6 +288,11 @@ const CSS = `
   .ws-r.neg{color:var(--red)}
   .ws-slipped{color:var(--amber);font-size:11.5px}
   .ws-last{color:var(--dim);font-size:11.5px;min-width:62px;text-align:right}
+  .watch-sig{display:flex;flex-direction:column;gap:4px}
+  .watch-tfs{display:flex;flex-wrap:wrap;gap:6px;padding:0 4px}
+  .watch-tfchip{font-size:11.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-variant-numeric:tabular-nums}
+  .watch-tfchip b{color:var(--text)}
+  .watch-tfchip i{color:var(--dim);font-style:normal}
   .watch-emerging{margin-top:36px;padding-top:26px;border-top:1px solid var(--border)}
   .watch-emerging .watch-setup{border-left:3px solid var(--amber)}
   .watch-pill{margin-left:8px;font-size:11px;font-weight:600;color:var(--amber);background:rgba(232,176,74,.12);padding:2px 8px;border-radius:999px;vertical-align:1px}

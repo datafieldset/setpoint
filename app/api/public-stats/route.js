@@ -123,6 +123,7 @@ async function computeStats(conn) {
   // When the stamp started being written. Everything fired after this
   // is locked in at fire time, everything before is judged by today's
   // status.
+  const verifiedRows = [];
   let stampedSince = null;
   for (const r of rows) {
     if (r.verified_at_fire !== null && r.verified_at_fire !== undefined && (!stampedSince || new Date(r.fired_at) < new Date(stampedSince))) stampedSince = r.fired_at;
@@ -163,6 +164,7 @@ async function computeStats(conn) {
 
     r.outcome === "win" ? wins++ : losses++;
     sumR += resultR(r);
+    verifiedRows.push(r);
     const sKey = `${r.label}|${r.tf}|${r.dir}`;
     const s = verifiedSetups.get(sKey) || { name: brandName(r.label), tf: r.tf, dir: r.dir, wins: 0, losses: 0, lastAt: r.resolved_at, sumR: 0, verifiedNow: isVerifiedNow(r.label, r.tf, r.dir) };
     r.outcome === "win" ? s.wins++ : s.losses++;
@@ -229,6 +231,18 @@ async function computeStats(conn) {
     })
     .sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
   const testingRecent = testingRows.slice(0, 24).map(toCard);
+  // ---- Live: everything running right now, one record (v19.36) ----
+  // Na's call (Oct 13): show the win rate of whatever is live, tested or not.
+  // Verified trades plus public tests, one headline, one row per signal
+  // (with its timeframes underneath) and one history list.
+  const liveRows = verifiedRows.concat(testingRows).sort((a, b) => new Date(b.resolved_at) - new Date(a.resolved_at));
+  const tally = (list) => { const w = list.filter((r) => r.outcome === "win").length; return { wins: w, losses: list.length - w, rate: list.length ? w / list.length : null, avgR: list.length ? avgResult(list) : null }; };
+  const liveSignals = [...new Set(liveRows.map((r) => r.label))].map((label) => {
+    const mine = liveRows.filter((r) => r.label === label);
+    const tfs = [...new Set(mine.map((r) => r.tf))].map((tf) => ({ tf, ...tally(mine.filter((r) => r.tf === tf)) }));
+    return { name: brandName(label), ...tally(mine), tfs, lastAt: mine[0].resolved_at };
+  }).sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
+  const live = { ...tally(liveRows), total: liveRows.length, names: ALL_SIGNALS.filter((x) => isSignalVisible(x.name)).map((x) => brandName(x.name)), signals: liveSignals, recent: liveRows.slice(0, 60).map(toCard) };
   emergingSetups.sort((a, b) => b.rate - a.rate || (b.wins + b.losses) - (a.wins + a.losses));
   emergingTrades.sort((a, b) => String(b.resolvedAt).localeCompare(String(a.resolvedAt)));
 
@@ -240,6 +254,7 @@ async function computeStats(conn) {
     lastTradeAt: recent[0]?.resolvedAt ?? null,
     stampedSince,
     focusMode: FOCUS_MODE,
+    live,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
     testing: { names: PUBLIC_TESTING.filter(isSignalVisible).map(brandName), setups: testingSetups, recent: testingRecent },
   };

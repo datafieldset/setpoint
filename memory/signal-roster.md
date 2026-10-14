@@ -176,3 +176,6 @@ Oct 13 (v19.31): Trend Rider moved to a plain stop and target (stop 2 ATR, targe
 
 ## Oct 13 (v19.35): Trend Rider covers every coin
 Na asked that Trend Rider include every coin he adds, not just Bitcoin. The ALL_SIGNALS entry lost its `coins` list (no list means every coin); the runner scans Bitcoin plus every watchlisted coin. Still a public test (not yet verified): the rules were tuned on Bitcoin, so other coins are a live experiment and the track record for each coin builds from here.
+
+## Oct 13 (v19.36): Rebound Rider registered
+New ALL_SIGNALS entry "Rebound Rider": publicTest + serverOnly, tfs ["1h"], no coins list (every watched coin), added to VISIBLE_SIGNALS. No SIGNAL_RATES entry, so it is a public test (not verified) until it clears the live bar. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged. Reason: Na asked for the bounce catcher back; the Oct 13 rebound study found a thin edge on the 1h chart only.

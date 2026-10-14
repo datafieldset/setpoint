@@ -80,7 +80,7 @@ for (const tf of TREND_ORDER) {
   }
 }
 // sanity: every row is a Trend Rider trade with a stop and a target, and closes at -1R or +0.75R
-const bad = all.filter((r) => r.label !== "Trend Rider" || !["BTC", "XLM"].includes(r.coin) || r.target === null || (r.outcome !== "open" && ![-1, 0.75].includes(Number(r.r))));
+const bad = all.filter((r) => !["Trend Rider", "Rebound Rider"].includes(r.label) || !["BTC", "XLM"].includes(r.coin) || r.target === null || (r.outcome !== "open" && ![-1, 0.75].includes(Number(r.r))));
 const byTfPush = {}; for (const t of pushes) { const k = t; byTfPush[k] = (byTfPush[k] || 0) + 1; }
 console.log("pushes", pushes.length, JSON.stringify(byTfPush), "sample:", pushes.slice(0, 3).join(" || "));
 for (const coin of ["BTC", "XLM"]) { const z = all.filter((r) => r.coin === coin), c = z.filter((r) => r.outcome !== "open"); console.log(coin, "trades", z.length, "closed", c.length, "win", c.length ? Math.round(100 * c.filter((r) => Number(r.r) > 0).length / c.length) + "%" : "-"); }
