@@ -53,22 +53,37 @@ function DirBadge({ dir }) {
   return <span className={`badge ${cls}`}>{t}</span>;
 }
 
+// Entry / stop / target (and the live price when it has loaded) laid out on a
+// rail. Labels are kept at least MIN_GAP px apart so they never overlap, even
+// when the levels are a fraction of a cent apart (1 minute charts), and a price
+// that hasn't loaded yet is simply left off instead of breaking the layout.
+const RAIL_H = 132, MIN_GAP = 19;
 function Ladder({ entry, stop, target, price, dir }) {
-  const vals = [entry, stop, target, price];
+  const hasPrice = Number.isFinite(price);
+  const vals = [entry, stop, target, hasPrice ? price : null].filter((v) => Number.isFinite(v));
   const min = Math.min(...vals), max = Math.max(...vals);
   const pad = (max - min) * 0.14 || Math.abs(max) * 0.01 || 1;
   const lo = min - pad, hi = max + pad;
-  const y = (p) => (1 - (p - lo) / (hi - lo)) * 100;
-  const toTarget = ((target - price) / price) * 100;
-  const toStop = ((stop - price) / price) * 100;
+  const raw = (p) => (1 - (p - lo) / (hi - lo)) * RAIL_H;
+  // spread the three labelled markers apart, top to bottom, keeping their order
+  const items = [["target", target], ["entry", entry], ["stop", stop]].map(([k, v]) => ({ k, v, y: raw(v) })).sort((x, y) => x.y - y.y);
+  for (let i = 1; i < items.length; i++) if (items[i].y - items[i - 1].y < MIN_GAP) items[i].y = items[i - 1].y + MIN_GAP;
+  const over = items[items.length - 1].y - (RAIL_H - 8);
+  if (over > 0) for (const it of items) it.y -= over;
+  const top = Object.fromEntries(items.map((it) => [it.k, Math.max(8, it.y)]));
+  const ref = hasPrice ? price : entry;
+  const toTarget = ((target - ref) / ref) * 100;
+  const toStop = ((stop - ref) / ref) * 100;
+  const lab = { target: "TARGET", entry: "ENTRY", stop: "STOP" };
+  const val = { target, entry, stop };
   return (
     <div className="ladder">
       <div className="rail">
         <div className="rail-line" />
-        <div className="mk mk-target" style={{ top: y(target) + "%" }}><span className="mk-dot" /><span className="mk-lab">TARGET</span><span className="mk-val">{fmtPrice(target)}</span></div>
-        <div className="mk mk-entry" style={{ top: y(entry) + "%" }}><span className="mk-dot" /><span className="mk-lab">ENTRY</span><span className="mk-val">{fmtPrice(entry)}</span></div>
-        <div className="mk mk-stop" style={{ top: y(stop) + "%" }}><span className="mk-dot" /><span className="mk-lab">STOP</span><span className="mk-val">{fmtPrice(stop)}</span></div>
-        <div className="mk mk-live" style={{ top: y(price) + "%" }}><span className="live-tri" /></div>
+        {["target", "entry", "stop"].map((k) => (
+          <div key={k} className={`mk mk-${k}`} style={{ top: top[k] + "px" }}><span className="mk-dot" /><span className="mk-lab">{lab[k]}</span><span className="mk-val">{fmtPrice(val[k])}</span></div>
+        ))}
+        {hasPrice && <div className="mk mk-live" style={{ top: Math.max(4, Math.min(RAIL_H - 4, raw(price))) + "px" }}><span className="live-tri" /></div>}
       </div>
       <div className="ladder-meta">
         <div className="rr">{(Math.abs(target - entry) / Math.abs(entry - stop)).toFixed(2).replace(/\.?0+$/, "")}R</div>
