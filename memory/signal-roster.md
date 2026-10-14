@@ -173,3 +173,6 @@ Oct 13 (v19.26): old dashboard layout restored but the original signals stay hid
 Oct 13 (v19.28): Trend Rider registered as a public test in ALL_SIGNALS (publicTest, serverOnly, coins BTC, tfs six). It is visible to admin and public with a 'testing' tag and its real record, with no verified badge, because it has no SIGNAL_RATES entry. It only becomes verified through the same live bar as everything else. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.
 
 Oct 13 (v19.31): Trend Rider moved to a plain stop and target (stop 2 ATR, target 0.75R, 4 hour sells off), no trailing stop. Still a public test (publicTest, serverOnly) with no SIGNAL_RATES entry. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.
+
+## Oct 13 (v19.35): Trend Rider covers every coin
+Na asked that Trend Rider include every coin he adds, not just Bitcoin. The ALL_SIGNALS entry lost its `coins` list (no list means every coin); the runner scans Bitcoin plus every watchlisted coin. Still a public test (not yet verified): the rules were tuned on Bitcoin, so other coins are a live experiment and the track record for each coin builds from here.

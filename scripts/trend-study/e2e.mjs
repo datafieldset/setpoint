@@ -12,6 +12,8 @@ const d1 = load("BTC_1d.json");
 const smaOf = (now) => { const day = Math.floor(now / 864e5) * 864e5; const done = d1.filter((x) => x.time < day).slice(-200); return done.length === 200 ? done.reduce((s, x) => s + x.close, 0) / 200 : null; };
 
 // candles as the live feed would show at time `now`: completed candles plus the in-progress one built from finer data
+const SCALE = { BTC: 1, XLM: 0.19 / 83000 }; // XLM is the Bitcoin series scaled to a 19 cent coin, to exercise the second-coin path
+const sc = (c, k) => (k === 1 ? c : c.map((x) => ({ ...x, open: x.open * k, high: x.high * k, low: x.low * k, close: x.close * k })));
 function feed(sec, pages, now) {
   const size = sec * 1000;
   const fine = sec === 3600 ? data[60] : sec === 900 ? data[60] : sec === 300 ? data[60] : data[60];
@@ -39,31 +41,33 @@ const fakeSql = async (strings, ...v) => {
   const r = await db.query(text, params);
   return r.rows;
 };
-await db.exec("CREATE TABLE users (email TEXT, is_admin BOOLEAN); CREATE TABLE push_subscriptions (email TEXT, endpoint TEXT, subscription JSONB); INSERT INTO users VALUES ('a@x', true); INSERT INTO push_subscriptions VALUES ('a@x','e','{}')");
-const pushes = [];
-const webpush = { sendNotification: async (_s, payload) => { pushes.push(JSON.parse(payload).title); } };
+await db.exec("CREATE TABLE users (email TEXT, is_admin BOOLEAN, watchlist TEXT); CREATE TABLE push_subscriptions (email TEXT, endpoint TEXT, subscription JSONB); INSERT INTO users VALUES ('a@x', true, '[\"BTC\"]'), ('b@x', true, '[\"BTC\",\"XLM\"]'), ('c@x', false, '[\"SOL\"]'); INSERT INTO push_subscriptions VALUES ('a@x','ea','{\"who\":\"a\"}'), ('b@x','eb','{\"who\":\"b\"}')");
+const pushes = []; const pushLog = [];
+const webpush = { sendNotification: async (sub, payload) => { const p = JSON.parse(payload); pushes.push(p.title); pushLog.push({ who: sub.who, body: p.body, tag: p.tag }); } };
 const start = Date.parse(process.argv[2] || "2026-09-01T00:00:00Z"), end = Date.parse(process.argv[3] || "2026-10-12T17:00:00Z");
 const stats = { runs: 0, errors: {}, skipped: {}, opened: 0, closed: 0 };
 for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
   const deps = {
     now,
-    fetchGran: async (sec, pages) => feed(sec, pages, now),
-    getDailySMA: async () => smaOf(now),
+    coins: ["BTC", "XLM"],
+    fetchGran: async (sec, pages, coin) => sc(feed(sec, pages, now), SCALE[coin]),
+    getDailySMA: async (coin) => smaOf(now) * SCALE[coin],
     crowd: async () => 55,
     // the shared resolver reads candles for each timeframe, here from the same fake feed
     resolveIo: {
       now,
-      fetchCandles: async (_coin, tf) => {
-        const m = TF[tf]; const c = feed(m.gran, m.aggFactor > 1 ? 2 : 1, now);
+      fetchCandles: async (coin, tf) => {
+        const m = TF[tf]; const c = sc(feed(m.gran, m.aggFactor > 1 ? 2 : 1, now), SCALE[coin]);
         return m.aggFactor > 1 ? aggregate(c, m.gran, m.aggFactor) : c;
       },
-      fetchMinute: async (_c, start, end) => data[60].filter((x) => x.time >= start && x.time < end).map((x) => ({ time: x.time, low: x.low, high: x.high })),
+      fetchMinute: async (c, start, end) => data[60].filter((x) => x.time >= start && x.time < end).map((x) => ({ time: x.time, low: x.low * SCALE[c], high: x.high * SCALE[c] })),
     },
   };
   const res = await R.runTrend(fakeSql, webpush, deps);
   stats.runs++;
   stats.opened += res.opened; stats.closed += res.closed;
-  for (const [tf, r] of Object.entries(res.byTf)) { if (r.error) stats.errors[tf + ":" + r.error] = (stats.errors[tf + ":" + r.error] || 0) + 1; if (r.skipped) stats.skipped[tf + ":" + r.skipped] = (stats.skipped[tf + ":" + r.skipped] || 0) + 1; }
+  const flat = {}; for (const [c, o] of Object.entries(res.byCoin)) { if (o.error) flat[c] = { error: o.error }; for (const [t, v] of Object.entries(o.byTf || {})) flat[c + ":" + t] = v; }
+  for (const [tf, r] of Object.entries(flat)) { if (r.error) stats.errors[tf + ":" + r.error] = (stats.errors[tf + ":" + r.error] || 0) + 1; if (r.skipped) stats.skipped[tf + ":" + r.skipped] = (stats.skipped[tf + ":" + r.skipped] || 0) + 1; }
 }
 console.log("runs", stats.runs, "opened", stats.opened, "closed", stats.closed);
 console.log("errors", JSON.stringify(stats.errors), "\nskipped", JSON.stringify(stats.skipped));
@@ -76,9 +80,12 @@ for (const tf of TREND_ORDER) {
   }
 }
 // sanity: every row is a Trend Rider trade with a stop and a target, and closes at -1R or +0.75R
-const bad = all.filter((r) => r.label !== "Trend Rider" || r.coin !== "BTC" || r.target === null || (r.outcome !== "open" && ![-1, 0.75].includes(Number(r.r))));
-const byTfPush = {}; for (const t of pushes) { const k = t.split(":")[0]; byTfPush[k] = (byTfPush[k] || 0) + 1; }
+const bad = all.filter((r) => r.label !== "Trend Rider" || !["BTC", "XLM"].includes(r.coin) || r.target === null || (r.outcome !== "open" && ![-1, 0.75].includes(Number(r.r))));
+const byTfPush = {}; for (const t of pushes) { const k = t; byTfPush[k] = (byTfPush[k] || 0) + 1; }
 console.log("pushes", pushes.length, JSON.stringify(byTfPush), "sample:", pushes.slice(0, 3).join(" || "));
+for (const coin of ["BTC", "XLM"]) { const z = all.filter((r) => r.coin === coin), c = z.filter((r) => r.outcome !== "open"); console.log(coin, "trades", z.length, "closed", c.length, "win", c.length ? Math.round(100 * c.filter((r) => Number(r.r) > 0).length / c.length) + "%" : "-"); }
+const who = {}; for (const p of pushLog) { const k = p.who + ":" + p.body.split(" ")[0]; who[k] = (who[k] || 0) + 1; }
+console.log("pushes by user:coin", JSON.stringify(who), "| sample XLM body:", (pushLog.find((p) => p.body.startsWith("XLM")) || {}).body, "| tags unique per user:", new Set(pushLog.map((p) => p.who + p.tag)).size === pushLog.length);
 console.log("rows", all.length, "bad", bad.length, bad.map((r) => JSON.stringify(r)).join(" "));
 const outcomeOk = all.every((r) => r.outcome === "open" || (r.outcome === "win") === (Number(r.r) > 0));
 console.log("win/loss matches sign of r:", outcomeOk);

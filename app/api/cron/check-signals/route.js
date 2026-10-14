@@ -62,7 +62,7 @@ export async function GET(req) {
     // being configured: a trade must open and close whether or not
     // anyone can be notified. A hung feed is cut off after 20 seconds.
     let trend = null;
-    try { trend = await Promise.race([runTrend(sql, hasVapid ? webpush : null), new Promise((_, rej) => setTimeout(() => rej(new Error("trend timed out")), 20000))]); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }
+    try { trend = await Promise.race([runTrend(sql, hasVapid ? webpush : null), new Promise((_, rej) => setTimeout(() => rej(new Error("trend timed out")), 38000))]); } catch (e) { trend = { error: String(e.message || e).slice(0, 80) }; }
     if (!hasVapid) return Response.json({ error: "not_configured", checked: 0, sent: 0, trend });
     // Real accounts with a real, active subscription, joined against
     // their own real, saved watchlist. Nothing here about coins nobody's
