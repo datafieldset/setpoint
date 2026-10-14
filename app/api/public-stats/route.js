@@ -58,13 +58,24 @@ export const dynamic = "force-dynamic";
 // exposed to.
 const CACHE_MS = 3 * 60 * 1000;
 
-export async function GET() {
+// ?coins=BTC,XLM limits every number and list to those coins (Watch Live sends the viewer's own
+// watchlist, or BTC alone when there is none). No param means every coin, as before.
+const COIN_OK = /^[A-Z0-9]{2,10}$/;
+function parseCoins(url) {
+  const raw = new URL(url).searchParams.get("coins");
+  if (!raw) return null;
+  const list = [...new Set(raw.split(",").map((c) => c.trim().toUpperCase()).filter((c) => COIN_OK.test(c)))].slice(0, 12).sort();
+  return list.length ? list : ["BTC"];
+}
+
+export async function GET(req) {
+  const coins = parseCoins(req.url);
   const conn = process.env.DATABASE_URL;
   if (!conn) {
     return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [] }, { headers: { "cache-control": "no-store" } });
   }
   try {
-    const data = await withCache("public-stats", CACHE_MS, () => computeStats(conn));
+    const data = await withCache("public-stats:" + (coins ? coins.join(",") : "all"), CACHE_MS, () => computeStats(conn, coins));
     return Response.json(data, { headers: { "cache-control": "no-store" } });
   } catch (e) {
     return Response.json({ verifiedWinRate: null, verifiedTotal: 0, recent: [], error: String(e.message || e).slice(0, 150) }, { headers: { "cache-control": "no-store" } });
@@ -88,7 +99,7 @@ function toCard(r) {
   };
 }
 
-async function computeStats(conn) {
+async function computeStats(conn, coins) {
   const { neon } = await import("@neondatabase/serverless");
   const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
   const { gate: liveGate, regimeGate } = await getLiveVerifiedGate();
@@ -99,6 +110,7 @@ async function computeStats(conn) {
     SELECT coin, tf, label, dir, outcome, entry, stop, target, exit_price, r, fired_at, resolved_at, regime, verified_at_fire
     FROM signal_track
     WHERE outcome IN ('win', 'loss') AND label = ANY(${labels})
+      AND (${!coins} OR coin = ANY(${coins || []}))
     ORDER BY resolved_at DESC
   `;
 
@@ -255,6 +267,7 @@ async function computeStats(conn) {
     stampedSince,
     focusMode: FOCUS_MODE,
     live,
+    coins: coins || null,
     emerging: { setups: emergingSetups.slice(0, 8), recent: emergingTrades.slice(0, 24) },
     testing: { names: PUBLIC_TESTING.filter(isSignalVisible).map(brandName), setups: testingSetups, recent: testingRecent },
   };

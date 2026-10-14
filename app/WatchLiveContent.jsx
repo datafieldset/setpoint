@@ -84,14 +84,28 @@ function SignalRow({ s }) {
   );
 }
 
-export default function WatchLiveContent({ onBack }) {
+export default function WatchLiveContent({ onBack, coins: coinsProp }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
+  // Only the coins this person follows (Na, Oct 14). Signed in with no coins saved, or signed out: Bitcoin alone.
+  const [myCoins, setMyCoins] = useState(coinsProp && coinsProp.length ? coinsProp : null);
   useEffect(() => {
+    if (coinsProp && coinsProp.length) { setMyCoins(coinsProp); return; }
+    let alive = true;
+    fetch("/api/my-watchlist", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((j) => { if (alive) setMyCoins(Array.isArray(j?.watchlist) && j.watchlist.length ? j.watchlist : ["BTC"]); })
+      .catch(() => { if (alive) setMyCoins(["BTC"]); });
+    return () => { alive = false; };
+  }, [coinsProp && coinsProp.join(",")]);
+  const coinKey = myCoins ? [...myCoins].sort().join(",") : null;
+
+  useEffect(() => {
+    if (!coinKey) return;
     let alive = true;
     const load = () => {
-      fetch("/api/public-stats", { cache: "no-store" })
+      fetch(`/api/public-stats?coins=${encodeURIComponent(coinKey)}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
         .then((json) => { if (alive) setData(json); })
         .catch(() => { if (alive) setError("Couldn't load live results right now."); });
@@ -99,7 +113,7 @@ export default function WatchLiveContent({ onBack }) {
     load();
     const id = setInterval(load, 30000);
     return () => { alive = false; clearInterval(id); };
-  }, []);
+  }, [coinKey]);
 
   const live = data?.live || { wins: 0, losses: 0, rate: null, avgR: null, total: 0, names: [], signals: [], recent: [] };
   const winRatePct = live.rate != null ? Math.round(live.rate * 100) : null;
@@ -146,6 +160,7 @@ export default function WatchLiveContent({ onBack }) {
                   ? `${live.names.join(" and ")} ${live.names.length === 1 ? "is" : "are"} live. The first results show up here as trades finish.`
                   : `${live.total} finished trade${live.total === 1 ? "" : "s"} from ${live.signals.length} live signal${live.signals.length === 1 ? "" : "s"}. Real prices, levels locked when each one fired.`}
               </div>
+              {myCoins && <div className="watch-legend-total">Showing {myCoins.join(", ")}{(coinsProp && coinsProp.length) ? ", the coins you follow" : ""}.</div>}
               {live.avgR != null && (
                 <div className="watch-legend-total">
                   Average result per trade: <b className={live.avgR >= 0 ? "ws-r pos" : "ws-r neg"}>{fmtR(live.avgR)}</b> (R is the amount risked on a trade).

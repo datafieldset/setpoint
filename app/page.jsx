@@ -1613,7 +1613,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" />Setpoint</div>
         </div>
-        <WatchLiveContent onBack={() => closeSubView(setShowWatchLive)} />
+        <WatchLiveContent onBack={() => closeSubView(setShowWatchLive)} coins={watchlist} />
       </div>
     );
   }
