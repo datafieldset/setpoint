@@ -181,3 +181,6 @@ Na asked that Trend Rider include every coin he adds, not just Bitcoin. The ALL_
 New ALL_SIGNALS entry "Rebound Rider": publicTest + serverOnly, tfs ["1h"], no coins list (every watched coin), added to VISIBLE_SIGNALS. No SIGNAL_RATES entry, so it is a public test (not verified) until it clears the live bar. SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged. Reason: Na asked for the bounce catcher back; the Oct 13 rebound study found a thin edge on the 1h chart only.
 
 Oct 14 (v19.38): Trend Rider description updated (1 minute chart no longer checks the 1 hour chart). SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged.
+
+## Oct 15 (v19.40): Rebound Rider on 5m
+Rebound Rider tfs now ["1h","5m"]; the 5m scan skips the 1h-trend condition (REBOUND_FREE_TFS). Same label, no brand or mark. History says roughly break-even on 5m (58%, +0.02R, 1,214 BTC trades), kept as a watched experiment at Na's request. Remove it if the live record sits near or under 57%.
