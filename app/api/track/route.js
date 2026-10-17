@@ -43,14 +43,14 @@ export async function POST(req) {
   if (!TF[tf] || (dir !== "bull" && dir !== "bear") || !ALL_SIGNALS.some((x) => x.name === label) || SERVER_ONLY_SIGNALS.includes(label) || !/^[A-Z0-9]{2,10}$/.test(String(coin))) {
     return Response.json({ error: "invalid_signal" }, { status: 400 });
   }
-  // Focus mode (v19.41): a hidden signal is not logged at all (no candle fetch, no database call).
-  if (!isSignalVisible(label)) return Response.json({ inserted: false, skipped: "hidden" });
   const e = Number(entry), st = Number(stop);
   if (![e, st].every((x) => Number.isFinite(x) && x > 0)) return Response.json({ error: "invalid_numbers" }, { status: 400 });
   const risk = Math.abs(e - st);
   if ((dir === "bull" ? st >= e : st <= e) || risk / e < 0.0005 || risk / e > 0.15) {
     return Response.json({ error: "invalid_levels" }, { status: 400 });
   }
+  // Focus mode (v19.41): a hidden signal is not logged at all (no candle fetch, no database call).
+  if (!isSignalVisible(label)) return Response.json({ inserted: false, skipped: "hidden" });
   let lastClose;
   try {
     const cs = await fetchCandles(String(coin), tf);
