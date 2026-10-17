@@ -2,6 +2,8 @@
 // Walks time forward in 5-minute steps through recent history, calling runTrend exactly as the cron would.
 import fs from "fs";
 import * as R from "../../lib/trendRunner.js";
+import { idle, exportState, importState } from "../../lib/idleState.js";
+process.env.IDLE_STATE_SECRET = process.env.IDLE_STATE_SECRET || "test-secret";
 import { aggregate } from "../../lib/resolve.js";
 import { TF } from "../../lib/timeframes.js";
 import { TREND_ORDER } from "../../lib/trend.js";
@@ -68,6 +70,8 @@ for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
     },
   };
   if (FORCE_FULL) deps.forceFull = true;
+  // CARRY=1: every run lands on a brand-new server instance that only gets the signed memory the last run handed back (what the cron loop does)
+  if (process.env.CARRY) { const carried = exportState(); idle.wipe(); if (carried) importState(carried.state, carried.sig, now); }
   const q0 = queries;
   const res = await R.runTrend(fakeSql, webpush, deps);
   stats.runs++;

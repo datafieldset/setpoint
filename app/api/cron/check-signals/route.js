@@ -30,6 +30,7 @@ import { computeSignals, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVE
 import { brandName } from "../../../../lib/brand.js";
 import { checkBigMove } from "../../../../lib/bigMove.js";
 import { runTrend } from "../../../../lib/trendRunner.js";
+import { exportState, importState } from "../../../../lib/idleState.js";
 import { ensureSignalTrack } from "../../../../lib/schema.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity } from "../../../../lib/marketContext.js";
 
@@ -44,7 +45,24 @@ function configureWebPush() {
   return true;
 }
 
-export async function GET(req) {
+// The scan's memory travels with the cron loop (lib/idleState.js): every response carries it, signed,
+// and the next call sends it back, so a quiet run needs no database call even when Vercel hands the
+// call to a fresh server instance.
+async function withState(res) {
+  try {
+    const out = exportState();
+    if (!out) return res;
+    return Response.json({ ...(await res.clone().json()), idleState: out.state, idleSig: out.sig }, { status: res.status });
+  } catch { return res; }
+}
+export async function GET(req) { return withState(await run(req)); }
+export async function POST(req) {
+  if (checkKey(req)) return checkKey(req);
+  try { const b = await req.json(); importState(b?.state, b?.sig, Date.now()); } catch { /* no carried memory, run as usual */ }
+  return withState(await run(req));
+}
+
+async function run(req) {
   const authFail = checkKey(req);
   if (authFail) return authFail;
 

@@ -62,11 +62,16 @@ jobs:
           # this exits cleanly on its own rather than getting forcibly
           # killed mid-request.
           END=$(( $(date +%s) + 330*60 ))
+          echo '{}' > state.json
           while [ "$(date +%s)" -lt "$END" ]; do
-            curl -sS -f "https://setpointalerts.com/api/cron/check-signals?key=verified2026" \
+            curl -sS -f -X POST -H 'content-type: application/json' --data-binary @state.json "https://setpointalerts.com/api/cron/check-signals?key=verified2026" \
               -o check.json \
               -w "\ncheck-signals HTTP status: %{http_code}\n" \
               --max-time 55 || echo "a single, real check-signals call failed, continuing the real, ongoing loop rather than exiting"
-            cat check.json 2>/dev/null || true
+            # print the result without the carried memory (a long string), then keep that memory for the next call
+            jq -c 'del(.idleState, .idleSig)' check.json 2>/dev/null || cat check.json 2>/dev/null || true
+            if jq -e '.idleState' check.json >/dev/null 2>&1; then
+              jq -c '{state: .idleState, sig: .idleSig}' check.json > next.json && mv next.json state.json
+            fi
             sleep 300
           done
