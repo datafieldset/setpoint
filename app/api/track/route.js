@@ -15,7 +15,7 @@
 // time, enforced by Postgres itself, not by anything client-side. Once
 // that row resolves, a genuinely new fire can create a fresh one.
 import { neon } from "@neondatabase/serverless";
-import { getLiveVerifiedGate, verifiedAtFire, ALL_SIGNALS, SERVER_ONLY_SIGNALS } from "../../../lib/signals.js";
+import { getLiveVerifiedGate, verifiedAtFire, ALL_SIGNALS, SERVER_ONLY_SIGNALS, isSignalVisible } from "../../../lib/signals.js";
 import { TF } from "../../../lib/timeframes.js";
 import { fetchCandles } from "../../../lib/marketContext.js";
 import { ensureSignalTrack } from "../../../lib/schema.js";
@@ -43,6 +43,8 @@ export async function POST(req) {
   if (!TF[tf] || (dir !== "bull" && dir !== "bear") || !ALL_SIGNALS.some((x) => x.name === label) || SERVER_ONLY_SIGNALS.includes(label) || !/^[A-Z0-9]{2,10}$/.test(String(coin))) {
     return Response.json({ error: "invalid_signal" }, { status: 400 });
   }
+  // Focus mode (v19.41): a hidden signal is not logged at all (no candle fetch, no database call).
+  if (!isSignalVisible(label)) return Response.json({ inserted: false, skipped: "hidden" });
   const e = Number(entry), st = Number(stop);
   if (![e, st].every((x) => Number.isFinite(x) && x > 0)) return Response.json({ error: "invalid_numbers" }, { status: 400 });
   const risk = Math.abs(e - st);

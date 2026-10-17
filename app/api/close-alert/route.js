@@ -15,6 +15,7 @@
 import { resolveOpenTrades } from "../../../lib/resolve.js";
 import { ensureSignalTrack } from "../../../lib/schema.js";
 import { checkKey } from "../../../lib/access.js";
+import { idle } from "../../../lib/idleState.js";
 
 export const dynamic = "force-dynamic";
 
@@ -25,6 +26,9 @@ export async function GET(req) {
 
   const conn = process.env.DATABASE_URL;
   if (!conn) return Response.json({ checked: 0, resolved: 0 }, { headers: noCache });
+  // The 5-minute scan already checks every open trade (lib/trendRunner.js), so when it has looked in the last
+  // 4 minutes there is nothing new to find: skip the database (dashboards call this every minute).
+  if (idle.recentlyChecked(Date.now(), 4 * 60 * 1000)) return Response.json({ checked: idle.openCount(), resolved: 0, recentlyChecked: true }, { headers: noCache });
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });

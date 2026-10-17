@@ -37,6 +37,13 @@ name: Signals cron
 # for safety instead of nearly triple redundancy) — this alone should
 # cut the real, active-compute time dramatically without changing how
 # often signals actually get checked in any way that matters.
+#
+# Oct 16 (v19.41): that did not let the database sleep. A check every
+# 5 minutes keeps Neon awake around the clock because it only sleeps
+# after 5 idle minutes, and it was about to use the whole 100 compute-hour
+# monthly allowance in 17 days. Now check-signals answers quiet runs from
+# memory with zero queries (lib/idleState.js), and the separate close-alert
+# call is gone from this loop because the same scan already closes trades.
 
 on:
   schedule:
@@ -61,10 +68,5 @@ jobs:
               -w "\ncheck-signals HTTP status: %{http_code}\n" \
               --max-time 55 || echo "a single, real check-signals call failed, continuing the real, ongoing loop rather than exiting"
             cat check.json 2>/dev/null || true
-            curl -sS -f "https://setpointalerts.com/api/close-alert?key=verified2026" \
-              -o close.json \
-              -w "\nclose-alert HTTP status: %{http_code}\n" \
-              --max-time 55 || echo "a single, real close-alert call failed, continuing the real, ongoing loop rather than exiting"
-            cat close.json 2>/dev/null || true
             sleep 300
           done

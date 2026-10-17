@@ -34,7 +34,9 @@ function feed(sec, pages, now) {
 //   PGLITE=/path/to/node_modules/@electric-sql/pglite/dist/index.js node e2e.mjs
 const { PGlite } = await import(process.env.PGLITE || "@electric-sql/pglite");
 const db = new PGlite();
+let queries = 0; // every database call, so a quiet run can be shown to make none
 const fakeSql = async (strings, ...v) => {
+  queries++;
   let text = strings[0];
   for (let i = 0; i < v.length; i++) text += `$${i + 1}` + strings[i + 1];
   const params = v.map((x) => (x instanceof Date ? x.toISOString() : x));
@@ -45,7 +47,9 @@ await db.exec("CREATE TABLE users (email TEXT, is_admin BOOLEAN, watchlist TEXT)
 const pushes = []; const pushLog = [];
 const webpush = { sendNotification: async (sub, payload) => { const p = JSON.parse(payload); pushes.push(p.title); pushLog.push({ who: sub.who, body: p.body, tag: p.tag }); } };
 const start = Date.parse(process.argv[2] || "2026-09-01T00:00:00Z"), end = Date.parse(process.argv[3] || "2026-10-12T17:00:00Z");
-const stats = { runs: 0, errors: {}, skipped: {}, opened: 0, closed: 0 };
+const stats = { runs: 0, errors: {}, skipped: {}, opened: 0, closed: 0, idleRuns: 0, idleQueries: 0, fullRuns: 0 };
+const fullTimes = [];
+const FORCE_FULL = !!process.env.FORCE_FULL; // FORCE_FULL=1 turns the quiet-run shortcut off, to compare
 for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
   const deps = {
     now,
@@ -63,13 +67,21 @@ for (let now = start + 90000; now <= end; now += 5 * 60 * 1000) {
       fetchMinute: async (c, start, end) => data[60].filter((x) => x.time >= start && x.time < end).map((x) => ({ time: x.time, low: x.low * SCALE[c], high: x.high * SCALE[c] })),
     },
   };
+  if (FORCE_FULL) deps.forceFull = true;
+  const q0 = queries;
   const res = await R.runTrend(fakeSql, webpush, deps);
   stats.runs++;
+  if (res.idle) { stats.idleRuns++; stats.idleQueries += queries - q0; } else { stats.fullRuns++; fullTimes.push(now); }
   stats.opened += res.opened; stats.closed += res.closed;
   const flat = {}; for (const [c, o] of Object.entries(res.byCoin)) { if (o.error) flat[c] = { error: o.error }; for (const [t, v] of Object.entries(o.byTf || {})) flat[c + ":" + t] = v; }
   for (const [tf, r] of Object.entries(flat)) { if (r.error) stats.errors[tf + ":" + r.error] = (stats.errors[tf + ":" + r.error] || 0) + 1; if (r.skipped) stats.skipped[tf + ":" + r.skipped] = (stats.skipped[tf + ":" + r.skipped] || 0) + 1; }
 }
 console.log("runs", stats.runs, "opened", stats.opened, "closed", stats.closed);
+{ // how long Neon would have stayed awake: each real run keeps it up for about 5.5 minutes (it sleeps after 5 idle minutes)
+  let awake = 0, upTo = 0; for (const t of fullTimes) { const from = Math.max(t, upTo); const to = t + 5.5 * 60000; if (to > from) awake += to - from; upTo = Math.max(upTo, to); }
+  console.log("estimated database awake share", Math.round((100 * awake) / (end - start)) + "%");
+}
+console.log("quiet runs", stats.idleRuns, "full runs", stats.fullRuns, "database calls during quiet runs", stats.idleQueries, "total database calls", queries);
 console.log("errors", JSON.stringify(stats.errors), "\nskipped", JSON.stringify(stats.skipped));
 const all = await fakeSql`SELECT tf, dir, outcome, r, exit_price, entry, stop, target, label, coin, bar_time FROM signal_track ORDER BY id`;
 for (const tf of TREND_ORDER) {
@@ -89,4 +101,10 @@ console.log("pushes by user:coin", JSON.stringify(who), "| sample XLM body:", (p
 console.log("rows", all.length, "bad", bad.length, bad.map((r) => JSON.stringify(r)).join(" "));
 const outcomeOk = all.every((r) => r.outcome === "open" || (r.outcome === "win") === (Number(r.r) > 0));
 console.log("win/loss matches sign of r:", outcomeOk);
+{ // a fingerprint of every trade and push, so the same window can be compared with and without the quiet-run shortcut
+  const sig = all.map((r) => [r.coin, r.tf, r.label, r.dir, Number(r.bar_time), r.outcome, Number(r.r), Number(r.exit_price)].join("|")).sort().join("\n");
+  const pg = pushLog.map((p) => p.who + p.tag).sort().join("\n");
+  const h = (t) => { let x = 0; for (let i = 0; i < t.length; i++) x = (x * 31 + t.charCodeAt(i)) >>> 0; return x.toString(16); };
+  console.log("fingerprint trades", h(sig), "pushes", h(pg));
+}
 fs.writeFileSync("e2e_1m.json", JSON.stringify(all.filter((r) => r.tf === "1m" && r.dir === "bull").map((r) => ({ t: Number(r.bar_time), entry: Number(r.entry), exit: Number(r.exit_price), r: Number(r.r) }))));

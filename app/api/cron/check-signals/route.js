@@ -26,7 +26,7 @@ import { checkKey } from "../../../../lib/access.js";
 import { neon } from "@neondatabase/serverless";
 import webpush from "web-push";
 import { TF } from "../../../../lib/timeframes.js";
-import { computeSignals, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire } from "../../../../lib/signals.js";
+import { computeSignals, thresholdsFor, getLiveVerifiedGate, marketRegime, PROVEN_THRESHOLD, reversalRisk, TESTING_SIGNALS, verifiedAtFire, FOCUS_MODE } from "../../../../lib/signals.js";
 import { brandName } from "../../../../lib/brand.js";
 import { checkBigMove } from "../../../../lib/bigMove.js";
 import { runTrend } from "../../../../lib/trendRunner.js";
@@ -73,6 +73,10 @@ export async function GET(req) {
     // big, fast move. Must never break the signal run itself.
     let bigMove = null;
     try { bigMove = await checkBigMove(sql, webpush); } catch (e) { bigMove = { error: String(e.message || e).slice(0, 80) }; }
+    // Focus mode (v19.41): the original signals are hidden from everyone, so detecting, logging and pushing
+    // them only kept the database awake. Trend Rider and Rebound Rider run above (lib/trendRunner.js).
+    // Turning FOCUS_MODE off in lib/signals.js brings all of this back as it was.
+    if (FOCUS_MODE) return Response.json({ checked: 0, sent: 0, reason: "focus_mode_originals_off", bigMove, trend });
     const rawSubs = await sql`
       SELECT DISTINCT u.email, u.watchlist, u.is_admin, ps.endpoint, ps.subscription
       FROM push_subscriptions ps
