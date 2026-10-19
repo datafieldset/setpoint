@@ -57,6 +57,10 @@ Direct instruction from Na after v19.23 broke it. The coins tab has ONE layout a
 
 Direct instruction from Na after the Trend Rider patching: adding a signal must not mean editing the page, the Guide, a feed or the admin count. A new signal is an `ALL_SIGNALS` entry (plus flags like `publicTest`, `serverOnly`, `coins`, `tfs`) and rows in `signal_track`. If a surface needs a signal's name hard-coded to handle it, that surface is wrong: make it read the flag. Shared logic lives in one place (`lib/schema.js`, `lib/results.js`, `lib/resolve.js`, `lib/liveScoreboard.js`); never copy a CREATE TABLE, result formula or scoreboard query into a route. Anything sent to a browser must go through `isSignalVisible` / `visibleGates`, and any SQL that uses LIMIT must filter hidden signals in the query (`focusSql`).
 
+## Standing rule: Setpoint always uses nokanetmail@gmail.com (Oct 19)
+
+Direct instruction from Na, because switching between his projects kept causing mix-ups. For this project the email is always `nokanetmail@gmail.com`: set `git config user.email nokanetmail@gmail.com` (and a name of `Na`) in the repo before the first commit of any session, and use that account for GitHub (`datafieldset/setpoint`), Vercel, Neon and every other service this project touches. Never use another project's identity here (hbosite, What Hawaii or a `noreply` address). When Na says "memory" he means this repo's `/memory/` folder and `CLAUDE.md`.
+
 ## Standing rule: discuss first, build only after a yes (Oct 13)
 
 Direct instruction from Na. Every chat is a discussion until he approves building. A question ("why does X do Y?") gets an answer and, if useful, a proposal. It never gets code changes, commits or pushes. Build only after an explicit yes. This overrides "just fix it" instincts: even small changes (a push message, a copy tweak) wait for approval.
