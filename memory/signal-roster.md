@@ -187,3 +187,6 @@ Rebound Rider tfs now ["1h","5m"]; the 5m scan skips the 1h-trend condition (REB
 
 ## Oct 22 (v19.42): Trend Rider minimum stop on 5m and 15m
 Trend Rider description changed (new minimum-stop sentence). SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged. Rule: on 5m and 15m a trade is skipped when its stop sits closer than 0.35% of price. Evidence: 6 months BTC, stop>=0.35% 5m 62% wins +0.09R (217 trades), 15m 65% +0.13R (189 trades). Re-check against the live record after about 100 new 5m trades; undo by deleting minStopPct from TREND_TFS.
+
+## Oct 22 (v19.43): Trend Rider 30m and 15m only in the US market open window
+Trend Rider description changed again (30m and 15m only fire 9:30-11:30am New York time, weekdays, not market holidays). SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged. Evidence is moderate (about 5 points over the rest of the day, steady in both halves, 1 year of 30m/15m history) and the cost is about 80% fewer alerts on those two charts, so watch the live record and drop the rule if it sits near 57%.
