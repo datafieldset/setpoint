@@ -159,3 +159,11 @@ Na asked what could have caught the Oct 15 BTC bounce ($79.7k to $82k, bottom ~3
 
 ## Oct 22: flips and stop size
 Mirror (opposite) trades of the old hidden signals on 6 years of BTC (2:1 setup, luck line 33%): original and mirror both sit 31-36%, no clear flip edge. Mirror of buys is faintly above luck (35-37% in several slices, steady in both halves, ~+0.05 to +0.1R); original sells 35.7% (~+0.07R). Parked, not built (Na: forget it for now, no new signals). Trend Rider stop size: wider-stop quartile wins more on 5m/15m (not 1m, not Rebound); wider stop plus bigger target showed nothing. Led to v19.42. Note: Trend Rider does short (about 2,500 sell pushes in a 6-month replay); the Oct 20-22 window just had only buys.
+
+## Oct 22: time-of-day / weekday checks on Trend Rider (nothing changed in the app)
+Na asked for time-of-day cuts. BTC replay of the live rules (win/avgR, break-even 57%): 1h 6 years (866 trades), 30m and 15m 1 year, 5m 6 months, 1m 2.5 months. Windows are Hawaii time.
+- 4 six-hour blocks: 1h is flat (60/60/59/58%). 30m/15m show 6am-noon weak and evening strong, but the halves flip (6-12 was 59% older half, 54% newer; evening 56% older, 72% newer). Noise.
+- Weekdays 61% vs weekends 59% (1,266 vs 409 trades): inside the margin of error; 1h alone 60% vs 60%. Weekends still make +0.03R. Not acted on.
+- 5am-10am weekdays: only 1m looks bad (49%, -0.14R on 79 trades vs 63% elsewhere, 2.5 months of data); 5m/15m/30m slightly lower, 1h better. The window was picked after seeing earlier results.
+- 3am-8am weekdays: ~average (62% vs 60%), 1m halves 71% then 49%. Not actionable.
+- Lesson: five different clock cuts gave five different answers; the more windows tried, the more likely luck looks like a pattern. Candidate to re-check in about a month: pause 1m Trend Rider 5am-10am weekdays. Re-test when each chart has a few hundred more live trades. Nothing was built.
