@@ -111,8 +111,10 @@ export default function WatchLiveContent({ onBack, coins: coinsProp }) {
         .catch(() => { if (alive) setError("Couldn't load live results right now."); });
     };
     load();
-    const id = setInterval(load, 30000);
-    return () => { alive = false; clearInterval(id); };
+    const id = setInterval(() => { if (document.visibilityState !== "hidden") load(); }, 30000); // v19.46: a hidden tab does not refresh (lets the database sleep)
+    const onShow = () => { if (document.visibilityState !== "hidden") load(); };
+    document.addEventListener("visibilitychange", onShow);
+    return () => { alive = false; clearInterval(id); document.removeEventListener("visibilitychange", onShow); };
   }, [coinKey]);
 
   const live = data?.live || { wins: 0, losses: 0, rate: null, avgR: null, total: 0, names: [], signals: [], recent: [] };

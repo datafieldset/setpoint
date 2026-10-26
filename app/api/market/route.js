@@ -82,7 +82,7 @@ const BIAS_MIN_SAMPLE = 5;
 // checks — so there was never a real reason for every single caller
 // to re-run the full query. Same, proven, in-memory cache pattern
 // already used for getLiveVerifiedGate, with a real, moderate TTL.
-const SIGNAL_BIAS_CACHE_MS = 10 * 60 * 1000; // 10 real minutes
+const SIGNAL_BIAS_CACHE_MS = 30 * 60 * 1000; // 30 real minutes (v19.46: was 10, to let the database sleep)
 
 async function fetchSignalBiasFromDB() {
   const conn = process.env.DATABASE_URL;

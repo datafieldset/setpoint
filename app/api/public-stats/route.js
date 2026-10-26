@@ -56,7 +56,7 @@ export const dynamic = "force-dynamic";
 // is genuinely fine here, and cuts database load from exactly the
 // kind of unpredictable, un-rate-limited traffic this route is most
 // exposed to.
-const CACHE_MS = 3 * 60 * 1000;
+const CACHE_MS = 5 * 60 * 1000; // v19.46: was 3 minutes; the win-rate numbers barely move, and every refresh woke the database
 
 // ?coins=BTC,XLM limits every number and list to those coins (Watch Live sends the viewer's own
 // watchlist, or BTC alone when there is none). No param means every coin, as before.

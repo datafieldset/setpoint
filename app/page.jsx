@@ -7,6 +7,7 @@ import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatility
 import { brandName } from "../lib/brand.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
+import { useVisibleInterval } from "./useVisibleInterval.js";
 
 /* =========================================================================
    SETPOINT — crypto market terminal
@@ -1205,12 +1206,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const load = useCallback(async () => {
     setLoading(true);
     setGlobalError(null);
-    // Fire-and-forget: check open positions against real price on the same
-    // always-on cycle as this refresh, not tied to how often new alerts
-    // happen to fire. Doesn't block or slow this function, and doesn't
-    // need its own success/failure handling here, it's allowed to just
-    // quietly retry next cycle if it fails.
-    fetch("/api/close-alert?key=verified2026", { cache: "no-store" }).catch(() => {});
+    // (v19.46: the page no longer pings /api/close-alert every minute. The 5-minute scan already closes trades at
+    // their stop or target, and each ping woke the database for nothing.)
     try {
       // BTC is always included here now, even for an account whose own
       // watchlist doesn't have it, since the real Market Meter needs a
@@ -1385,23 +1382,25 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadNews(); }, [loadNews]);
   useEffect(() => { loadOpenPositions(); }, [loadOpenPositions]);
-  useEffect(() => { const id = setInterval(loadOpenPositions, 60000); return () => clearInterval(id); }, [loadOpenPositions]);
+  useVisibleInterval(loadOpenPositions, 60000);
   useEffect(() => { loadMacro(); }, [loadMacro]);
-  useEffect(() => { const id = setInterval(loadNews, 300000); return () => clearInterval(id); }, [loadNews]);
-  useEffect(() => { const id = setInterval(loadMacro, 300000); return () => clearInterval(id); }, [loadMacro]);
-  useEffect(() => { const id = setInterval(load, 60000); return () => clearInterval(id); }, [load]);
-  useEffect(() => { loadBtcRegime(); const id = setInterval(loadBtcRegime, 60000); return () => clearInterval(id); }, [loadBtcRegime]);
+  useVisibleInterval(loadNews, 300000);
+  useVisibleInterval(loadMacro, 300000);
+  useVisibleInterval(load, 60000);
+  useEffect(() => { loadBtcRegime(); }, [loadBtcRegime]);
+  useVisibleInterval(loadBtcRegime, 60000);
   useEffect(() => { const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, []);
   useEffect(() => {
     const onVisible = () => {
       if (document.visibilityState === "visible") {
         load();
         loadOpenPositions();
+        loadBtcRegime();
       }
     };
     document.addEventListener("visibilitychange", onVisible);
     return () => document.removeEventListener("visibilitychange", onVisible);
-  }, [load, loadOpenPositions]);
+  }, [load, loadOpenPositions, loadBtcRegime]);
 
   const secsToRefresh = lastUpdate ? Math.max(0, 60 - Math.floor((now - lastUpdate) / 1000)) : null;
 
