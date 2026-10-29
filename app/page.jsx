@@ -140,6 +140,40 @@ function ChartAxis({ labels }) {
   );
 }
 
+// v19.49 (Na, Oct 29): Bitcoin's daily price against its 50-day average over the last 90 days. The space between the
+// two is shaded green while price is above the line and red while it's below, so a test of the line is easy to see.
+// `price` is the live price; the last point of the series uses it so the dot is current.
+function PriceVs50Chart({ series, price }) {
+  if (!series || series.length < 2) return null;
+  const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
+  const W = 300, H = 120, PAD = 6;
+  const vals = pts.flatMap((p) => [p.close, p.sma50]);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
+  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
+  const bands = [];
+  for (let i = 0; i < pts.length - 1; i++) {
+    const up = (pts[i].close - pts[i].sma50 + pts[i + 1].close - pts[i + 1].sma50) / 2 >= 0;
+    bands.push(<polygon key={i} points={`${x(i)},${y(pts[i].close)} ${x(i + 1)},${y(pts[i + 1].close)} ${x(i + 1)},${y(pts[i + 1].sma50)} ${x(i)},${y(pts[i].sma50)}`} fill={up ? "var(--green)" : "var(--red)"} fillOpacity=".2" />);
+  }
+  const last = pts[pts.length - 1];
+  const labels = [0, 1, 2, 3].map((k) => {
+    const idx = Math.round((k * (pts.length - 1)) / 3);
+    return { pct: (idx / (pts.length - 1)) * 100, text: new Date(pts[idx].time).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }) };
+  });
+  return (
+    <div className="chart-wrap">
+      <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        {bands}
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+      </svg>
+      <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
+      <ChartAxis labels={labels} />
+    </div>
+  );
+}
+
 function PriceVsMaChart({ series, maValue }) {
   if (!series || series.length < 2 || maValue == null) return null;
   const W = 300, H = 110, PAD = 6;
@@ -495,9 +529,20 @@ function synthesizeMarketRead(marketMeter, signalBias) {
 // looks like it disagrees with itself. Plain words, never a prediction.
 function meterHeadline(m, moves) {
   if (!m) return null;
-  const big = !moves ? "flat"
-    : Math.max(Math.abs(moves.h12), Math.abs(moves.h24) * 0.75, Math.abs(moves.h72) * 0.5) < 1 ? "flat"
-    : moves.h24 + moves.h72 >= 0 ? "up" : "down";
+  // v19.49 (Na, Oct 29): "running up" only when the bigger moves agree and are big enough to matter. Before, a +1.3% 12h
+  // move broke the flat line and 24h -0.9% plus 3d +1.1% (a net +0.2%) still got called "running up" inside a flat range.
+  // A big move is 3 days of 2% or more (as long as the last day isn't sharply the other way) or a single day of 2.5% or more.
+  // Otherwise: choppy when the moves clearly disagree, flat when everything is small.
+  let big = "flat";
+  if (moves) {
+    const { h12, h24, h72 } = moves;
+    if (Math.abs(h24) >= 2.5) big = h24 > 0 ? "up" : "down";
+    else if (Math.abs(h72) >= 2 && (h72 > 0 ? h24 > -1 : h24 < 1)) big = h72 > 0 ? "up" : "down";
+    else {
+      const m = [h12, h24, h72];
+      big = m.some((a) => a >= 0.8) && m.some((a) => a <= -0.8) ? "choppy" : "flat";
+    }
+  }
   const short = {
     "bullish-trending": "rising",
     "bearish-trending": "falling",
@@ -510,6 +555,7 @@ function meterHeadline(m, moves) {
   const bigWords = big === "up" ? "running up" : "running down";
   let line;
   if (!moves) line = `Short term, Bitcoin is ${short}.`;
+  else if (big === "choppy") line = trending ? `Bitcoin has been choppy over the last few days, but short term it's ${short}.` : `Bitcoin has been choppy over the last few days, and short term it's ${short}.`;
   else if (big === "flat") line = trending ? `Bitcoin is flat over the last few days, but short term it's ${short}.` : `Bitcoin is flat over the last few days, and short term it's ${short}.`;
   else if (sDir === big) line = `Bitcoin is ${bigWords}, and short term it's still ${short}.`;
   else line = `Bitcoin is ${bigWords} over the last few days, but short term it's ${short}.`;
@@ -729,6 +775,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">BTC 200-week MA</div><div className="guide-field-v">The real, average closing price of Bitcoin over the last 200 weeks, close to four years. A genuine, long-run structural line, not something that moves in a day. Every prior Bitcoin bear market has bottomed at or near this level historically. The chart shows real, recent price plotted against it, so you can see how price has actually approached it over time, not just where things stand this exact moment.</div></div>
         <div className="guide-field"><div className="guide-field-k">BTC 50 / 200-day SMA</div><div className="guide-field-v">Two real averages, the last 50 real trading days and the last 200, both plotted together. When the faster, 50-day line crosses above the slower, 200-day line, traders call that a golden cross, real bullish structure. Below it, a death cross. The real, most recent crossover, when there is one in view, gets marked directly on the chart.</div></div>
+        <div className="guide-field"><div className="guide-field-k">BTC price vs its 50-day</div><div className="guide-field-v">Bitcoin's daily close for the last 90 days against its 50-day average (the dashed line). The space between them is green while price is above the line and red while it's below. The text under the chart gives the exact daily close needed to break the line. The line moves a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
       </div>
 
@@ -1951,6 +1998,33 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             );
           })()}
 
+          {weekly200 && weekly200.dailyPrice?.length > 1 && weekly200.daily50 != null && (() => {
+            const live = data.BTC?.snap?.price;
+            const line = weekly200.daily50;
+            const price = live || weekly200.dailyPrice[weekly200.dailyPrice.length - 1].close;
+            const dist = ((price - line) / line) * 100;
+            const below = dist < 0;
+            const testing = Math.abs(dist) <= 1.5;
+            const tag = testing ? (below ? "Testing the 50-day from below" : "Testing the 50-day from above") : below ? "Below the 50-day" : "Above the 50-day";
+            return (
+              <div className={`w200-panel ${testing ? "near" : ""}`}>
+                <div className="w200-head">BTC price vs its 50-day average</div>
+                <div className={`cross-tag ${below ? "death" : "golden"}`}>{tag}, {dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</div>
+                <PriceVs50Chart series={weekly200.dailyPrice} price={live} />
+                <div className="cross-legend">
+                  <span className="cross-legend-item"><span className="cross-dot p50-price" /> Bitcoin daily close, ${fmtPrice(price)}</span>
+                  <span className="cross-legend-item"><span className="cross-dot p50-line" /> 50-day average, ${fmtPrice(line)}</span>
+                </div>
+                <div className="p50-need">
+                  {below
+                    ? <>To break the 50-day, Bitcoin needs a daily close above <b className="mono">${fmtPrice(line)}</b> ({Math.abs(dist).toFixed(1)}% above where it is now).</>
+                    : <>A daily close below <b className="mono">${fmtPrice(line)}</b> would break the 50-day ({Math.abs(dist).toFixed(1)}% below where it is now).</>}
+                </div>
+                <div className="w200-note">The line moves a little every day, so check it again at the close. Over ten years of history a daily close back above it has leaned bullish and a close under it bearish, but only about 30 cases each way, so this is context, not a trading signal.</div>
+              </div>
+            );
+          })()}
+
           {macroRead && macroRead.read && (
             <div className={`macro-panel ${macroRead.read.stance}`}>
               <div className="macro-head">News read <span className="macro-tag">outside the price data</span></div>
@@ -2566,6 +2640,11 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cross-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
 .cross-dot.fifty{background:var(--green-soft)}
 .cross-dot.twohundred{background:var(--muted)}
+.p50-chart{height:130px}
+.p50-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--text);pointer-events:none}
+.cross-dot.p50-price{background:var(--text)}
+.cross-dot.p50-line{background:var(--amber)}
+.p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
 .cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
 .cross-tag.death{color:var(--red-soft);background:var(--red-dim)}
 .macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
