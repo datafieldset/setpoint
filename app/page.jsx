@@ -174,6 +174,113 @@ function PriceVs50Chart({ series, price }) {
   );
 }
 
+// The bullish/bearish bar. v19.50: it shows twice, under the Market Meter on a phone (where the two columns stack and it
+// used to land at the very bottom) and at the top of the right column on a wide screen; CSS shows one of the two.
+function BiasPanel({ bias, risk }) {
+  if (!bias || !bias.dir) return null;
+  // pctUp is always "percent of the basket currently up," regardless of direction. That's correct for a bullish
+  // reading, backwards for a bearish one, since a falling pctUp during a real bearish move means MORE coins agree
+  // with the drop, not fewer. Show agreement with whichever direction is actually being displayed.
+  const agreePct = bias.dir === "bull" ? bias.pctUp : (bias.pctUp != null ? 1 - bias.pctUp : null);
+  return (
+    <div className={`bias-panel ${bias.dir}`}>
+      <div className="bias-row">
+        <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
+        <span className="bias-pct">{agreePct != null ? Math.round(agreePct * 100) : "—"}% of the market agrees</span>
+      </div>
+      {risk && risk.level !== "low" && (
+        <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
+      )}
+    </div>
+  );
+}
+
+// v19.50 (Na, Oct 29): the three Bitcoin average panels (200-week, 50/200-day, price vs 50-day) were a lot of scrolling.
+// One card now: a price ladder showing where Bitcoin sits against each line, the exact close needed to break the 50-day,
+// and tabs that show one chart at a time (50-day first, since that's the one in play).
+function LongTermLines({ weekly200, price: livePrice }) {
+  const [tab, setTab] = useState("d50");
+  const [about, setAbout] = useState(false);
+  if (!weekly200) return null;
+  const line50 = weekly200.daily50, line200 = weekly200.daily200, lineW = weekly200.sma;
+  const lastClose = weekly200.dailyPrice?.length ? weekly200.dailyPrice[weekly200.dailyPrice.length - 1].close : null;
+  const price = livePrice || lastClose;
+  if (!price || line50 == null) return null;
+  const dist = ((price - line50) / line50) * 100;
+  const below = dist < 0;
+  const testing = Math.abs(dist) <= 1.5;
+  const tag = testing ? (below ? "Testing the 50-day from below" : "Testing the 50-day from above") : below ? "Below the 50-day" : "Above the 50-day";
+
+  // Ladder: every line and Bitcoin on one vertical scale, labels nudged apart so none overlap.
+  const rungs = [
+    { k: "50-day", v: line50, c: "var(--amber)" },
+    { k: "Bitcoin", v: price, c: "var(--text)", me: true },
+    line200 != null && { k: "200-day", v: line200, c: "var(--muted)" },
+    lineW != null && { k: "200-week", v: lineW, c: "var(--muted)" },
+  ].filter(Boolean).sort((x, y) => y.v - x.v);
+  const hi = rungs[0].v, lo = rungs[rungs.length - 1].v, pad = (hi - lo) * 0.05 || 1;
+  const LH = 190, top = 14, bot = LH - 14;
+  const yOf = (v) => top + ((hi + pad - v) / (hi - lo + 2 * pad)) * (bot - top);
+  let prevLabel = -99;
+  const placed = rungs.map((r) => {
+    const y = yOf(r.v);
+    const ly = Math.max(y, prevLabel + 20);
+    prevLabel = ly;
+    return { ...r, y, ly };
+  });
+
+  const need = below
+    ? <>To break the 50-day, Bitcoin needs a daily close above <b className="mono">${fmtPrice(line50)}</b> ({Math.abs(dist).toFixed(1)}% above where it is now).</>
+    : <>A daily close below <b className="mono">${fmtPrice(line50)}</b> would break the 50-day ({Math.abs(dist).toFixed(1)}% below where it is now).</>;
+  const legends = {
+    d50: <>White line is Bitcoin's daily close, dashed amber is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
+    cross: line200 != null ? <>Green is the 50-day (${fmtPrice(line50)}), gray is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross." : "The 50 is below the 200, a death cross."} The amber dot is the most recent cross.</> : null,
+    w200: lineW != null ? <>Bitcoin's weekly close over the last 75 weeks. Dashed amber is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price.</> : null,
+  };
+  const tabs = [["d50", "50-day", weekly200.dailyPrice?.length > 1], ["cross", "Golden cross", weekly200.dailySeries?.length > 1 && line200 != null], ["w200", "200-week", weekly200.priceSeries?.length > 1 && lineW != null]].filter((t) => t[2]);
+  const active = tabs.some((t) => t[0] === tab) ? tab : tabs[0]?.[0];
+  const golden = line200 != null && line50 >= line200;
+
+  return (
+    <div className={`w200-panel lt-card ${testing ? "near" : ""}`}>
+      <div className="w200-head">Bitcoin vs its long-term lines</div>
+      <div className={`cross-tag ${below ? "death" : "golden"}`}>{tag}, {dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</div>
+      <svg className="lt-ladder" viewBox={`0 0 330 ${LH}`} role="img" aria-label={`Where Bitcoin sits against its averages: ${rungs.map((r) => `${r.k} $${fmtPrice(r.v)}`).join(", ")}`}>
+        <line x1="14" y1={top - 4} x2="14" y2={bot + 4} stroke="var(--border)" strokeWidth="2" />
+        {placed.map((r) => (
+          <g key={r.k}>
+            <circle cx="14" cy={r.y} r={r.me ? 6 : 4} fill={r.c} />
+            <line x1="22" y1={r.y} x2="34" y2={r.ly - 4} stroke="var(--border)" />
+            <text x="40" y={r.ly} fontSize={r.me ? 13.5 : 13} fontWeight={r.me ? 700 : 500} fill={r.c}>
+              {r.k} ${fmtPrice(r.v)}
+              {!r.me && <tspan fill="var(--muted)" fontSize="11.5" fontWeight="500">{" "}{(((price / r.v) - 1) * 100) >= 0 ? "+" : ""}{(((price / r.v) - 1) * 100).toFixed(1)}%</tspan>}
+            </text>
+          </g>
+        ))}
+      </svg>
+      <div className="p50-need">{need}</div>
+      <div className="lt-tabs" role="tablist">
+        {tabs.map(([k, label]) => (
+          <button key={k} role="tab" aria-selected={active === k} className={`lt-tab ${active === k ? "on" : ""}`} onClick={() => setTab(k)}>{label}</button>
+        ))}
+      </div>
+      {active === "d50" && <PriceVs50Chart series={weekly200.dailyPrice} price={livePrice} />}
+      {active === "cross" && <CrossoverChart series={weekly200.dailySeries} />}
+      {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} />}
+      <div className="lt-legend">{legends[active]}</div>
+      <div className="w200-note">
+        Context, not a trading signal.{" "}
+        <button className="lt-about" onClick={() => setAbout((v) => !v)} aria-expanded={about}>{about ? "Hide" : "About these lines"}</button>
+      </div>
+      {about && (
+        <div className="w200-note lt-about-text">
+          The line moves a little every day, so check it again at the close. Over ten years of history a daily close back above the 50-day has leaned bullish and a close under it bearish, but only about 30 cases each way. {golden ? "When the 50-day crosses above the 200-day, traders call that a golden cross." : "When the 50-day sits below the 200-day, traders call that a death cross."} The 200-week line is the long-run floor: every prior Bitcoin bear market has bottomed at or near it.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PriceVsMaChart({ series, maValue }) {
   if (!series || series.length < 2 || maValue == null) return null;
   const W = 300, H = 110, PAD = 6;
@@ -773,9 +880,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
-        <div className="guide-field"><div className="guide-field-k">BTC 200-week MA</div><div className="guide-field-v">The real, average closing price of Bitcoin over the last 200 weeks, close to four years. A genuine, long-run structural line, not something that moves in a day. Every prior Bitcoin bear market has bottomed at or near this level historically. The chart shows real, recent price plotted against it, so you can see how price has actually approached it over time, not just where things stand this exact moment.</div></div>
-        <div className="guide-field"><div className="guide-field-k">BTC 50 / 200-day SMA</div><div className="guide-field-v">Two real averages, the last 50 real trading days and the last 200, both plotted together. When the faster, 50-day line crosses above the slower, 200-day line, traders call that a golden cross, real bullish structure. Below it, a death cross. The real, most recent crossover, when there is one in view, gets marked directly on the chart.</div></div>
-        <div className="guide-field"><div className="guide-field-k">BTC price vs its 50-day</div><div className="guide-field-v">Bitcoin's daily close for the last 90 days against its 50-day average (the dashed line). The space between them is green while price is above the line and red while it's below. The text under the chart gives the exact daily close needed to break the line. The line moves a little every day. Background context, not a trading signal.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Three tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
       </div>
 
@@ -1938,6 +2043,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           )}
 
+          <div className="bias-in-left"><BiasPanel bias={bias} risk={risk} /></div>
+
           <div className="mc-top-row">
             {fng && (
               <div className="fng fng-compact">
@@ -1965,65 +2072,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           </div>
 
-          {weekly200 && (() => {
-            const btcPrice = data.BTC?.snap?.price;
-            const distPct = btcPrice ? ((btcPrice - weekly200.sma) / weekly200.sma) * 100 : null;
-            const near = distPct != null && Math.abs(distPct) <= 10;
-            return (
-              <div className={`w200-panel ${near ? "near" : ""}`}>
-                <div className="w200-head">BTC 200-week MA</div>
-                <div className="w200-row"><span className="w200-val mono">${fmtPrice(weekly200.sma)}</span>{distPct != null && <span className={`w200-dist ${distPct >= 0 ? "up" : "down"}`}>{distPct >= 0 ? "+" : ""}{distPct.toFixed(1)}% away</span>}</div>
-                <PriceVsMaChart series={weekly200.priceSeries} maValue={weekly200.sma} />
-                <div className="w200-note">Long-run structural line, weeks not minutes. Every prior Bitcoin bear market has bottomed at or near this level. Not a trading signal, background context only.</div>
-              </div>
-            );
-          })()}
-
-          {weekly200 && weekly200.daily50 != null && weekly200.daily200 != null && (() => {
-            const btcPrice = data.BTC?.snap?.price;
-            const dist50 = btcPrice ? ((btcPrice - weekly200.daily50) / weekly200.daily50) * 100 : null;
-            const dist200 = btcPrice ? ((btcPrice - weekly200.daily200) / weekly200.daily200) * 100 : null;
-            const golden = weekly200.daily50 >= weekly200.daily200;
-            return (
-              <div className="w200-panel dual">
-                <div className="w200-head">BTC 50 / 200-day SMA</div>
-                <div className={`cross-tag ${golden ? "golden" : "death"}`}>{golden ? "Golden cross, 50 above 200" : "Death cross, 50 below 200"}</div>
-                <CrossoverChart series={weekly200.dailySeries} />
-                <div className="cross-legend">
-                  <span className="cross-legend-item"><span className="cross-dot fifty" /> 50-day, ${fmtPrice(weekly200.daily50)}{dist50 != null && ` (${dist50 >= 0 ? "+" : ""}${dist50.toFixed(1)}%)`}</span>
-                  <span className="cross-legend-item"><span className="cross-dot twohundred" /> 200-day, ${fmtPrice(weekly200.daily200)}{dist200 != null && ` (${dist200 >= 0 ? "+" : ""}${dist200.toFixed(1)}%)`}</span>
-                </div>
-                <div className="w200-note">Faster, daily basis, a real, different read from the weekly line above. When the 50 crosses above the 200, traders call that a golden cross, real bullish structure. Below, a death cross. Not a trading signal on its own, background context only.</div>
-              </div>
-            );
-          })()}
-
-          {weekly200 && weekly200.dailyPrice?.length > 1 && weekly200.daily50 != null && (() => {
-            const live = data.BTC?.snap?.price;
-            const line = weekly200.daily50;
-            const price = live || weekly200.dailyPrice[weekly200.dailyPrice.length - 1].close;
-            const dist = ((price - line) / line) * 100;
-            const below = dist < 0;
-            const testing = Math.abs(dist) <= 1.5;
-            const tag = testing ? (below ? "Testing the 50-day from below" : "Testing the 50-day from above") : below ? "Below the 50-day" : "Above the 50-day";
-            return (
-              <div className={`w200-panel ${testing ? "near" : ""}`}>
-                <div className="w200-head">BTC price vs its 50-day average</div>
-                <div className={`cross-tag ${below ? "death" : "golden"}`}>{tag}, {dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</div>
-                <PriceVs50Chart series={weekly200.dailyPrice} price={live} />
-                <div className="cross-legend">
-                  <span className="cross-legend-item"><span className="cross-dot p50-price" /> Bitcoin daily close, ${fmtPrice(price)}</span>
-                  <span className="cross-legend-item"><span className="cross-dot p50-line" /> 50-day average, ${fmtPrice(line)}</span>
-                </div>
-                <div className="p50-need">
-                  {below
-                    ? <>To break the 50-day, Bitcoin needs a daily close above <b className="mono">${fmtPrice(line)}</b> ({Math.abs(dist).toFixed(1)}% above where it is now).</>
-                    : <>A daily close below <b className="mono">${fmtPrice(line)}</b> would break the 50-day ({Math.abs(dist).toFixed(1)}% below where it is now).</>}
-                </div>
-                <div className="w200-note">The line moves a little every day, so check it again at the close. Over ten years of history a daily close back above it has leaned bullish and a close under it bearish, but only about 30 cases each way, so this is context, not a trading signal.</div>
-              </div>
-            );
-          })()}
+          <LongTermLines weekly200={weekly200} price={data.BTC?.snap?.price} />
 
           {macroRead && macroRead.read && (
             <div className={`macro-panel ${macroRead.read.stance}`}>
@@ -2037,25 +2086,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         </aside>
 
         <aside className="onchain market-col-right">
-          {bias && bias.dir && (() => {
-            // pctUp is always "percent of the basket currently up," regardless
-            // of direction. That's correct for a bullish reading, backwards for
-            // a bearish one, since a falling pctUp during a real bearish move
-            // means MORE coins agree with the drop, not fewer. Show agreement
-            // with whichever direction is actually being displayed.
-            const agreePct = bias.dir === "bull" ? bias.pctUp : (bias.pctUp != null ? 1 - bias.pctUp : null);
-            return (
-              <div className={`bias-panel ${bias.dir}`}>
-                <div className="bias-row">
-                  <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
-                  <span className="bias-pct">{agreePct != null ? Math.round(agreePct * 100) : "—"}% of the market agrees</span>
-                </div>
-                {risk && risk.level !== "low" && (
-                  <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
-                )}
-              </div>
-            );
-          })()}
+          <div className="bias-in-right"><BiasPanel bias={bias} risk={risk} /></div>
 
           {netFlow ? (() => {
             const total = netFlow.toExchange + netFlow.fromExchange;
@@ -2645,6 +2676,15 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cross-dot.p50-price{background:var(--text)}
 .cross-dot.p50-line{background:var(--amber)}
 .p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
+.bias-in-left{display:none}
+.lt-ladder{width:100%;height:190px;display:block;margin:2px 0}
+.lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
+.lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.lt-tab.on{background:var(--border);color:var(--text);font-weight:700}
+.lt-tab:focus-visible,.lt-about:focus-visible{outline:2px solid var(--green-soft);outline-offset:2px}
+.lt-legend{font-size:12px;color:var(--muted);line-height:1.45;margin-top:2px}
+.lt-about{background:none;border:0;padding:0;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer}
+.lt-about-text{margin-top:6px}
 .cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
 .cross-tag.death{color:var(--red-soft);background:var(--red-dim)}
 .macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
@@ -2793,6 +2833,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
   .dash-body{grid-template-columns:1fr}
   .onchain{position:static}
   .market-cols{grid-template-columns:1fr}
+  .bias-in-left{display:block}
+  .bias-in-right{display:none}
 }
 @media(max-width:640px){
   .topbar{flex-wrap:wrap;gap:10px;padding:12px 0;position:relative}
