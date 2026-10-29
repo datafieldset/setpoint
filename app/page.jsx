@@ -242,7 +242,7 @@ function LongTermLines({ weekly200, price: livePrice }) {
   const golden = line200 != null && line50 >= line200;
 
   return (
-    <div className={`w200-panel lt-card ${testing ? "near" : ""}`}>
+    <div className="w200-panel lt-card">
       <div className="w200-head">Bitcoin vs its long-term lines</div>
       <div className={`cross-tag ${below ? "death" : "golden"}`}>{tag}, {dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</div>
       <svg className="lt-ladder" viewBox={`0 0 330 ${LH}`} role="img" aria-label={`Where Bitcoin sits against its averages: ${rungs.map((r) => `${r.k} $${fmtPrice(r.v)}`).join(", ")}`}>
@@ -2045,6 +2045,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
 
           <div className="bias-in-left"><BiasPanel bias={bias} risk={risk} /></div>
 
+          <LongTermLines weekly200={weekly200} price={data.BTC?.snap?.price} />
+
           <div className="mc-top-row">
             {fng && (
               <div className="fng fng-compact">
@@ -2071,8 +2073,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               })}
             </div>
           </div>
-
-          <LongTermLines weekly200={weekly200} price={data.BTC?.snap?.price} />
 
           {macroRead && macroRead.read && (
             <div className={`macro-panel ${macroRead.read.stance}`}>
