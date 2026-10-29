@@ -417,7 +417,7 @@ function Landing({ onPickPlan, onSignIn }) {
   return (
     <div className="landing">
       <nav className="nav">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         <div className="nav-r">
           <a className="watch-live-link" href="/watch"><span className="live-dot" />Watch it live</a>
           <button className="ghost" onClick={onSignIn}>Sign in</button>
@@ -487,7 +487,7 @@ function Landing({ onPickPlan, onSignIn }) {
       </section>
 
       <footer className="foot">
-        <div className="brand sm"><span className="logo-dot" />Setpoint</div>
+        <div className="brand sm"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         <div className="disc">Setpoint sends informational alerts only. It is not a broker, does not execute trades, and does not provide financial advice. Levels shown are computed reference points, not recommendations. Crypto is volatile, so do your own research.</div>
         <div className="foot-links"><a href="/terms">Terms</a><a href="/privacy">Privacy</a><a href="/contact">Contact</a></div>
       </footer>
@@ -558,7 +558,7 @@ function Auth({ mode, plan, onBack }) {
     <div className="auth-wrap">
       <button className="auth-back" onClick={onBack}>← back</button>
       <div className="auth-card">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         <h3>{mode === "signin" ? "Welcome back" : "Create your account"}</h3>
         {mode !== "signin" && <div className="plan-chip">{planName}</div>}
         <label className="fld"><span>Email</span><input value={email} onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && go()} placeholder="you@email.com" type="email" autoComplete="email" /></label>
@@ -1751,7 +1751,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return (
       <div className="dash">
         <div className="topbar">
-          <div className="brand"><span className="logo-dot" />Setpoint</div>
+          <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         </div>
         <Guide onBack={() => closeSubView(setShowGuide)} account={account} liveGate={liveGate} regimeGate={regimeGate} />
       </div>
@@ -1762,7 +1762,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return (
       <div className="dash">
         <div className="topbar">
-          <div className="brand"><span className="logo-dot" />Setpoint</div>
+          <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         </div>
         <WatchLiveContent onBack={() => closeSubView(setShowWatchLive)} coins={watchlist} />
       </div>
@@ -1773,7 +1773,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     return (
       <div className="dash">
         <div className="topbar">
-          <div className="brand"><span className="logo-dot" />Setpoint</div>
+          <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         </div>
         <AdminPanel onBack={() => closeSubView(setShowAdminPanel)} />
       </div>
@@ -1783,7 +1783,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   return (
     <div className="dash">
       <div className="topbar">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         {dashboardTab === "coins" && (
         <div className="tf-toggle">
           {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
@@ -2174,7 +2174,7 @@ function UpgradeGate({ account, onSignOut }) {
   return (
     <div className="upgrade-gate">
       <div className="ug-head">
-        <div className="brand"><span className="logo-dot" />Setpoint</div>
+        <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         <button className="ghost sm" onClick={onSignOut}>Sign out</button>
       </div>
       <div className="ug-hero">
@@ -2324,7 +2324,7 @@ export default function App() {
       <div className="app">
         <style>{CSS}</style>
         <VersionCheckBanner />
-        <div className="boot-screen"><span className="logo-dot" />Setpoint</div>
+        <div className="boot-screen"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
       </div>
     );
   }
@@ -2354,7 +2354,7 @@ export default function App() {
 
 /* ================================== CSS ================================= */
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700;12..96,800&family=Montserrat:wght@800&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 :root{
   --green:#00D179; --green-soft:#5EE9AE; --green-dim:rgba(0,209,121,.14);
   --red:#FF5C6C; --red-soft:#FF9AA3; --red-dim:rgba(255,92,108,.13);
@@ -2368,9 +2368,12 @@ const CSS = `
 .mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.02em}
-.brand{font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;letter-spacing:-.03em;display:flex;align-items:center;gap:9px}
+.brand{font-family:'Montserrat','Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.wm{line-height:1}
+.wm b{color:var(--green);font-weight:800}
 .brand.sm{font-size:16px}
-.logo-dot{width:11px;height:11px;border-radius:3px;background:var(--green);box-shadow:0 0 14px var(--green);display:inline-block}
+@media(max-width:480px){.brand{font-size:12.5px;gap:6px}.brand .logo-dot{box-shadow:0 0 10px var(--green)}.nav{flex-wrap:wrap;row-gap:12px}.nav .nav-r{gap:6px}.nav-r .ghost,.nav-r .solid,.nav-r .watch-live-link{padding:8px 8px;font-size:12px;white-space:nowrap;gap:5px}.nav-r .live-dot{display:none}}
+.logo-dot{width:.95em;height:.95em;border-radius:.26em;flex:none;background:var(--green);box-shadow:0 0 14px var(--green);display:inline-block}
 .solid{background:var(--green);color:#03110B;font-weight:600;border-radius:9px;padding:9px 16px;font-size:14px;transition:filter .15s}
 .solid:hover{filter:brightness(1.08)}
 .solid.lg{padding:13px 22px;font-size:15px}
@@ -2487,7 +2490,7 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .pay-note{background:var(--amber-dim);border:1px solid rgba(245,184,81,.3);color:var(--amber);font-size:12.5px;padding:11px 13px;border-radius:10px;margin-top:16px;line-height:1.5}
 .auth-err{background:var(--red-dim);border:1px solid rgba(255,92,108,.3);color:var(--red-soft);font-size:12.5px;padding:10px 13px;border-radius:10px;margin-top:14px;line-height:1.5}
 button:disabled{opacity:.6;cursor:not-allowed}
-.boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Bricolage Grotesque',sans-serif;font-weight:800;font-size:20px;color:var(--text)}
+.boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Montserrat','Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;color:var(--text)}
 .version-banner{position:sticky;top:env(safe-area-inset-top,0px);z-index:200;display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 14px;background:var(--amber);color:#1A1205;font-size:12.5px;font-weight:700}
 .version-banner button{background:#1A1205;color:var(--amber);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
 .auth-card .solid{margin-top:20px}
