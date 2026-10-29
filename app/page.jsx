@@ -431,7 +431,7 @@ function Landing({ onPickPlan, onSignIn }) {
         <div className="hero-l">
           <div className="eyebrow">SIGNALS, NOT AUTOPILOT</div>
           <h1>See the alert, the price, and where to get in, <em>all on one card.</em></h1>
-          <p className="sub">Setpoint watches the coins you pick and sends you a card the moment something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
+          <p className="sub">Crypto moves fast. Setpoint watches it for you and sends an alert the second something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
             <button className="solid lg" onClick={() => onPickPlan("starter")}>Get started, from $19.99/mo</button>
             <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live</a>

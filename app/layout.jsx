@@ -2,7 +2,7 @@ import Providers from "./providers.jsx";
 
 export const metadata = {
   title: "Setpoint",
-  description: "Crypto market data and signals, verified against real price history.",
+  description: "Crypto moves fast. Setpoint watches it for you and sends an alert the second something real happens, with the entry, stop, and target already drawn on it.",
   manifest: "/manifest.json",
   icons: { icon: "/icon-192.png", apple: "/icon-192.png" },
   appleWebApp: { capable: true, statusBarStyle: "black-translucent", title: "Setpoint" },
