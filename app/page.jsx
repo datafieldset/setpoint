@@ -419,7 +419,6 @@ function Landing({ onPickPlan, onSignIn }) {
       <nav className="nav">
         <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         <div className="nav-r">
-          <a className="watch-live-link" href="/watch"><span className="live-dot" />Watch it live</a>
           <button className="ghost" onClick={onSignIn}>Sign in</button>
           <button className="solid" onClick={() => onPickPlan("starter")}>Get started</button>
         </div>
@@ -2368,11 +2367,11 @@ const CSS = `
 .mono{font-family:'JetBrains Mono',monospace;font-variant-numeric:tabular-nums}
 button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
 h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.02em}
-.brand{font-family:'Montserrat','Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;letter-spacing:-.02em;display:flex;align-items:center;gap:10px;white-space:nowrap}
+.brand{font-family:'Montserrat','Bricolage Grotesque',sans-serif;font-weight:800;font-size:24px;letter-spacing:-.02em;display:flex;align-items:center;gap:11px;white-space:nowrap}
 .wm{line-height:1}
 .wm b{color:var(--green);font-weight:800}
-.brand.sm{font-size:16px}
-@media(max-width:480px){.brand{font-size:12.5px;gap:6px}.brand .logo-dot{box-shadow:0 0 10px var(--green)}.nav{flex-wrap:wrap;row-gap:12px}.nav .nav-r{gap:6px}.nav-r .ghost,.nav-r .solid,.nav-r .watch-live-link{padding:8px 8px;font-size:12px;white-space:nowrap;gap:5px}.nav-r .live-dot{display:none}}
+.brand.sm{font-size:18px}
+@media(max-width:480px){.brand{font-size:17px;gap:8px}.brand .logo-dot{box-shadow:0 0 10px var(--green)}.nav{flex-wrap:wrap;row-gap:12px}.nav .nav-r{gap:6px}.nav-r .ghost,.nav-r .solid,.nav-r .watch-live-link{padding:8px 8px;font-size:12px;white-space:nowrap;gap:5px}.nav-r .live-dot{display:none}}
 .logo-dot{width:.95em;height:.95em;border-radius:.26em;flex:none;background:var(--green);box-shadow:0 0 14px var(--green);display:inline-block}
 .solid{background:var(--green);color:#03110B;font-weight:600;border-radius:9px;padding:9px 16px;font-size:14px;transition:filter .15s}
 .solid:hover{filter:brightness(1.08)}
@@ -2490,7 +2489,7 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .pay-note{background:var(--amber-dim);border:1px solid rgba(245,184,81,.3);color:var(--amber);font-size:12.5px;padding:11px 13px;border-radius:10px;margin-top:16px;line-height:1.5}
 .auth-err{background:var(--red-dim);border:1px solid rgba(255,92,108,.3);color:var(--red-soft);font-size:12.5px;padding:10px 13px;border-radius:10px;margin-top:14px;line-height:1.5}
 button:disabled{opacity:.6;cursor:not-allowed}
-.boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Montserrat','Bricolage Grotesque',sans-serif;font-weight:800;font-size:19px;color:var(--text)}
+.boot-screen{min-height:100vh;display:flex;align-items:center;justify-content:center;gap:9px;font-family:'Montserrat','Bricolage Grotesque',sans-serif;font-weight:800;font-size:24px;color:var(--text)}
 .version-banner{position:sticky;top:env(safe-area-inset-top,0px);z-index:200;display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 14px;background:var(--amber);color:#1A1205;font-size:12.5px;font-weight:700}
 .version-banner button{background:#1A1205;color:var(--amber);border:none;border-radius:6px;padding:4px 10px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit}
 .auth-card .solid{margin-top:20px}
