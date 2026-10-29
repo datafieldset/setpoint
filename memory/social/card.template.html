@@ -1,0 +1,47 @@
+<!doctype html><html><head><meta charset="utf-8"><style>
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@600;800&family=Inter:wght@500;600&display=swap');
+*{box-sizing:border-box;margin:0}
+body{width:1080px;height:1080px;background:#0A0F0D;color:#EAF2EE;font-family:Inter,system-ui,sans-serif;position:relative;overflow:hidden}
+.glow{position:absolute;left:-260px;top:-300px;width:900px;height:900px;background:radial-gradient(closest-side,{{GLOW}},transparent)}
+.brand{position:absolute;left:64px;top:56px;display:flex;align-items:center;gap:14px;font:800 32px Montserrat,sans-serif;letter-spacing:-.02em}
+.brand i{width:30px;height:30px;border-radius:9px;background:#00D179;box-shadow:0 0 22px #00D179}
+.brand b{color:#00D179;font-weight:800}
+.live{position:absolute;right:64px;top:62px;font:600 22px Inter;color:#8FA39A}
+.verdict{position:absolute;left:60px;top:132px;font:800 168px/1 Montserrat,sans-serif;color:{{VCOLOR}};letter-spacing:-.035em}
+.sub{position:absolute;left:64px;top:326px;width:900px;font:600 36px/1.3 Inter}
+.price{position:absolute;left:64px;top:430px;display:flex;align-items:baseline;gap:20px}
+.price .p{font:800 84px Montserrat;letter-spacing:-.02em}
+.price .c{font:600 32px Inter;color:{{CHGCOLOR}}}
+.lad{position:absolute;left:64px;right:64px;top:560px;height:300px}
+.rail{position:absolute;left:210px;top:10px;bottom:10px;width:3px;background:#26332D;border-radius:2px}
+.row{position:absolute;left:0;right:0;height:44px;display:flex;align-items:center}
+.row .n{width:190px;text-align:right;font:600 27px Inter;color:#8FA39A}
+.row .dot{position:absolute;left:203px;width:17px;height:17px;border-radius:50%;background:#26332D;box-shadow:0 0 0 3px #3A4A43}
+.row .v{margin-left:62px;font:800 36px Montserrat}
+.row .pc{margin-left:auto;font:600 26px Inter;color:#8FA39A}
+.row.btc{background:rgba(255,255,255,.07);border-radius:12px;height:62px}
+.row.btc .n{color:#fff}.row.btc .dot{background:#fff;box-shadow:0 0 16px #fff}
+.row.btc .v{font-size:42px}.row.btc .pc{padding-right:18px;color:{{CHGCOLOR}}}
+.row.d50 .v{color:#F5B544}.row.d50 .dot{background:#F5B544;box-shadow:0 0 0 3px #F5B544}
+.strip{position:absolute;left:64px;right:64px;top:880px;height:128px;border:1px solid #1F2B25;border-radius:20px;background:#0E1512;padding:20px 30px;display:flex;flex-direction:column;justify-content:space-between}
+.r1{display:flex;align-items:center;justify-content:space-between;font:600 28px Inter}
+.r1 em{font-style:normal;background:{{GCBG}};color:{{GCCOLOR}};border-radius:9px;padding:5px 14px;font-size:24px;margin-left:12px}
+.r1 span{color:#8FA39A;font-weight:500}.r1 span b{color:#EAF2EE;font-weight:600}
+.r2{font:500 28px Inter;color:#C7D4CD}.r2 b{color:#F5B544;font-weight:600}
+.foot{position:absolute;left:64px;right:64px;bottom:30px;display:flex;justify-content:space-between;font:500 20px Inter;color:#6D8077}
+</style></head><body>
+<div class="glow"></div>
+<div class="brand"><i></i><span>SETPOINT<b>ALERTS</b></span></div>
+<div class="live">Market Meter</div>
+<div class="verdict">{{VERDICT}}</div>
+<div class="sub">{{SUB}}</div>
+<div class="price"><span class="p">{{PRICE}}</span><span class="c">{{CHG}} today</span></div>
+<div class="lad"><div class="rail"></div>
+{{ROWS}}
+</div>
+<div class="strip">
+ <div class="r1"><div>Golden cross<em>{{GC}}</em></div><span>Fear &amp; Greed <b>{{FNG}}</b></span></div>
+ <div class="r2">{{FLIP}}</div>
+</div>
+<div class="foot"><span>Context, not advice. Never places trades.</span><span>setpointalerts.com</span></div>
+</body></html>

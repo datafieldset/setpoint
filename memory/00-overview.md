@@ -44,3 +44,6 @@ Watches BTC/XLM/XRP/SOL (user-configurable watchlist) across six timeframes (1m,
 4. Discuss and propose before building — Na's explicit, standing preference. Only proceed straight to building when he's given a clear, direct go-ahead (or the request itself is an explicit, detailed build spec).
 5. Validate every change locally (`node --check`, JSX parse check) before pushing. Push directly to `main` (no PR flow in use). Bump the version string in commit messages (vX.Y). Wait ~90s after push, then curl the homepage to confirm 200 and no client-side exception before reporting back.
 6. Update `/memory/` after any major decision — new promotion, new kill, new architectural pattern, new lesson learned. Any commit touching `SIGNAL_RATES`/`KILLED_COMBOS`/`ALL_SIGNALS`/`TESTING_SIGNALS` updates `signal-roster.md` in that same commit, not a later one.
+
+## Social posts
+Tweets and the square share card live in memory/social/ (README, card template, render script). When Na asks for a tweet, follow that README.
