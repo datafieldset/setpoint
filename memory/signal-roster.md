@@ -190,3 +190,6 @@ Trend Rider description changed (new minimum-stop sentence). SIGNAL_RATES, KILLE
 
 ## Oct 22 (v19.44): Trend Rider minimum stop on 1m
 Trend Rider description changed (1m skips stops under 0.2% of price). SIGNAL_RATES, KILLED_COMBOS, TESTING_SIGNALS unchanged. Reason was tradability (a target two price ticks away), not win rate, which did not change with stop size on 1m. Rebound Rider 5m still has no minimum stop (no win-rate link found); revisit if it also throws untradable alerts.
+
+## Oct 29 (v20.1): Rebound Rider 5m BTC gap rule
+No ALL_SIGNALS entry added or removed, no SIGNAL_RATES change; the Rebound Rider `what` text gained one sentence about the Binance gap rule (Guide stays accurate). New condition "gap" in lib/rebound.js (REBOUND_GAP_MAX = { "5m": 0 }), prices from lib/binanceGap.js, BTC only, fails open. Reason and numbers: memory/lessons-learned.md "Binance as a filter" (1,156 BTC trades: gap at or below 0 won 61.4% / +0.075R, above 0 won 53.2% / -0.069R, same in both halves and all three thirds). Treat live results as the test; check on Nov 22.
