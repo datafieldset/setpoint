@@ -85,7 +85,24 @@ async function generateMacroRead(key) {
 
 const NO_CACHE = { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } };
 
+// v19.57 (Oct 29): the macro read is regenerated every few hours, but every refresh (about every 5 minutes per open tab)
+// used to ask the database twice, which kept Neon awake. Now this instance remembers a good answer for 30 minutes and
+// only creates the table once. A failed answer is never remembered.
+const MACRO_MEMORY_MS = 30 * 60 * 1000;
+let macroMemory = null; // { at, value }
+let macroTableReady = false;
+
 export async function GET() {
+  if (macroMemory && Date.now() - macroMemory.at < MACRO_MEMORY_MS) return Response.json(macroMemory.value, NO_CACHE);
+  const res = await getMacro();
+  try {
+    const body = await res.clone().json();
+    if (body && !body.error) macroMemory = { at: Date.now(), value: body };
+  } catch { /* not remembered */ }
+  return res;
+}
+
+async function getMacro() {
   const key = process.env.ANTHROPIC_API_KEY;
   const conn = process.env.DATABASE_URL;
 
@@ -97,13 +114,16 @@ export async function GET() {
   try {
     const { neon } = await import("@neondatabase/serverless");
     const sql = neon(conn, { fetchOptions: { cache: "no-store" } });
-    await sql`
-      CREATE TABLE IF NOT EXISTS macro_cache (
-        key TEXT PRIMARY KEY,
-        value JSONB NOT NULL,
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      )
-    `;
+    if (!macroTableReady) {
+      await sql`
+        CREATE TABLE IF NOT EXISTS macro_cache (
+          key TEXT PRIMARY KEY,
+          value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+        )
+      `;
+      macroTableReady = true;
+    }
     const rows = await sql`SELECT value, updated_at FROM macro_cache WHERE key = 'macro_read'`;
     const isFresh = rows.length && (Date.now() - new Date(rows[0].updated_at).getTime()) < CACHE_HOURS * 3600 * 1000;
     if (isFresh) return Response.json(rows[0].value, NO_CACHE);

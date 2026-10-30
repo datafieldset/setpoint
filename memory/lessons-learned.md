@@ -176,3 +176,6 @@ Na asked for time-of-day cuts. BTC replay of the live rules (win/avgR, break-eve
 
 ## AI/ML trade filter study (Oct 29)
 Walk-forward test on 2,943 BTC replay trades (logistic regression + small boosted trees, 14 features, trained on earlier trades, scored on later ones). Out-of-sample AUC 0.40 to 0.61, mostly near 0.50 (coin flip). Keeping the "best" 60% of Trend Rider trades: 61.0% vs 60.5% (logistic), 60.0% (trees). Rebound 5m: worse than keeping all. A random 60% matched or beat the model 35% to 75% of the time. Decision: no AI filter. Do not claim AI in landing copy or meta description.
+
+## Neon quota, round two (Oct 29)
+The 5-minute cron was already idle-safe (v19.41). The remaining drain was the dashboard: any visible signed-in tab asked the database every 30 to 60 seconds, and two routes ran uncached CREATE TABLE plus SELECT on every call. Neon only sleeps after 5 quiet minutes, so a gap of 6 minutes saves almost nothing; quiet-tab refresh gap is 20 minutes on purpose. I first proposed a key-value store for this, but the idle design already existed: read memory/infrastructure.md and version-history.md before proposing infra.
