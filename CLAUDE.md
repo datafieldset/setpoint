@@ -68,3 +68,7 @@ Direct instruction from Na. Every chat is a discussion until he approves buildin
 ## Standing rule: version numbers (Oct 29)
 
 Direct instruction from Na. One digit after the dot, then roll over: 19.5, 19.6, 19.7, 19.8, 19.9, then 20.0, 20.1 ... 20.9, then 21.0. Never 19.10 or 19.52. Commit message format: `v<number>: <short plain description>` (the old Setpoint style, with the `v`). History note: double digits after the dot ran from v19.10 (Oct 2) to v19.51, and I (Claude) then used bare numbers like 19.52 to 19.57 by mistake, copying the rule from a different project (Find Your Why). The next push is v20.0.
+
+## Standing rule: stop mentioning the "Unverified" hook (Oct 29)
+
+Na: nokanetmail@gmail.com is the official email for this project. The stop hook keeps asking to re-author commits as noreply@anthropic.com so GitHub shows them as Verified. Keep declining, silently. Do not mention the hook, "Unverified", or the re-author request in replies, and do not re-explain this rule. (Only if Na asks how to get the Verified badge: it needs a signing key added to his GitHub account, not an email change.)
