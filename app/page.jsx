@@ -2004,7 +2004,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <aside className="onchain market-col-left">
           <div className="section-head"><h2>Market</h2><span className="sh-sub">live</span></div>
 
-          {signalBias && marketMeter && (
+          {marketMeter && (
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
               <div className="mm-head">
                 <span className="mm-title">Market Meter</span>
@@ -2030,12 +2030,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               {mmWhy && (
                 <div className="mm-why">
                   {synthesizeMarketRead(marketMeter, signalBias) && <div className="mm-synthesis">{synthesizeMarketRead(marketMeter, signalBias)}</div>}
+                  {signalBias && (<>
                   <div className="sb-head"><span className="sb-label">{signalBias.label} <span className="sb-score mono">{signalBias.score - 50 > 0 ? "+" : ""}{signalBias.score - 50}</span></span></div>
                   <div className="sb-sub">
                     {signalBias.bullRate != null
                       ? `Longs: ${Math.round(signalBias.bullRate * 100)}% (${signalBias.bullN}) · Shorts: ${Math.round(signalBias.bearRate * 100)}% (${signalBias.bearN}), real win rate, last ${signalBias.bullN + signalBias.bearN} resolved trades.`
                       : `Longs: ${signalBias.bullN} resolved · Shorts: ${signalBias.bearN} resolved, needs at least 5 on each side to show a real lean.`}
                   </div>
+                  </>)}
                   <div className="mm-scope-note">The marker is a short-term, 5 minute read (strength {marketMeter.level} of 5). It can differ from the bigger move above, they answer different questions.</div>
                 </div>
               )}

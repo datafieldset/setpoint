@@ -87,6 +87,7 @@ function SignalRow({ s }) {
 export default function WatchLiveContent({ onBack, coins: coinsProp }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [dbDown, setDbDown] = useState(false); // Oct 29: the database can refuse (plan quota). Don't show a fake 0 and 0 then.
 
   // Only the coins this person follows (Na, Oct 14). Signed in with no coins saved, or signed out: Bitcoin alone.
   const [myCoins, setMyCoins] = useState(coinsProp && coinsProp.length ? coinsProp : null);
@@ -107,7 +108,7 @@ export default function WatchLiveContent({ onBack, coins: coinsProp }) {
     const load = () => {
       fetch(`/api/public-stats?coins=${encodeURIComponent(coinKey)}`, { cache: "no-store" })
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
-        .then((json) => { if (alive) setData(json); })
+        .then((json) => { if (!alive) return; if (json && json.error) { setDbDown(true); return; } setDbDown(false); setData(json); })
         .catch(() => { if (alive) setError("Couldn't load live results right now."); });
     };
     load();
@@ -138,6 +139,7 @@ export default function WatchLiveContent({ onBack, coins: coinsProp }) {
       </div>
 
       {error && <div className="watch-empty">{error}</div>}
+      {dbDown && !data && <div className="watch-empty">Results are catching up. Check back in a little while.</div>}
 
       {data && (
         <>
