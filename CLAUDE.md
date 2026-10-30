@@ -64,3 +64,7 @@ Direct instruction from Na, because switching between his projects kept causing 
 ## Standing rule: discuss first, build only after a yes (Oct 13)
 
 Direct instruction from Na. Every chat is a discussion until he approves building. A question ("why does X do Y?") gets an answer and, if useful, a proposal. It never gets code changes, commits or pushes. Build only after an explicit yes. This overrides "just fix it" instincts: even small changes (a push message, a copy tweak) wait for approval.
+
+## Standing rule: version numbers (Oct 29)
+
+Direct instruction from Na. One digit after the dot, then roll over: 19.5, 19.6, 19.7, 19.8, 19.9, then 20.0, 20.1 ... 20.9, then 21.0. Never 19.10 or 19.52. Commit message format: `v<number>: <short plain description>` (the old Setpoint style, with the `v`). History note: double digits after the dot ran from v19.10 (Oct 2) to v19.51, and I (Claude) then used bare numbers like 19.52 to 19.57 by mistake, copying the rule from a different project (Find Your Why). The next push is v20.0.

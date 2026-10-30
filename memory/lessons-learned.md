@@ -179,3 +179,16 @@ Walk-forward test on 2,943 BTC replay trades (logistic regression + small booste
 
 ## Neon quota, round two (Oct 29)
 The 5-minute cron was already idle-safe (v19.41). The remaining drain was the dashboard: any visible signed-in tab asked the database every 30 to 60 seconds, and two routes ran uncached CREATE TABLE plus SELECT on every call. Neon only sleeps after 5 quiet minutes, so a gap of 6 minutes saves almost nothing; quiet-tab refresh gap is 20 minutes on purpose. I first proposed a key-value store for this, but the idle design already existed: read memory/infrastructure.md and version-history.md before proposing infra.
+
+## Parked: faster 1-minute checks for Trend Rider 1m (Na, Oct 29, after the Neon quota resets)
+Our real entry lag is our own scan: the cron runs every 5 minutes and an open tab checks every minute, so a 1m breakout can be noticed minutes late. Checking every minute for Trend Rider 1m only would bring entries sooner, but costs about 5x the database time. Revisit once the v19.57 database savings are proven on Na's Neon graph.
+
+## Other exchange data, what is reachable (Oct 29)
+From a US cloud server: binance.com and fapi.binance.com return 451 (blocked). data-api.binance.vision (Binance's market-data-only mirror, same BTCUSDT prices) works, so does data.binance.vision (history files). OKX, Kraken, Bitfinex, Bitstamp, Gemini, Deribit, KuCoin, Gate and MEXC all answered. Bybit 403. CoinGecko free tier rate-limited (429).
+Quick test, 3,000 one-minute BTC candles: Binance and Coinbase move together (same-minute correlation 0.989). Neither leads the other at 1-minute resolution (lag correlations all under 0.05). Binance trades about 2.3x Coinbase's BTC volume. Takeaway: the speed gap is sub-second, invisible to our 1m+ candles. Possible uses, both untested: Binance volume as a breakout filter for Trend Rider, and Coinbase-vs-Binance gap as Market tab context.
+
+## Binance as a filter, replay test (Oct 29, 2,943 BTC trades, Apr 20 to Oct 23)
+Matched every replay trade to the same-bar Binance candle (data-api.binance.vision). Tried three reads per group: Binance volume ratio, Coinbase volume ratio, and the Coinbase-vs-Binance price gap in the trade's direction. 15 splits in all, so a few will look good by luck.
+Trend Rider: nothing holds. Binance volume on 15m showed +11 points high vs low (220 trades, 15% luck chance), too thin; 1m and 5m disagree with each other.
+Rebound Rider 5m: the gap is the one that held. High-gap third 52.6% / -0.08R vs low-gap third 63.4% / +0.11R, luck chance under 1%, same direction in both halves and all three time thirds. Walk-forward (threshold from the first half, applied to the unseen second half): skipping the top third of gap kept 58.1% / +0.02R vs 56.1% / -0.02R for all; skipping the top half kept 61.2% / +0.07R vs 56.1% / -0.02R. Skipped trades ran 50% / -0.12R. Barely correlated with the Coinbase volume read (-0.06).
+Caveats: Rebound 5m is the weakest signal (+0.005R overall), replay vs live usually a few points worse, one regime, and the live scan would need a Binance mirror call from Vercel (reachability from Vercel not yet confirmed). Not built. Candidate for the Nov 22 re-check.
