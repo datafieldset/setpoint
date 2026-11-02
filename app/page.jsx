@@ -640,10 +640,14 @@ function meterHeadline(m, moves) {
   // A big move is 3 days of 2% or more (as long as the last day isn't sharply the other way) or a single day of 2.5% or more.
   // Otherwise: choppy when the moves clearly disagree, flat when everything is small.
   let big = "flat";
+  let dayOnly = false;
   if (moves) {
     const { h12, h24, h72 } = moves;
     if (Math.abs(h24) >= 2.5) big = h24 > 0 ? "up" : "down";
     else if (Math.abs(h72) >= 2 && (h72 > 0 ? h24 > -1 : h24 < 1)) big = h72 > 0 ? "up" : "down";
+    // v20.3 (Na, Nov 2): Bitcoin was down 2.0% (about $2k) in a day and the headline still said "flat". A day move of 2.0% or more,
+    // as the strip below shows it, now gets named: "down 2% over the last day". 1.95 is where the strip rounds to 2.0%.
+    else if (Math.abs(h24) >= 1.95) { big = h24 > 0 ? "up" : "down"; dayOnly = true; }
     else {
       const m = [h12, h24, h72];
       big = m.some((a) => a >= 0.8) && m.some((a) => a <= -0.8) ? "choppy" : "flat";
@@ -663,6 +667,10 @@ function meterHeadline(m, moves) {
   if (!moves) line = `Short term, Bitcoin is ${short}.`;
   else if (big === "choppy") line = trending ? `Bitcoin has been choppy over the last few days, but short term it's ${short}.` : `Bitcoin has been choppy over the last few days, and short term it's ${short}.`;
   else if (big === "flat") line = trending ? `Bitcoin is flat over the last few days, but short term it's ${short}.` : `Bitcoin is flat over the last few days, and short term it's ${short}.`;
+  else if (dayOnly) {
+    const dayWords = `${big === "up" ? "up" : "down"} ${Math.round(Math.abs(moves.h24))}% over the last day`;
+    line = sDir === big ? `Bitcoin is ${dayWords}, and short term it's still ${short}.` : `Bitcoin is ${dayWords}, but short term it's ${short}.`;
+  }
   else if (sDir === big) line = `Bitcoin is ${bigWords}, and short term it's still ${short}.`;
   else line = `Bitcoin is ${bigWords} over the last few days, but short term it's ${short}.`;
   if (m.level >= 4 && trending) line += " It's stretched, so chasing is risky.";
