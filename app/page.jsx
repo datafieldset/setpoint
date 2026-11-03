@@ -2098,7 +2098,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               </div>
             )}
             <div className="mc-vol-block">
-              <div className="oc-cols"><span>24h change</span><span>24h volume</span></div>
               {watchlist.map((sym) => {
                 const st = data[sym]?.stats;
                 const up = st && st.change24 >= 0;
@@ -2107,8 +2106,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                     <div className="oc-sym">{sym}</div>
                     {st ? (
                       <>
-                        <div className={`oc-chg ${up ? "up" : "down"}`}>{fmtPct(st.change24)}</div>
-                        <div className="oc-vol mono">{fmtVol(st.volUsd)}</div>
+                        <div className={`oc-chg ${up ? "up" : "down"}`}>{fmtPct(st.change24)} <span className="oc-unit">24h</span></div>
+                        <div className="oc-vol mono">{fmtVol(st.volUsd)} <span className="oc-unit">volume</span></div>
                       </>
                     ) : <div className="oc-chg quiet">no data</div>}
                   </div>
@@ -2126,9 +2125,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               {macroRead.read.catalyst && <div className="macro-catalyst">⏳ {macroRead.read.catalyst}</div>}
             </div>
           )}
-        </aside>
-
-        <aside className="onchain market-col-right">
           {netFlow ? (() => {
             const total = netFlow.toExchange + netFlow.fromExchange;
             const netDir = netFlow.net > 0 ? "sell" : "buy"; // net = sellUsd - buyUsd
@@ -2723,7 +2719,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cross-dot.p50-price{background:var(--text)}
 .cross-dot.p50-line{background:var(--amber)}
 .p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
-.lt-ladder{width:100%;height:190px;display:block;margin:2px 0}
+.lt-ladder{width:100%;max-width:330px;height:auto;display:block;margin:2px 0}
 .lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
 .lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
 .lt-tab.on{background:var(--border);color:var(--text);font-weight:700}
@@ -2795,10 +2791,12 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .oc-cols{display:grid;grid-template-columns:1fr auto auto;gap:12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:0 0 8px}
 .oc-cols span:first-child{visibility:hidden}
 .oc-row{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--hair)}
+.mc-vol-block .oc-row:first-child{border-top:0;padding-top:2px}
+.oc-unit{font-family:'Inter',sans-serif;font-weight:400;font-size:11px;color:var(--muted)}
 .oc-sym{font-family:'Bricolage Grotesque';font-weight:700;font-size:14px}
-.oc-chg{font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;text-align:right;min-width:64px}
+.oc-chg{font-family:'JetBrains Mono';font-size:12.5px;font-weight:600;text-align:right;min-width:96px}
 .oc-chg.up{color:var(--green)} .oc-chg.down{color:var(--red)} .oc-chg.quiet{color:var(--dim);font-family:inherit}
-.oc-vol{font-size:12px;color:var(--muted);text-align:right;min-width:56px}
+.oc-vol{font-size:12px;color:var(--muted);text-align:right;min-width:110px}
 .oc-foot{color:var(--dim);font-size:11px;line-height:1.55;margin-top:14px;padding-top:12px;border-top:1px solid var(--hair)}
 
 
