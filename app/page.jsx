@@ -387,6 +387,28 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 }
 
 /* ============================== LANDING PAGE ============================= */
+// v20.8: the Market Meter, shown on the home page with sample numbers (labeled as an example). It uses the same headline and gauge
+// functions as the dashboard, so it can't drift from the real thing.
+function MeterExample() {
+  const m = { stage: "sideways-ranging", phase: "building", level: 2 };
+  const moves = { h1: 0.5, h24: -1.4, w1: -3.4, vs50: -6.5 };
+  return (
+    <div className="mm-panel meter-ex">
+      <div className="mm-head"><span className="mm-title">Market Meter</span><span className="mm-sub">Example</span></div>
+      <div className="mm-headline">{meterHeadline(m, moves)}</div>
+      <div className="mm-gauge" aria-hidden="true">
+        <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(m, moves)}%` }} /></div>
+        <div className="mm-gauge-ends"><span>Falling</span><span>Flat</span><span>Rising</span></div>
+      </div>
+      <div className="mm-moves">
+        {[["1h", moves.h1], ["1 day", moves.h24], ["1 week", moves.w1]].map(([k, v]) => (
+          <div key={k} className="mm-move"><span className="mm-move-k">{k}</span><span className={`mm-move-v mono ${v >= 0 ? "up" : "down"}`}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span></div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function Landing({ onPickPlan, onSignIn }) {
   // v20.7: the example card now shows a signal that is really on the dashboard (Trend Rider), with no made-up win rate, and a target
   // closer than the stop, like the real thing. It is labeled as an example.
@@ -416,7 +438,7 @@ function Landing({ onPickPlan, onSignIn }) {
             <button className="solid lg" onClick={() => onPickPlan("starter")}>Get started, from $19.99/mo</button>
             <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live, free</a>
           </div>
-          <p className="hero-note">Watching is free. Make a free account, no card needed.</p>
+          <p className="hero-note">Watching is free, forever. Make a free account, no card needed.</p>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
         </div>
         <div className="hero-r">
@@ -426,16 +448,25 @@ function Landing({ onPickPlan, onSignIn }) {
 
       <section className="strip">
         <div className="strip-item"><span className="si-k">The gap</span><span className="si-v">Most tools send you a ping and leave you to work out the levels yourself. Setpoint puts the entry, stop, and target right on the alert.</span></div>
-        <div className="strip-item"><span className="si-k">The bar</span><span className="si-v">Setpoint only surfaces setups that have already backtested well, not just any indicator crossing a line. Fewer alerts, on purpose.</span></div>
+        <div className="strip-item"><span className="si-k">The bar</span><span className="si-v">Setpoint shows its work. Every signal is tested before it goes live, and its real results stay on show.</span></div>
+      </section>
+
+      <section className="meter-sec">
+        <div className="meter-copy">
+          <h2>One read on the whole market</h2>
+          <p>The Market Meter turns a lot of charts into one sentence and one gauge. It tells you what Bitcoin is doing this hour, today and this week, where it sits against its 50-day average, and whether the move is gaining or stalling.</p>
+          <p>Open it and you know the market's mood in five seconds.</p>
+        </div>
+        <MeterExample />
       </section>
 
       <section className="feat">
         <h2>What you get</h2>
         <div className="feat-grid">
-          {[["Breakouts, checked", "Trend Rider buys when price pushes past its recent high and sells when it breaks below its recent low. It only fires on the right side of the 200-day average, and only when momentum and trend strength agree."],
-            ["Bounces after a dip", "Rebound Rider buys the bounce after a sharp dip inside an uptrend, and sells the drop after a sharp pop. It's picky. Expect a handful of alerts a month per coin."],
-            ["The market, in plain words", "Bitcoin's trend against its 50-day, 200-day and 200-week lines, Fear & Greed, large trades on Coinbase, and an AI read of the headlines. Context to read, not signals to follow."],
-            ["The record, in the open", "Every alert is logged with its real result, win or loss. Levels are locked when the alert fires and never redrawn, so you can check the score yourself."]].map(([t, d]) => (
+          {[["Alerts with the levels on them", "Every alert comes with an entry, stop and target. Each signal is tested before it reaches you, and its running record stays on show."],
+            ["Market context in plain words", "Bitcoin's trend against its 50-day, 200-day and 200-week lines, large trades on Coinbase, and an AI read of the headlines. Context to read, not signals to follow."],
+            ["The record, in the open", "Every alert is logged with its real result, win or loss. Levels are locked when the alert fires and never redrawn, so you can check the score yourself."],
+            ["Your coins, your pace", "Pick the coins you trade and the chart speed that fits how you trade. Add more any time."]].map(([t, d]) => (
             <div className="feat-item" key={t}><div className="feat-h">{t}</div><div className="feat-d">{d}</div></div>
           ))}
         </div>
@@ -871,7 +902,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Three tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself. The number is the Crypto Fear &amp; Greed Index from <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener noreferrer">Alternative.me</a>.</div></div>
       </div>
 
       <div className="guide-section">
@@ -2049,7 +2080,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             {fng && (
               <div className="fng fng-compact">
                 <div className="fng-val" style={{ color: fngColor(fng.value) }}>{fng.value}</div>
-                <div className="fng-meta"><div className="fng-lab">{fng.label}</div><div className="fng-sub">Fear &amp; Greed Index</div></div>
+                <div className="fng-meta"><div className="fng-lab">{fng.label}</div><div className="fng-sub">Fear &amp; Greed Index, via <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener noreferrer">Alternative.me</a></div></div>
               </div>
             )}
             <div className="mc-vol-block">
@@ -2406,6 +2437,10 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .si-k{font-size:14px;letter-spacing:.01em;color:var(--amber);font-weight:700;white-space:nowrap}
 .si-v{color:var(--text);font-size:17px;font-weight:500}
 
+.meter-sec{display:grid;grid-template-columns:1fr 1fr;gap:36px;align-items:center;padding:56px 0 8px}
+.meter-copy h2{font-size:30px;font-weight:700;margin-bottom:12px}
+.meter-copy p{color:var(--muted);font-size:15.5px;line-height:1.6;margin:0 0 12px;max-width:46ch}
+.meter-ex{margin-bottom:0}
 .feat{padding:56px 0}
 .feat h2,.how h2,.pricing h2{font-size:30px;font-weight:700;margin-bottom:6px}
 .feat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:14px;margin-top:26px}
@@ -2740,6 +2775,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mc-vol-block{flex:1;min-width:140px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
 .fng-lab{font-weight:600;font-size:14px}
+.fng-sub a{color:inherit;text-decoration:underline;text-underline-offset:2px}
 .fng-sub{color:var(--muted);font-size:12px;margin-top:2px}
 .oc-cols{display:grid;grid-template-columns:1fr auto auto;gap:12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:0 0 8px}
 .oc-cols span:first-child{visibility:hidden}
@@ -2824,6 +2860,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .set-foot{font-size:12px;color:var(--muted);line-height:1.55;margin-top:18px;padding-top:14px;border-top:1px solid var(--hair)}
 
 @media(max-width:900px){
+  .meter-sec{grid-template-columns:1fr;gap:22px}
   .hero{grid-template-columns:1fr;gap:28px}
   .hero h1{font-size:38px}
   .feat-grid,.how-grid,.tiers{grid-template-columns:1fr}

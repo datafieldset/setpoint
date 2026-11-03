@@ -23,8 +23,10 @@ const mv = { "1h": back(1), "1 day": back(24), "1 week": back(168) };
 const chg = mv["1 day"];
 const w = m.weekly200;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
-const pct = (n) => (n >= 0 ? "+" : "-") + Math.abs(n).toFixed(1) + "%";
-const bull = m.bias.dir === "bull";
+const pct = (n) => (Math.abs(n) < 0.05 ? "0.0%" : (n >= 0 ? "+" : "-") + Math.abs(n).toFixed(1) + "%");
+// v20.8: the verdict is the trend, price against the 50-day average (the same test the flip line uses and the "Bitcoin trend" label promises).
+// It used to read the last-hour market bias, which could say BULLISH on a card whose own sentence said below the 50-day.
+const bull = price > m.weekly200.daily50;
 const levels = [
   { n: "50-day", v: w.daily50, cls: "d50" },
   { n: "Bitcoin", v: price, cls: "btc" },
@@ -50,7 +52,7 @@ const vals = {
   VERDICT: bull ? "BULLISH" : "BEARISH",
   SUB: sub,
   PRICE: money(price),
-  MOVES: Object.entries(mv).map(([k, v]) => `<div><span class="k">${k}</span><b style="color:${v >= 0 ? "#00D179" : "#FF4D5E"}">${pct(v)}</b></div>`).join(""),
+  MOVES: Object.entries(mv).map(([k, v]) => `<div><span class="k">${k}</span><b style="color:${Math.abs(v) < 0.05 ? "#93A69D" : v >= 0 ? "#00D179" : "#FF4D5E"}">${pct(v)}</b></div>`).join(""),
   CHGCOLOR: chg >= 0 ? "#00D179" : "#FF4D5E",
   ROWS: rows,
   GC: cross ? "on" : "off",
