@@ -186,7 +186,7 @@ function BiasPanel({ bias, risk }) {
     <div className={`bias-panel ${bias.dir}`}>
       <div className="bias-row">
         <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
-        <span className="bias-pct">{agreePct != null ? Math.round(agreePct * 100) : "—"}% of the market agrees</span>
+        <span className="bias-pct">Last hour: {agreePct != null ? Math.round(agreePct * 100) : "—"}% of coins {bias.dir === "bull" ? "up" : "down"}</span>
       </div>
       {risk && risk.level !== "low" && (
         <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
@@ -676,12 +676,22 @@ function meterHeadline(m, moves) {
   if (m.level >= 4 && trending) line += " It's stretched, so chasing is risky.";
   return line;
 }
+// v20.4: the 5 minute label ("No real direction yet, waiting for a move") read like the market was dead on a day Bitcoin moved 2%
+// or more. When the 5m read is plain sideways and the day move is big, say what happened and that it's pausing now.
+function meterStageLine(m, moves) {
+  if (m.stage === "sideways-ranging" && m.phase !== "ending" && moves && Math.abs(moves.h24) >= 1.95) {
+    return moves.h24 < 0 ? "Sold off today, now pausing. No new direction yet." : "Rallied today, now pausing. No new direction yet.";
+  }
+  return m.label;
+}
 // Where the marker sits on the bearish-to-bullish bar, 0 to 100. Blends the 5m
 // read (stage and strength) with the bigger picture (12h / 24h / 3 day move),
 // so a falling market can never show a centered marker.
+// v20.4 (Na, Nov 2): the day move now counts for more (x7, was x3), so a 2% drop sits visibly on the falling side (about 32)
+// instead of looking centered.
 const meterPos = (m, moves) => {
   const short = m.stage === "bullish-trending" ? m.level * 9 : m.stage === "bearish-trending" ? -m.level * 9 : 0;
-  const big = moves ? Math.max(-35, Math.min(35, moves.h12 * 3 + moves.h24 * 3 + moves.h72 * 1.5)) : 0;
+  const big = moves ? Math.max(-40, Math.min(40, moves.h12 * 3 + moves.h24 * 7 + moves.h72 * 1.5)) : 0;
   return Math.round(Math.max(4, Math.min(96, 50 + short + big)));
 };
 
@@ -883,9 +893,10 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence about Bitcoin, then a bar from Falling to Rising with a marker showing the short-term read (always the 5m chart, no matter which timeframe you trade). The marker sits further out when the move is stronger and more stretched. Underneath are Bitcoin's moves over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence about Bitcoin, then a bar from Falling to Rising with a marker showing the short-term read (always the 5m chart, no matter which timeframe you trade). The marker also leans toward the day's move, so a 2% drop shows on the falling side even when the last few minutes are quiet. Underneath are Bitcoin's moves over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Green or red bar under the meter</div><div className="guide-field-v">A last-hour read only. It averages how the top 100 coins moved over the past hour (Bitcoin counts double) and says bullish if that average is up, bearish if it is down. "Last hour: 68% of coins up" means 68 of every 100 coins are up over that hour. It can flip back and forth during a day, so a bullish bar on a down day just means the last hour bounced. The meter and the 12h, 24h and 3 day numbers above it cover the bigger picture.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Three tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
@@ -2023,7 +2034,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, btcMoves)}%` }} /></div>
                 <div className="mm-gauge-ends"><span>Falling</span><span>Rising</span></div>
               </div>
-              <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{marketMeter.label}</div>
+              <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{meterStageLine(marketMeter, btcMoves)}</div>
               {btcMoves && (
                 <div className="mm-moves">
                   {[["12h", btcMoves.h12], ["24h", btcMoves.h24], ["3 days", btcMoves.h72]].map(([k, v]) => (
@@ -2647,7 +2658,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .fired{font-size:11px;color:var(--dim)}
 
 .onchain{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;align-self:start;position:sticky;top:70px}
-.market-cols{display:grid;grid-template-columns:7fr 3fr;gap:20px;align-items:start}
+.market-cols{display:grid;grid-template-columns:1fr;gap:16px;align-items:start;max-width:820px;margin:0 auto}
+.market-cols .onchain{position:static}
 .market-col-right{display:flex;flex-direction:column;gap:16px}
 .bias-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .bias-panel.bull{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
@@ -2688,7 +2700,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cross-dot.p50-price{background:var(--text)}
 .cross-dot.p50-line{background:var(--amber)}
 .p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
-.bias-in-left{display:none}
+.bias-in-left{display:block}
+.bias-in-right{display:none}
 .lt-ladder{width:100%;height:190px;display:block;margin:2px 0}
 .lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
 .lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
@@ -2844,9 +2857,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
   .feat-grid,.how-grid,.tiers{grid-template-columns:1fr}
   .dash-body{grid-template-columns:1fr}
   .onchain{position:static}
-  .market-cols{grid-template-columns:1fr}
-  .bias-in-left{display:block}
-  .bias-in-right{display:none}
 }
 @media(max-width:640px){
   .topbar{flex-wrap:wrap;gap:10px;padding:12px 0;position:relative}
