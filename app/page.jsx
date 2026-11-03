@@ -140,6 +140,29 @@ function ChartAxis({ labels }) {
   );
 }
 
+// v20.9 (Na, Nov 3): all three long-term charts share one look: a white line, a dashed amber line, a translucent green fill where the
+// first line is above the second and red where it is below, a dot on the point that matters, and the same height. `bandPolygons`
+// builds the fill between two series and splits a segment at the exact point the lines cross, so a cross never smears across a day.
+function bandPolygons(a, b, x, y) {
+  const out = [];
+  const poly = (pts, up, key) => out.push(<polygon key={key} points={pts.map(([px, py]) => `${px},${py}`).join(" ")} fill={up ? "var(--green)" : "var(--red)"} fillOpacity=".2" />);
+  for (let i = 0; i < a.length - 1; i++) {
+    const d0 = a[i] - b[i], d1 = a[i + 1] - b[i + 1];
+    const A0 = [x(i), y(a[i])], A1 = [x(i + 1), y(a[i + 1])], B0 = [x(i), y(b[i])], B1 = [x(i + 1), y(b[i + 1])];
+    if ((d0 >= 0) === (d1 >= 0) || d0 === 0 || d1 === 0) {
+      poly([A0, A1, B1, B0], d0 + d1 >= 0, i);
+    } else {
+      const t = d0 / (d0 - d1);
+      const cx = x(i) + t * (x(i + 1) - x(i));
+      const cv = a[i] + t * (a[i + 1] - a[i]);
+      const C = [cx, y(cv)];
+      poly([A0, C, B0], d0 > 0, `${i}a`);
+      poly([C, A1, B1], d1 > 0, `${i}b`);
+    }
+  }
+  return out;
+}
+
 // v19.49 (Na, Oct 29): Bitcoin's daily price against its 50-day average over the last 90 days. The space between the
 // two is shaded green while price is above the line and red while it's below, so a test of the line is easy to see.
 // `price` is the live price; the last point of the series uses it so the dot is current.
@@ -151,11 +174,7 @@ function PriceVs50Chart({ series, price }) {
   const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
   const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
   const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const bands = [];
-  for (let i = 0; i < pts.length - 1; i++) {
-    const up = (pts[i].close - pts[i].sma50 + pts[i + 1].close - pts[i + 1].sma50) / 2 >= 0;
-    bands.push(<polygon key={i} points={`${x(i)},${y(pts[i].close)} ${x(i + 1)},${y(pts[i + 1].close)} ${x(i + 1)},${y(pts[i + 1].sma50)} ${x(i)},${y(pts[i].sma50)}`} fill={up ? "var(--green)" : "var(--red)"} fillOpacity=".2" />);
-  }
+  const bands = bandPolygons(pts.map((p) => p.close), pts.map((p) => p.sma50), x, y);
   const last = pts[pts.length - 1];
   const labels = [0, 1, 2, 3].map((k) => {
     const idx = Math.round((k * (pts.length - 1)) / 3);
@@ -213,8 +232,8 @@ function LongTermLines({ weekly200, price: livePrice }) {
     : <>A daily close below <b className="mono">${fmtPrice(line50)}</b> would break the 50-day ({Math.abs(dist).toFixed(1)}% below where it is now).</>;
   const legends = {
     d50: <>White line is Bitcoin's daily close, dashed amber is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
-    cross: line200 != null ? <>Green is the 50-day (${fmtPrice(line50)}), gray is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross." : "The 50 is below the 200, a death cross."} The amber dot is the most recent cross.</> : null,
-    w200: lineW != null ? <>Bitcoin's weekly close over the last 75 weeks. Dashed amber is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price.</> : null,
+    cross: line200 != null ? <>Dashed amber is the 50-day (${fmtPrice(line50)}), white is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross. Green fill: 50 above 200." : "The 50 is below the 200, a death cross. Red fill: 50 below 200."} The dot is the most recent cross.</> : null,
+    w200: lineW != null ? <>White line is Bitcoin's weekly close over the last 75 weeks, dashed amber is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
   };
   const tabs = [["d50", "50-day", weekly200.dailyPrice?.length > 1], ["cross", "Golden cross", weekly200.dailySeries?.length > 1 && line200 != null], ["w200", "200-week", weekly200.priceSeries?.length > 1 && lineW != null]].filter((t) => t[2]);
   const active = tabs.some((t) => t[0] === tab) ? tab : tabs[0]?.[0];
@@ -245,7 +264,7 @@ function LongTermLines({ weekly200, price: livePrice }) {
       </div>
       {active === "d50" && <PriceVs50Chart series={weekly200.dailyPrice} price={livePrice} />}
       {active === "cross" && <CrossoverChart series={weekly200.dailySeries} />}
-      {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} />}
+      {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} price={livePrice} />}
       <div className="lt-legend">{legends[active]}</div>
       <div className="w200-note">
         Context, not a trading signal.{" "}
@@ -260,59 +279,53 @@ function LongTermLines({ weekly200, price: livePrice }) {
   );
 }
 
-function PriceVsMaChart({ series, maValue }) {
+// 200-week: weekly closes against the flat 200-week average. Same look as the 50-day chart, so time spent above or below it shows.
+function PriceVsMaChart({ series, maValue, price }) {
   if (!series || series.length < 2 || maValue == null) return null;
-  const W = 300, H = 110, PAD = 6;
-  const closes = series.map((p) => p.close);
-  const allVals = [...closes, maValue];
-  const min = Math.min(...allVals), max = Math.max(...allVals);
-  const span = max - min || 1;
-  const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
+  const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
+  const W = 300, H = 120, PAD = 6;
+  const vals = [...pts.map((p) => p.close), maValue];
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
+  const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
   const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const priceLine = closes.map((v, i) => `${x(i)},${y(v)}`).join(" ");
-  const maY = y(maValue);
-  const above = closes[closes.length - 1] >= maValue;
-
+  const last = pts[pts.length - 1];
   return (
     <div className="chart-wrap">
-      <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-        <line x1={PAD} y1={maY} x2={W - PAD} y2={maY} stroke="var(--amber)" strokeWidth="1.25" strokeDasharray="4,3" />
-        <polyline points={priceLine} fill="none" stroke={above ? "var(--green-soft)" : "var(--red-soft)"} strokeWidth="1.5" />
+      <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        {bandPolygons(pts.map((p) => p.close), pts.map(() => maValue), x, y)}
+        <line x1={PAD} y1={y(maValue)} x2={W - PAD} y2={y(maValue)} stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
+      <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
       <ChartAxis labels={buildAxisLabels(series, 4, true)} />
     </div>
   );
 }
 
+// Golden cross: the 50-day (dashed amber, like everywhere else) against the 200-day (white). Green fill while the 50 is above the 200
+// (a golden cross), red while it is below (a death cross). The amber dot sits on the most recent cross.
 function CrossoverChart({ series }) {
   if (!series || series.length < 2) return null;
-  const W = 300, H = 110, PAD = 6;
-  const allVals = series.flatMap((p) => [p.sma50, p.sma200]);
-  const min = Math.min(...allVals), max = Math.max(...allVals);
-  const span = max - min || 1;
+  const W = 300, H = 120, PAD = 6;
+  const vals = series.flatMap((p) => [p.sma50, p.sma200]);
+  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
   const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
   const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const line50 = series.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ");
-  const line200 = series.map((p, i) => `${x(i)},${y(p.sma200)}`).join(" ");
-
-  // Real, most recent crossover inside this window, walking backward so
-  // the marker lands on the latest real cross, not the earliest.
+  // Most recent crossover inside this window, walking backward so the marker lands on the latest cross.
   let crossIdx = null;
   for (let i = series.length - 1; i > 0; i--) {
     const prevDiff = series[i - 1].sma50 - series[i - 1].sma200;
     const currDiff = series[i].sma50 - series[i].sma200;
     if ((prevDiff <= 0 && currDiff > 0) || (prevDiff >= 0 && currDiff < 0)) { crossIdx = i; break; }
   }
-
   return (
     <div className="chart-wrap">
-      <svg className="cross-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-        <polyline points={line200} fill="none" stroke="var(--muted)" strokeWidth="1.5" />
-        <polyline points={line50} fill="none" stroke="var(--green-soft)" strokeWidth="1.5" />
-        {crossIdx != null && (
-          <circle cx={x(crossIdx)} cy={y(series[crossIdx].sma50)} r="3.5" fill="var(--amber)" />
-        )}
+      <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+        {bandPolygons(series.map((p) => p.sma50), series.map((p) => p.sma200), x, y)}
+        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma200)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
       </svg>
+      {crossIdx != null && <span className="p50-dot cross-dot" style={{ left: `${(x(crossIdx) / W) * 100}%`, top: `${(y(series[crossIdx].sma50) / H) * 100}%` }} />}
       <ChartAxis labels={buildAxisLabels(series, 4, false)} />
     </div>
   );
@@ -2704,6 +2717,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cross-dot.fifty{background:var(--green-soft)}
 .cross-dot.twohundred{background:var(--muted)}
 .p50-chart{height:130px}
+.p50-dot.cross-dot{background:var(--amber)}
 .p50-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--text);pointer-events:none}
 .cross-dot.p50-price{background:var(--text)}
 .cross-dot.p50-line{background:var(--amber)}

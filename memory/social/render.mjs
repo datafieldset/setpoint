@@ -21,6 +21,9 @@ const h1 = (await (await fetch("https://setpointalerts.com/api/market?symbols=BT
 const back = (h) => (price / h1[h1.length - 1 - h].close - 1) * 100;
 const mv = { "1h": back(1), "1 day": back(24), "1 week": back(168) };
 const chg = mv["1 day"];
+// Guard: the sentence and the 1 week number are read at different moments and can differ by 0.1 at a rounding edge. Make the sentence use the card's number.
+const wk = Math.abs(mv["1 week"]).toFixed(1).replace(/\.0$/, "");
+const subFixed = sub.replace(/[\d.]+% this week/, `${wk}% this week`);
 const w = m.weekly200;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
 const pct = (n) => (Math.abs(n) < 0.05 ? "0.0%" : (n >= 0 ? "+" : "-") + Math.abs(n).toFixed(1) + "%");
@@ -50,7 +53,7 @@ const vals = {
   GLOW: bull ? "rgba(0,209,121,.15)" : "rgba(255,77,94,.17)",
   VCOLOR: bull ? "#00D179" : "#FF4D5E",
   VERDICT: bull ? "BULLISH" : "BEARISH",
-  SUB: sub,
+  SUB: subFixed,
   PRICE: money(price),
   MOVES: Object.entries(mv).map(([k, v]) => `<div><span class="k">${k}</span><b style="color:${Math.abs(v) < 0.05 ? "#93A69D" : v >= 0 ? "#00D179" : "#FF4D5E"}">${pct(v)}</b></div>`).join(""),
   CHGCOLOR: chg >= 0 ? "#00D179" : "#FF4D5E",
