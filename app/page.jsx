@@ -177,16 +177,19 @@ function PriceVs50Chart({ series, price }) {
 // The bullish/bearish bar. v19.50: it shows twice, under the Market Meter on a phone (where the two columns stack and it
 // used to land at the very bottom) and at the top of the right column on a wide screen; CSS shows one of the two.
 function BiasPanel({ bias, risk }) {
-  if (!bias || !bias.dir) return null;
+  if (!bias || (!bias.dir && bias.pctUp == null)) return null;
   // pctUp is always "percent of the basket currently up," regardless of direction. That's correct for a bullish
   // reading, backwards for a bearish one, since a falling pctUp during a real bearish move means MORE coins agree
   // with the drop, not fewer. Show agreement with whichever direction is actually being displayed.
-  const agreePct = bias.dir === "bull" ? bias.pctUp : (bias.pctUp != null ? 1 - bias.pctUp : null);
+  // v20.5: when the last hour is too small to call (average move under 0.15%) the bar used to vanish, which read like a bug.
+  // It now stays up in gray as "FLAT" with the plain share of coins that are up.
+  const agreePct = bias.dir === "bear" ? (bias.pctUp != null ? 1 - bias.pctUp : null) : bias.pctUp;
+  const word = bias.dir === "bull" ? "up" : bias.dir === "bear" ? "down" : "up";
   return (
-    <div className={`bias-panel ${bias.dir}`}>
+    <div className={`bias-panel ${bias.dir || "flat"}`}>
       <div className="bias-row">
-        <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : "▼ BEARISH"}</span>
-        <span className="bias-pct">Last hour: {agreePct != null ? Math.round(agreePct * 100) : "—"}% of coins {bias.dir === "bull" ? "up" : "down"}</span>
+        <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : bias.dir === "bear" ? "▼ BEARISH" : "● FLAT"}</span>
+        <span className="bias-pct">Last hour: {agreePct != null ? Math.round(agreePct * 100) : "—"}% of coins {word}</span>
       </div>
       {risk && risk.level !== "low" && (
         <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
@@ -633,6 +636,10 @@ function synthesizeMarketRead(marketMeter, signalBias) {
 // v19.37: the Market Meter's one-sentence headline. Combines the bigger picture
 // (Bitcoin's move over 12h / 24h / 3 days) with the 5m read, so the card never
 // looks like it disagrees with itself. Plain words, never a prediction.
+// v20.5 (Na, Nov 2): a -1.8% day still read "flat" while three red numbers sat under it. A day move of 1.5% or more is now named
+// (1.45 is where the strip rounds to 1.5), and the words match the strip: "down 1.8%", not a rounded "down 2%".
+const DAY_MOVE_NAMED = 1.45;
+const fmtDayMove = (v) => { const t = Math.abs(v).toFixed(1); return t.endsWith(".0") ? t.slice(0, -2) : t; };
 function meterHeadline(m, moves) {
   if (!m) return null;
   // v19.49 (Na, Oct 29): "running up" only when the bigger moves agree and are big enough to matter. Before, a +1.3% 12h
@@ -643,11 +650,11 @@ function meterHeadline(m, moves) {
   let dayOnly = false;
   if (moves) {
     const { h12, h24, h72 } = moves;
-    if (Math.abs(h24) >= 2.5) big = h24 > 0 ? "up" : "down";
+    if (Math.abs(h24) >= 2.5) { big = h24 > 0 ? "up" : "down"; dayOnly = !(Math.abs(h72) >= 2 && (h72 > 0) === (h24 > 0)); }
     else if (Math.abs(h72) >= 2 && (h72 > 0 ? h24 > -1 : h24 < 1)) big = h72 > 0 ? "up" : "down";
     // v20.3 (Na, Nov 2): Bitcoin was down 2.0% (about $2k) in a day and the headline still said "flat". A day move of 2.0% or more,
     // as the strip below shows it, now gets named: "down 2% over the last day". 1.95 is where the strip rounds to 2.0%.
-    else if (Math.abs(h24) >= 1.95) { big = h24 > 0 ? "up" : "down"; dayOnly = true; }
+    else if (Math.abs(h24) >= DAY_MOVE_NAMED) { big = h24 > 0 ? "up" : "down"; dayOnly = true; }
     else {
       const m = [h12, h24, h72];
       big = m.some((a) => a >= 0.8) && m.some((a) => a <= -0.8) ? "choppy" : "flat";
@@ -668,7 +675,7 @@ function meterHeadline(m, moves) {
   else if (big === "choppy") line = trending ? `Bitcoin has been choppy over the last few days, but short term it's ${short}.` : `Bitcoin has been choppy over the last few days, and short term it's ${short}.`;
   else if (big === "flat") line = trending ? `Bitcoin is flat over the last few days, but short term it's ${short}.` : `Bitcoin is flat over the last few days, and short term it's ${short}.`;
   else if (dayOnly) {
-    const dayWords = `${big === "up" ? "up" : "down"} ${Math.round(Math.abs(moves.h24))}% over the last day`;
+    const dayWords = `${big === "up" ? "up" : "down"} ${fmtDayMove(moves.h24)}% over the last day`;
     line = sDir === big ? `Bitcoin is ${dayWords}, and short term it's still ${short}.` : `Bitcoin is ${dayWords}, but short term it's ${short}.`;
   }
   else if (sDir === big) line = `Bitcoin is ${bigWords}, and short term it's still ${short}.`;
@@ -679,9 +686,11 @@ function meterHeadline(m, moves) {
 // v20.4: the 5 minute label ("No real direction yet, waiting for a move") read like the market was dead on a day Bitcoin moved 2%
 // or more. When the 5m read is plain sideways and the day move is big, say what happened and that it's pausing now.
 function meterStageLine(m, moves) {
-  if (m.stage === "sideways-ranging" && m.phase !== "ending" && moves && Math.abs(moves.h24) >= 1.95) {
+  if (m.stage === "sideways-ranging" && m.phase !== "ending" && moves && Math.abs(moves.h24) >= DAY_MOVE_NAMED) {
     return moves.h24 < 0 ? "Sold off today, now pausing. No new direction yet." : "Rallied today, now pausing. No new direction yet.";
   }
+  // The headline already says "moving sideways", so the plain sideways label would only repeat it.
+  if (m.stage === "sideways-ranging" && m.phase !== "ending") return null;
   return m.label;
 }
 // Where the marker sits on the bearish-to-bullish bar, 0 to 100. Blends the 5m
@@ -893,10 +902,10 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence about Bitcoin, then a bar from Falling to Rising with a marker showing the short-term read (always the 5m chart, no matter which timeframe you trade). The marker also leans toward the day's move, so a 2% drop shows on the falling side even when the last few minutes are quiet. Underneath are Bitcoin's moves over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence about Bitcoin, then a bar from Falling to Rising with a marker showing the short-term read (always the 5m chart, no matter which timeframe you trade). The headline names any day move of 1.5% or more, and the marker also leans toward the day's move, so a 2% drop shows on the falling side even when the last few minutes are quiet. Underneath are Bitcoin's moves over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Green or red bar under the meter</div><div className="guide-field-v">A last-hour read only. It averages how the top 100 coins moved over the past hour (Bitcoin counts double) and says bullish if that average is up, bearish if it is down. "Last hour: 68% of coins up" means 68 of every 100 coins are up over that hour. It can flip back and forth during a day, so a bullish bar on a down day just means the last hour bounced. The meter and the 12h, 24h and 3 day numbers above it cover the bigger picture.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Green or red bar under the meter</div><div className="guide-field-v">A last-hour read only. It averages how the top 100 coins moved over the past hour (Bitcoin counts double) and says bullish if that average is up, bearish if it is down, and a gray FLAT when the hour was too quiet to call. "Last hour: 68% of coins up" means 68 of every 100 coins are up over that hour. It can flip back and forth during a day, so a bullish bar on a down day just means the last hour bounced. The meter and the 12h, 24h and 3 day numbers above it cover the bigger picture.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Three tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
@@ -2032,9 +2041,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
               <div className="mm-headline">{meterHeadline(marketMeter, btcMoves)}</div>
               <div className="mm-gauge" role="img" aria-label={`Short-term read: ${marketMeter.label}`}>
                 <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, btcMoves)}%` }} /></div>
-                <div className="mm-gauge-ends"><span>Falling</span><span>Rising</span></div>
+                <div className="mm-gauge-ends"><span>Falling</span><span>Flat</span><span>Rising</span></div>
               </div>
-              <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{meterStageLine(marketMeter, btcMoves)}</div>
+              {meterStageLine(marketMeter, btcMoves) && <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{meterStageLine(marketMeter, btcMoves)}</div>}
               {btcMoves && (
                 <div className="mm-moves">
                   {[["12h", btcMoves.h12], ["24h", btcMoves.h24], ["3 days", btcMoves.h72]].map(([k, v]) => (
@@ -2042,6 +2051,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   ))}
                 </div>
               )}
+              <div className="bias-in-meter"><BiasPanel bias={bias} risk={risk} /></div>
               {marketMeter.confirmed && (
                 <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
               )}
@@ -2063,7 +2073,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           )}
 
-          <div className="bias-in-left"><BiasPanel bias={bias} risk={risk} /></div>
+          {!marketMeter && <div className="bias-in-left"><BiasPanel bias={bias} risk={risk} /></div>}
 
           <LongTermLines weekly200={weekly200} price={data.BTC?.snap?.price} />
 
@@ -2660,9 +2670,13 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .onchain{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:16px;align-self:start;position:sticky;top:70px}
 .market-cols{display:grid;grid-template-columns:1fr;gap:16px;align-items:start;max-width:820px;margin:0 auto}
 .market-cols .onchain{position:static}
+.market-cols .market-col-right.onchain{background:none;border:0;padding:0}
+.market-cols .market-col-right .netflow-panel{margin-bottom:0}
 .market-col-right{display:flex;flex-direction:column;gap:16px}
 .bias-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .bias-panel.bull{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
+.bias-panel.flat{background:var(--panel2)}
+.bias-panel.flat .bias-dir{color:var(--muted)}
 .bias-panel.bear{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
 .bias-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
 .bias-dir{font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;letter-spacing:.02em}
@@ -2674,7 +2688,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .risk-note.elevated{color:var(--muted)}
 .w200-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border);background:var(--panel)}
 .w200-panel.near{border-color:rgba(245,184,81,.4);background:var(--amber-dim)}
-.w200-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:6px}
+.w200-head{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
 .w200-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .w200-val{font-size:15px;font-weight:700}
 .w200-dist{font-size:11.5px;font-weight:600}
@@ -2702,6 +2716,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
 .bias-in-left{display:block}
 .bias-in-right{display:none}
+.bias-in-meter{margin-top:12px;padding-top:4px;border-top:1px solid var(--hair)}
+.bias-in-meter .bias-panel{border:0;background:none;padding:8px 0 0;margin-bottom:0}
 .lt-ladder{width:100%;height:190px;display:block;margin:2px 0}
 .lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
 .lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
@@ -2728,22 +2744,23 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-reason{color:var(--muted);font-size:11.5px;line-height:1.5}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
-.mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:6px}
+.mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px}
 .mm-headline{font-family:'Bricolage Grotesque';font-weight:700;font-size:21px;line-height:1.25;margin:2px 0 16px}
 .mm-gauge{margin-bottom:10px}
 .mm-gauge-bar{position:relative;height:8px;border-radius:6px;background:linear-gradient(90deg,var(--red-soft),var(--panel3) 50%,var(--green-soft))}
 .mm-marker{position:absolute;top:-5px;width:6px;height:18px;margin-left:-3px;border-radius:3px;background:var(--text);box-shadow:0 0 0 3px var(--panel2)}
-.mm-gauge-ends{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:6px}
+.mm-gauge-bar::after{content:"";position:absolute;left:50%;top:-2px;width:1px;height:12px;background:rgba(255,255,255,.28)}
+.mm-gauge-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px}
 .mm-why-btn{margin-top:12px;background:none;border:none;padding:6px 0;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
 .mm-why{margin-top:8px;padding-top:12px;border-top:1px solid var(--hair)}
 .mm-panel{padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
 .mm-panel.confirmed{border-color:rgba(245,184,81,.5);background:linear-gradient(180deg,rgba(245,184,81,.08),var(--panel2))}
 .mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
-.mm-title{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.mm-sub{font-size:11px;color:var(--dim)}
+.mm-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mm-sub{font-size:12px;color:var(--muted)}
 .mm-moves{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;margin-top:10px}
 .mm-move{display:flex;align-items:baseline;gap:6px}
-.mm-move-k{font-size:11px;color:var(--dim)}
+.mm-move-k{font-size:12px;color:var(--muted)}
 .mm-move-v{font-size:14px;font-weight:700}
 .mm-move-v.up{color:var(--green)}
 .mm-move-v.down{color:var(--red)}
@@ -2768,8 +2785,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mc-vol-block{flex:1;min-width:140px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
 .fng-lab{font-weight:600;font-size:14px}
-.fng-sub{color:var(--dim);font-size:11px;margin-top:2px}
-.oc-cols{display:grid;grid-template-columns:1fr auto auto;gap:12px;font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;padding:0 0 8px}
+.fng-sub{color:var(--muted);font-size:12px;margin-top:2px}
+.oc-cols{display:grid;grid-template-columns:1fr auto auto;gap:12px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;padding:0 0 8px}
 .oc-cols span:first-child{visibility:hidden}
 .oc-row{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:9px 0;border-top:1px solid var(--hair)}
 .oc-sym{font-family:'Bricolage Grotesque';font-weight:700;font-size:14px}
@@ -2827,15 +2844,15 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .netflow-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .netflow-panel.buy{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .netflow-panel.sell{background:var(--panel2);border-color:var(--border)}
-.netflow-head{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--dim);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
+.netflow-head{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center}
 .netflow-tag{text-transform:none;letter-spacing:0;font-style:italic;font-weight:400}
 .netflow-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .netflow-dir{font-size:12px;font-weight:700}
 .netflow-panel.buy .netflow-dir{color:var(--green)}
 .netflow-panel.sell .netflow-dir{color:var(--muted)}
 .netflow-amt{font-size:13px;font-weight:700}
-.netflow-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
-.netflow-ts{color:var(--dim);font-size:10px;margin-top:4px;font-family:monospace}
+.netflow-note{color:var(--muted);font-size:12px;line-height:1.5;margin-top:7px}
+.netflow-ts{color:var(--muted);font-size:11.5px;margin-top:4px;font-family:monospace}
 
 .dash-disc{color:var(--dim);font-size:11px;line-height:1.6;margin-top:28px;padding-top:16px;border-top:1px solid var(--hair)}
 
