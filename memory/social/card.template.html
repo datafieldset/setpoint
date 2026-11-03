@@ -9,9 +9,12 @@ body{width:1080px;height:1080px;background:#0A0F0D;color:#EAF2EE;font-family:Int
 .live{position:absolute;right:64px;top:62px;font:600 22px Inter;color:#8FA39A}
 .verdict{position:absolute;left:60px;top:132px;font:800 168px/1 Montserrat,sans-serif;color:{{VCOLOR}};letter-spacing:-.035em}
 .sub{position:absolute;left:64px;top:326px;width:900px;font:600 36px/1.3 Inter}
-.price{position:absolute;left:64px;top:430px;display:flex;align-items:baseline;gap:20px}
+.price{position:absolute;left:64px;top:430px;display:flex;align-items:center;gap:48px}
 .price .p{font:800 84px Montserrat;letter-spacing:-.02em}
-.price .c{font:600 32px Inter;color:{{CHGCOLOR}}}
+.price .moves{display:flex;gap:34px;align-items:center;margin-top:4px}
+.price .moves div{display:flex;flex-direction:column;gap:2px}
+.price .moves .k{color:#93A69D;font:500 22px Inter}
+.price .moves b{font:700 32px Inter}
 .lad{position:absolute;left:64px;right:64px;top:560px;height:300px}
 .rail{position:absolute;left:210px;top:10px;bottom:10px;width:3px;background:#26332D;border-radius:2px}
 .row{position:absolute;left:0;right:0;height:44px;display:flex;align-items:center}
@@ -35,7 +38,7 @@ body{width:1080px;height:1080px;background:#0A0F0D;color:#EAF2EE;font-family:Int
 <div class="live">Bitcoin trend</div>
 <div class="verdict">{{VERDICT}}</div>
 <div class="sub">{{SUB}}</div>
-<div class="price"><span class="p">{{PRICE}}</span><span class="c">{{CHG}} today</span></div>
+<div class="price"><span class="p">{{PRICE}}</span><span class="moves">{{MOVES}}</span></div>
 <div class="lad"><div class="rail"></div>
 {{ROWS}}
 </div>

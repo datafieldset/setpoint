@@ -37,3 +37,7 @@ Morning Brew: short, punchy, plain, contractions, no em dashes, a little dry hum
 - Thread: post 1 card, post 2 the 50-day price to beat, post 3 big-trade flow, post 4 the link.
 - Daily Market Meter post, same card each morning.
 - A Share button on the Market tab that saves the card (needs Na's OK, it's a layout change).
+
+## v20.6 update (Nov 2)
+- The card shows the 1h / 1 day / 1 week moves beside the price (same hourly-candle math as the Market Meter). The old "-x% today" is gone. The top-right label reads "Bitcoin trend".
+- `--sub` is now the Market Meter headline, which leads with the week and the 50-day ("Bitcoin is down 3.5% this week and still below its 50-day, but short term it's moving sideways."). Read it off the Market tab or compute it from the same numbers, and make sure its week number equals the card's 1 week number.

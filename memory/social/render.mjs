@@ -16,8 +16,11 @@ const m = await (await fetch("https://setpointalerts.com/api/market")).json();
 const tk = await (await fetch("https://api.exchange.coinbase.com/products/BTC-USD/ticker", { headers: { "User-Agent": "setpoint" } })).json();
 const price = Number(tk.price);
 const btc = m.coins.find((c) => c.sym === "BTC").candles;
-const ago = btc[Math.max(0, btc.length - 97)].close; // about 24h of 15m candles
-const chg = (price / ago - 1) * 100;
+// v20.6: the 1h / 1 day / 1 week numbers are computed exactly like the Market Meter on the site: hourly candles, now vs N hours back.
+const h1 = (await (await fetch("https://setpointalerts.com/api/market?symbols=BTC&tf=1h")).json()).coins.find((c) => c.sym === "BTC").candles;
+const back = (h) => (price / h1[h1.length - 1 - h].close - 1) * 100;
+const mv = { "1h": back(1), "1 day": back(24), "1 week": back(168) };
+const chg = mv["1 day"];
 const w = m.weekly200;
 const money = (n) => "$" + Math.round(n).toLocaleString("en-US");
 const pct = (n) => (n >= 0 ? "+" : "-") + Math.abs(n).toFixed(1) + "%";
@@ -47,7 +50,7 @@ const vals = {
   VERDICT: bull ? "BULLISH" : "BEARISH",
   SUB: sub,
   PRICE: money(price),
-  CHG: pct(chg),
+  MOVES: Object.entries(mv).map(([k, v]) => `<div><span class="k">${k}</span><b style="color:${v >= 0 ? "#00D179" : "#FF4D5E"}">${pct(v)}</b></div>`).join(""),
   CHGCOLOR: chg >= 0 ? "#00D179" : "#FF4D5E",
   ROWS: rows,
   GC: cross ? "on" : "off",
@@ -67,4 +70,4 @@ await p.waitForTimeout(1500);
 await p.screenshot({ path: out });
 await b.close();
 fs.unlinkSync(tmp);
-console.log("wrote", out, { price: money(price), chg: pct(chg), d50: money(w.daily50), d200: money(w.daily200), w200: money(w.sma), fng: vals.FNG });
+console.log("wrote", out, { price: money(price), moves: Object.fromEntries(Object.entries(mv).map(([k, v]) => [k, pct(v)])), d50: money(w.daily50), d200: money(w.daily200), w200: money(w.sma), fng: vals.FNG });
