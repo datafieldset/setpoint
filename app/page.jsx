@@ -174,30 +174,6 @@ function PriceVs50Chart({ series, price }) {
   );
 }
 
-// The bullish/bearish bar. v19.50: it shows twice, under the Market Meter on a phone (where the two columns stack and it
-// used to land at the very bottom) and at the top of the right column on a wide screen; CSS shows one of the two.
-function BiasPanel({ bias, risk }) {
-  if (!bias || (!bias.dir && bias.pctUp == null)) return null;
-  // pctUp is always "percent of the basket currently up," regardless of direction. That's correct for a bullish
-  // reading, backwards for a bearish one, since a falling pctUp during a real bearish move means MORE coins agree
-  // with the drop, not fewer. Show agreement with whichever direction is actually being displayed.
-  // v20.5: when the last hour is too small to call (average move under 0.15%) the bar used to vanish, which read like a bug.
-  // It now stays up in gray as "FLAT" with the plain share of coins that are up.
-  const agreePct = bias.dir === "bear" ? (bias.pctUp != null ? 1 - bias.pctUp : null) : bias.pctUp;
-  const word = bias.dir === "bull" ? "up" : bias.dir === "bear" ? "down" : "up";
-  return (
-    <div className={`bias-panel ${bias.dir || "flat"}`}>
-      <div className="bias-row">
-        <span className="bias-dir">{bias.dir === "bull" ? "▲ BULLISH" : bias.dir === "bear" ? "▼ BEARISH" : "● FLAT"}</span>
-        <span className="bias-pct">Last hour: {agreePct != null ? Math.round(agreePct * 100) : "—"}% of coins {word}</span>
-      </div>
-      {risk && risk.level !== "low" && (
-        <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>
-      )}
-    </div>
-  );
-}
-
 // v19.50 (Na, Oct 29): the three Bitcoin average panels (200-week, 50/200-day, price vs 50-day) were a lot of scrolling.
 // One card now: a price ladder showing where Bitcoin sits against each line, the exact close needed to break the 50-day,
 // and tabs that show one chart at a time (50-day first, since that's the one in play).
@@ -633,33 +609,15 @@ function synthesizeMarketRead(marketMeter, signalBias) {
   return null;
 }
 
-// v19.37: the Market Meter's one-sentence headline. Combines the bigger picture
-// (Bitcoin's move over 12h / 24h / 3 days) with the 5m read, so the card never
-// looks like it disagrees with itself. Plain words, never a prediction.
-// v20.5 (Na, Nov 2): a -1.8% day still read "flat" while three red numbers sat under it. A day move of 1.5% or more is now named
-// (1.45 is where the strip rounds to 1.5), and the words match the strip: "down 1.8%", not a rounded "down 2%".
-const DAY_MOVE_NAMED = 1.45;
-const fmtDayMove = (v) => { const t = Math.abs(v).toFixed(1); return t.endsWith(".0") ? t.slice(0, -2) : t; };
+// v19.37: the Market Meter's one-sentence headline. v20.6 (Na, Nov 2): it now states the real condition. Bitcoin was 6.5% under its
+// 50-day average and down 3.6% on the week, and the headline said "flat" because it only saw 12h / 24h / 3 days. The strip is now
+// 1 hour / 1 day / 1 week, the week leads the sentence, and the 50-day average is named. `moves` = { h1, h24, w1, vs50 } (all percent).
+const DAY_MOVE_NAMED = 1.45;  // a day move this big (the strip rounds to 1.5%) is named
+const WEEK_MOVE_NAMED = 2;    // a week move this big is named
+const NEAR_50 = 1;            // within 1% of the 50-day counts as "near" it, not above or below
+const fmtMove = (v) => { const t = Math.abs(v).toFixed(1); return t.endsWith(".0") ? t.slice(0, -2) : t; };
 function meterHeadline(m, moves) {
   if (!m) return null;
-  // v19.49 (Na, Oct 29): "running up" only when the bigger moves agree and are big enough to matter. Before, a +1.3% 12h
-  // move broke the flat line and 24h -0.9% plus 3d +1.1% (a net +0.2%) still got called "running up" inside a flat range.
-  // A big move is 3 days of 2% or more (as long as the last day isn't sharply the other way) or a single day of 2.5% or more.
-  // Otherwise: choppy when the moves clearly disagree, flat when everything is small.
-  let big = "flat";
-  let dayOnly = false;
-  if (moves) {
-    const { h12, h24, h72 } = moves;
-    if (Math.abs(h24) >= 2.5) { big = h24 > 0 ? "up" : "down"; dayOnly = !(Math.abs(h72) >= 2 && (h72 > 0) === (h24 > 0)); }
-    else if (Math.abs(h72) >= 2 && (h72 > 0 ? h24 > -1 : h24 < 1)) big = h72 > 0 ? "up" : "down";
-    // v20.3 (Na, Nov 2): Bitcoin was down 2.0% (about $2k) in a day and the headline still said "flat". A day move of 2.0% or more,
-    // as the strip below shows it, now gets named: "down 2% over the last day". 1.95 is where the strip rounds to 2.0%.
-    else if (Math.abs(h24) >= DAY_MOVE_NAMED) { big = h24 > 0 ? "up" : "down"; dayOnly = true; }
-    else {
-      const m = [h12, h24, h72];
-      big = m.some((a) => a >= 0.8) && m.some((a) => a <= -0.8) ? "choppy" : "flat";
-    }
-  }
   const short = {
     "bullish-trending": "rising",
     "bearish-trending": "falling",
@@ -669,39 +627,42 @@ function meterHeadline(m, moves) {
   }[m.stage] || "mixed";
   const trending = m.stage === "bullish-trending" || m.stage === "bearish-trending";
   const sDir = m.stage === "bullish-trending" ? "up" : m.stage === "bearish-trending" ? "down" : null;
-  const bigWords = big === "up" ? "running up" : "running down";
-  let line;
-  if (!moves) line = `Short term, Bitcoin is ${short}.`;
-  else if (big === "choppy") line = trending ? `Bitcoin has been choppy over the last few days, but short term it's ${short}.` : `Bitcoin has been choppy over the last few days, and short term it's ${short}.`;
-  else if (big === "flat") line = trending ? `Bitcoin is flat over the last few days, but short term it's ${short}.` : `Bitcoin is flat over the last few days, and short term it's ${short}.`;
-  else if (dayOnly) {
-    const dayWords = `${big === "up" ? "up" : "down"} ${fmtDayMove(moves.h24)}% over the last day`;
-    line = sDir === big ? `Bitcoin is ${dayWords}, and short term it's still ${short}.` : `Bitcoin is ${dayWords}, but short term it's ${short}.`;
-  }
-  else if (sDir === big) line = `Bitcoin is ${bigWords}, and short term it's still ${short}.`;
-  else line = `Bitcoin is ${bigWords} over the last few days, but short term it's ${short}.`;
+  if (!moves) return `Short term, Bitcoin is ${short}.`;
+  const { h24, w1, vs50 } = moves;
+  const weekBig = Math.abs(w1) >= WEEK_MOVE_NAMED;
+  const dayBig = Math.abs(h24) >= DAY_MOVE_NAMED;
+  // Lead with the week. If the week is quiet but the day isn't, lead with the day. Otherwise it is flat.
+  let lead, leadDir;
+  if (weekBig) { leadDir = w1 > 0 ? "up" : "down"; lead = `${leadDir} ${fmtMove(w1)}% this week`; }
+  else if (dayBig) { leadDir = h24 > 0 ? "up" : "down"; lead = `${leadDir} ${fmtMove(h24)}% over the last day`; }
+  else { leadDir = null; lead = "flat this week"; }
+  const below50 = vs50 != null && vs50 <= -NEAR_50;
+  const above50 = vs50 != null && vs50 >= NEAR_50;
+  const tail50 = below50 ? " and still below its 50-day" : above50 ? " and holding above its 50-day" : "";
+  const joiner = sDir && leadDir && sDir === leadDir ? "and short term it's still" : (!leadDir && !trending) || (sDir && !leadDir) ? "and short term it's" : "but short term it's";
+  let line = `Bitcoin is ${lead}${tail50}, ${joiner} ${short}.`;
   if (m.level >= 4 && trending) line += " It's stretched, so chasing is risky.";
   return line;
 }
-// v20.4: the 5 minute label ("No real direction yet, waiting for a move") read like the market was dead on a day Bitcoin moved 2%
-// or more. When the 5m read is plain sideways and the day move is big, say what happened and that it's pausing now.
+// v20.4/v20.6: the line under the gauge. The plain 5 minute sideways label would only repeat the headline, so it is hidden unless
+// something more is worth saying: a day move that has paused ("Sold off today, now pausing"), or any non-sideways read.
 function meterStageLine(m, moves) {
-  if (m.stage === "sideways-ranging" && m.phase !== "ending" && moves && Math.abs(moves.h24) >= DAY_MOVE_NAMED) {
-    return moves.h24 < 0 ? "Sold off today, now pausing. No new direction yet." : "Rallied today, now pausing. No new direction yet.";
+  if (m.stage === "sideways-ranging" && m.phase !== "ending") {
+    if (moves && Math.abs(moves.h24) >= DAY_MOVE_NAMED) {
+      return moves.h24 < 0 ? "Sold off today, now pausing. No new direction yet." : "Rallied today, now pausing. No new direction yet.";
+    }
+    return null;
   }
-  // The headline already says "moving sideways", so the plain sideways label would only repeat it.
-  if (m.stage === "sideways-ranging" && m.phase !== "ending") return null;
   return m.label;
 }
-// Where the marker sits on the bearish-to-bullish bar, 0 to 100. Blends the 5m
-// read (stage and strength) with the bigger picture (12h / 24h / 3 day move),
-// so a falling market can never show a centered marker.
-// v20.4 (Na, Nov 2): the day move now counts for more (x7, was x3), so a 2% drop sits visibly on the falling side (about 32)
-// instead of looking centered.
+// Where the marker sits on the bearish-to-bullish bar, 0 to 100 (50 is flat). Blends the 5m read (stage and strength) with the bigger
+// picture: 1h / 1d / 1w moves (the day counts most) and where price sits against its 50-day average, so a falling market below its
+// 50-day can never show a centered marker. Today (-1.5% day, -3.6% week, 6.5% under the 50-day) lands near 28.
 const meterPos = (m, moves) => {
   const short = m.stage === "bullish-trending" ? m.level * 9 : m.stage === "bearish-trending" ? -m.level * 9 : 0;
-  const big = moves ? Math.max(-40, Math.min(40, moves.h12 * 3 + moves.h24 * 7 + moves.h72 * 1.5)) : 0;
-  return Math.round(Math.max(4, Math.min(96, 50 + short + big)));
+  const move = moves ? Math.max(-30, Math.min(30, moves.h1 * 2 + moves.h24 * 5 + moves.w1 * 1.5)) : 0;
+  const trend50 = moves && moves.vs50 != null ? Math.max(-10, Math.min(10, moves.vs50 * 1.5)) : 0;
+  return Math.round(Math.max(4, Math.min(96, 50 + short + move + trend50)));
 };
 
 const GUIDE_DESC = {
@@ -902,10 +863,9 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence about Bitcoin, then a bar from Falling to Rising with a marker showing the short-term read (always the 5m chart, no matter which timeframe you trade). The headline names any day move of 1.5% or more, and the marker also leans toward the day's move, so a 2% drop shows on the falling side even when the last few minutes are quiet. Underneath are Bitcoin's moves over 12 hours, 24 hours and 3 days, because the 5m read can look calm in the middle of a multi-day run. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the week is quiet) and says whether Bitcoin is still below, or holding above, its 50-day average. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Green or red bar under the meter</div><div className="guide-field-v">A last-hour read only. It averages how the top 100 coins moved over the past hour (Bitcoin counts double) and says bullish if that average is up, bearish if it is down, and a gray FLAT when the hour was too quiet to call. "Last hour: 68% of coins up" means 68 of every 100 coins are up over that hour. It can flip back and forth during a day, so a bullish bar on a down day just means the last hour bounced. The meter and the 12h, 24h and 3 day numbers above it cover the bigger picture.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Three tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself.</div></div>
@@ -1149,7 +1109,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [th, setTh] = useState(DEFAULT_TH);
   const [data, setData] = useState({});        // sym -> {signals, snap, warming, error}
   const [mmWhy, setMmWhy] = useState(false); // Market Meter 'Why' details open/closed
-  const [btcMoves, setBtcMoves] = useState(null); // BTC's 12h / 24h / 3-day change from 1h candles, the "bigger picture" strip on the Market Meter
+  const [btcMoves, setBtcMoves] = useState(null); // BTC's 1h / 1d / 1w change from 1h candles, the "bigger picture" strip on the Market Meter
   const btcMovesAt = useRef(0);
   const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 5m regardless of the selected alerts tab, powers the Market Meter below
   const [watchlistMeters15m, setWatchlistMeters15m] = useState({}); // sym -> real meter score, always 15m, powers the Market Meter's confirmation check specifically
@@ -1532,10 +1492,10 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             const j1 = await r1.json();
             const b1 = (j1.coins || []).find((c) => c.sym === "BTC");
             const cs = b1?.candles || [];
-            if (cs.length > 73) {
+            if (cs.length > 169) {
               const last = cs[cs.length - 1].close;
               const back = (h) => ((last / cs[cs.length - 1 - h].close) - 1) * 100;
-              setBtcMoves({ h12: back(12), h24: back(24), h72: back(72) });
+              setBtcMoves({ h1: back(1), h24: back(24), w1: back(168) });
             }
           }
         } catch { /* leave the strip as it was */ }
@@ -1807,15 +1767,14 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     );
   }
 
+  // The meter's inputs: the 1h / 1d / 1w moves plus how far price sits from its 50-day average (percent, negative = below).
+  const btcPrice = data.BTC?.snap?.price;
+  const d50 = weekly200?.daily50;
+  const meterMoves = btcMoves ? { ...btcMoves, vs50: btcPrice > 0 && d50 > 0 ? (btcPrice / d50 - 1) * 100 : null } : null;
   return (
     <div className="dash">
       <div className="topbar">
         <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
-        {dashboardTab === "coins" && (
-        <div className="tf-toggle">
-          {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
-        </div>
-        )}
         <div className="top-r">
           <div className="refresh">{loading ? <span className="dot-pulse" /> : <span className="dot-ok" />}<span className="refresh-t">{secsToRefresh != null ? `refresh ${secsToRefresh}s` : "…"}</span></div>
           <button className="icon-btn" onClick={() => setShowSettings(true)} title="Settings">⚙</button>
@@ -1857,6 +1816,13 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <button className={`dash-tab-btn ${dashboardTab === "coins" ? "active" : ""}`} onClick={() => setDashboardTab("coins")}>Coins</button>
         <button className={`dash-tab-btn ${dashboardTab === "market" ? "active" : ""}`} onClick={() => setDashboardTab("market")}>Market</button>
       </div>
+      {dashboardTab === "coins" && (
+      <div className="tf-row">
+        <div className="tf-toggle">
+          {Object.keys(TF).map((k) => <button key={k} className={tfKey === k ? "on" : ""} onClick={() => setTfKey(k)}>{TF[k].label}</button>)}
+        </div>
+      </div>
+      )}
 
       {/* ticker row */}
       {dashboardTab === "coins" && (
@@ -2038,20 +2004,20 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <span className="mm-title">Market Meter</span>
                 <span className="mm-sub">Bitcoin</span>
               </div>
-              <div className="mm-headline">{meterHeadline(marketMeter, btcMoves)}</div>
+              <div className="mm-headline">{meterHeadline(marketMeter, meterMoves)}</div>
               <div className="mm-gauge" role="img" aria-label={`Short-term read: ${marketMeter.label}`}>
-                <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, btcMoves)}%` }} /></div>
+                <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, meterMoves)}%` }} /></div>
                 <div className="mm-gauge-ends"><span>Falling</span><span>Flat</span><span>Rising</span></div>
               </div>
-              {meterStageLine(marketMeter, btcMoves) && <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{meterStageLine(marketMeter, btcMoves)}</div>}
-              {btcMoves && (
+              {meterStageLine(marketMeter, meterMoves) && <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{meterStageLine(marketMeter, meterMoves)}</div>}
+              {meterMoves && (
                 <div className="mm-moves">
-                  {[["12h", btcMoves.h12], ["24h", btcMoves.h24], ["3 days", btcMoves.h72]].map(([k, v]) => (
+                  {[["1h", meterMoves.h1], ["1 day", meterMoves.h24], ["1 week", meterMoves.w1]].map(([k, v]) => (
                     <div key={k} className="mm-move"><span className="mm-move-k">{k}</span><span className={`mm-move-v mono ${v >= 0 ? "up" : "down"}`}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span></div>
                   ))}
                 </div>
               )}
-              <div className="bias-in-meter"><BiasPanel bias={bias} risk={risk} /></div>
+              {risk && risk.level !== "low" && <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>}
               {marketMeter.confirmed && (
                 <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
               )}
@@ -2073,7 +2039,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             </div>
           )}
 
-          {!marketMeter && <div className="bias-in-left"><BiasPanel bias={bias} risk={risk} /></div>}
 
           <LongTermLines weekly200={weekly200} price={data.BTC?.snap?.price} />
 
@@ -2116,8 +2081,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         </aside>
 
         <aside className="onchain market-col-right">
-          <div className="bias-in-right"><BiasPanel bias={bias} risk={risk} /></div>
-
           {netFlow ? (() => {
             const total = netFlow.toExchange + netFlow.fromExchange;
             const netDir = netFlow.net > 0 ? "sell" : "buy"; // net = sellUsd - buyUsd
@@ -2529,6 +2492,8 @@ button:disabled{opacity:.6;cursor:not-allowed}
 /* ---- dashboard ---- */
 .dash{max-width:1280px;margin:0 auto;padding:0 18px 40px;min-height:100vh}
 .topbar{display:flex;align-items:center;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);position:sticky;top:0;background:var(--ink);z-index:20}
+.tf-row{margin-top:12px}
+.tf-row .tf-toggle{display:inline-flex}
 .tf-toggle{display:flex;background:var(--panel);border:1px solid var(--border);border-radius:9px;padding:3px}
 .tf-toggle button{padding:6px 15px;font-size:13px;font-weight:600;border-radius:6px;color:var(--muted)}
 .tf-toggle button.on{background:var(--green);color:#03110B}
@@ -2673,16 +2638,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .market-cols .market-col-right.onchain{background:none;border:0;padding:0}
 .market-cols .market-col-right .netflow-panel{margin-bottom:0}
 .market-col-right{display:flex;flex-direction:column;gap:16px}
-.bias-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
-.bias-panel.bull{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
-.bias-panel.flat{background:var(--panel2)}
-.bias-panel.flat .bias-dir{color:var(--muted)}
-.bias-panel.bear{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
-.bias-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
-.bias-dir{font-family:'Bricolage Grotesque';font-weight:800;font-size:14px;letter-spacing:.02em}
-.bias-panel.bull .bias-dir{color:var(--green)}
-.bias-panel.bear .bias-dir{color:var(--red-soft)}
-.bias-pct{font-size:11px;color:var(--muted);white-space:nowrap}
 .risk-note{font-size:11px;line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
 .risk-note.high{color:var(--amber);font-weight:600}
 .risk-note.elevated{color:var(--muted)}
@@ -2714,10 +2669,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .cross-dot.p50-price{background:var(--text)}
 .cross-dot.p50-line{background:var(--amber)}
 .p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
-.bias-in-left{display:block}
-.bias-in-right{display:none}
-.bias-in-meter{margin-top:12px;padding-top:4px;border-top:1px solid var(--hair)}
-.bias-in-meter .bias-panel{border:0;background:none;padding:8px 0 0;margin-bottom:0}
 .lt-ladder{width:100%;height:190px;display:block;margin:2px 0}
 .lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
 .lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}

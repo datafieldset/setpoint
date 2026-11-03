@@ -51,7 +51,7 @@ Oct 12 focus mode hid every original signal and put Trend Rider on a standalone 
 
 ## Standing rule: new signals plug into the existing dashboard layout (Oct 13)
 
-Direct instruction from Na after v19.23 broke it. The coins tab has ONE layout and every signal uses it: timeframe buttons in the top bar, an "Open Alerts" section that shows a card only for a signal that has fired and is still active on the chosen timeframe, the signal's name only on its card, a "Watching <tf>" empty state when nothing has fired, and the plain-English description of what a signal does only in the Guide. Do not add a standalone panel, headline, tile row, scoreboard block or explainer text for a signal on the dashboard (Na rejected all of these Oct 13). If a signal needs something the layout can't do, propose the change and wait for a yes before building.
+Direct instruction from Na after v19.23 broke it. The coins tab has ONE layout and every signal uses it: timeframe buttons in their own row under the Coins and Market tabs (moved there Nov 2, v20.6, Na), an "Open Alerts" section that shows a card only for a signal that has fired and is still active on the chosen timeframe, the signal's name only on its card, a "Watching <tf>" empty state when nothing has fired, and the plain-English description of what a signal does only in the Guide. Do not add a standalone panel, headline, tile row, scoreboard block or explainer text for a signal on the dashboard (Na rejected all of these Oct 13). If a signal needs something the layout can't do, propose the change and wait for a yes before building.
 
 ## Standing rule: a new signal is data, not code (Oct 13)
 
