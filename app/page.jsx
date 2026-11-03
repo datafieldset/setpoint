@@ -362,7 +362,7 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
       <Ladder entry={s.entry} stop={s.stop} target={s.target} price={price} dir={s.dir} />
       <div className="sig-foot">
         <span className="tf-pill">{s.tf}</span>
-        <span className="fired">{demo ? "triggered 3m ago" : isOpenPosition ? "fired " + timeAgo(firedAt, now) + " · still open" : "triggered " + timeAgo(firedAt, now)}</span>
+        <span className="fired">{demo ? "Example alert, not live" : isOpenPosition ? "fired " + timeAgo(firedAt, now) + " · still open" : "triggered " + timeAgo(firedAt, now)}</span>
       </div>
       {!demo && (
         <div className="ai-take">
@@ -388,7 +388,9 @@ function SignalCard({ s, sym, price, firedAt, now, demo, read, loading, onAssess
 
 /* ============================== LANDING PAGE ============================= */
 function Landing({ onPickPlan, onSignIn }) {
-  const demoSig = { label: "Quiet accumulation", dir: "bull", strength: 0.72, tierRate: 0.80, note: "+2.14% in one 15m bar", entry: 61840, stop: 60960, target: 63600, rr: 2, tf: "15m" };
+  // v20.7: the example card now shows a signal that is really on the dashboard (Trend Rider), with no made-up win rate, and a target
+  // closer than the stop, like the real thing. It is labeled as an example.
+  const demoSig = { label: "Trend Rider", dir: "bull", strength: 0.72, verifiedVia: "testing", note: "Broke above its 20-bar high on the 15m chart", entry: 76200, stop: 75100, target: 77025, rr: 0.75, tf: "15m" };
   const tiers = PRICING_LIST.map((p) => ({ ...p, pop: p.id === "trader", cta: `Get ${p.name}` }));
   useEffect(() => {
     fetch("/api/track-visit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: "/" }) }).catch(() => {});
@@ -403,21 +405,22 @@ function Landing({ onPickPlan, onSignIn }) {
         </div>
       </nav>
 
-      <div className="testing-band"><span className="tb-dot" />Signals are live. Every plan gets the full product, nothing held back, the only choice is how many coins.</div>
+      <div className="testing-band"><span className="tb-dot" />Live now, and in public testing: every alert's real result is on show. Every plan gets everything. Only the coin count changes.</div>
 
       <header className="hero">
         <div className="hero-l">
-          <div className="eyebrow">SIGNALS, NOT AUTOPILOT</div>
+          <div className="eyebrow">Signals, not autopilot</div>
           <h1>See the alert, the price, and where to get in, <em>all on one card.</em></h1>
           <p className="sub">Crypto moves fast. Setpoint watches it for you and sends an alert the second something real happens, with the entry, stop, and target already drawn on it. You make every call. It never places a trade.</p>
           <div className="hero-cta">
             <button className="solid lg" onClick={() => onPickPlan("starter")}>Get started, from $19.99/mo</button>
-            <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live</a>
+            <a className="watch-live-link lg" href="/watch"><span className="live-dot" />Watch it live, free</a>
           </div>
+          <p className="hero-note">Watching is free. Make a free account, no card needed.</p>
           <div className="hero-tags"><span>No API keys</span><span>No execution</span><span>No overnight risk</span></div>
         </div>
         <div className="hero-r">
-          <div className="float-card"><SignalCard s={demoSig} sym="BTC" price={62180} demo now={Date.now()} /></div>
+          <div className="float-card"><SignalCard s={demoSig} sym="BTC" price={76400} demo now={Date.now()} /></div>
         </div>
       </header>
 
@@ -427,12 +430,12 @@ function Landing({ onPickPlan, onSignIn }) {
       </section>
 
       <section className="feat">
-        <h2>What fires an alert</h2>
+        <h2>What you get</h2>
         <div className="feat-grid">
-          {[["Real price action", "The classics, but checked, not blind. Volume surges, momentum, RSI extremes, real breakouts, real trend structure. Every one of them tested against the broader market before it ever reaches you."],
-            ["Real trade activity", "Large, real trades on the exchange, big enough to matter. A genuine, standalone signal with its own real, backtested edge, not just a chart annotation."],
-            ["Advanced intel", "Setpoint uses AI to weigh every signal against actual, current headlines before it's shown, not to chat with you or guess. Real intelligence, quietly built into the system, not a bot pretending to trade for you."],
-            ["Real verification, live", "Nothing shows up here just because an indicator crossed a line. It has to have backtested well, and that status is checked continuously, not earned once and forgotten."]].map(([t, d]) => (
+          {[["Breakouts, checked", "Trend Rider buys when price pushes past its recent high and sells when it breaks below its recent low. It only fires on the right side of the 200-day average, and only when momentum and trend strength agree."],
+            ["Bounces after a dip", "Rebound Rider buys the bounce after a sharp dip inside an uptrend, and sells the drop after a sharp pop. It's picky. Expect a handful of alerts a month per coin."],
+            ["The market, in plain words", "Bitcoin's trend against its 50-day, 200-day and 200-week lines, Fear & Greed, large trades on Coinbase, and an AI read of the headlines. Context to read, not signals to follow."],
+            ["The record, in the open", "Every alert is logged with its real result, win or loss. Levels are locked when the alert fires and never redrawn, so you can check the score yourself."]].map(([t, d]) => (
             <div className="feat-item" key={t}><div className="feat-h">{t}</div><div className="feat-d">{d}</div></div>
           ))}
         </div>
@@ -2388,18 +2391,19 @@ h1,h2,h3{font-family:'Bricolage Grotesque',sans-serif;margin:0;letter-spacing:-.
 .nav{display:flex;justify-content:space-between;align-items:center;padding:20px 0}
 .nav-r{display:flex;gap:10px}
 .hero{display:grid;grid-template-columns:1.05fr .95fr;gap:40px;align-items:center;padding:40px 0 56px}
-.eyebrow{font-size:12px;letter-spacing:.22em;color:var(--green);font-weight:600;margin-bottom:18px}
+.eyebrow{font-size:14px;letter-spacing:.02em;color:var(--green);font-weight:600;margin-bottom:18px}
 .hero h1{font-size:52px;line-height:1.03;font-weight:800}
 .hero h1 em{font-style:normal;color:var(--green)}
 .sub{color:var(--muted);font-size:16.5px;line-height:1.6;margin:22px 0 26px;max-width:520px}
 .hero-cta{display:flex;gap:12px;flex-wrap:wrap}
+.hero-note{margin:12px 0 0;font-size:13.5px;color:var(--muted)}
 .hero-tags{display:flex;gap:8px;margin-top:24px;flex-wrap:wrap}
 .hero-tags span{font-size:12px;color:var(--dim);border:1px solid var(--hair);padding:5px 11px;border-radius:20px}
 .float-card{filter:drop-shadow(0 30px 60px rgba(0,0,0,.5))}
 
 .strip{border-top:1px solid var(--hair);border-bottom:1px solid var(--hair);padding:22px 0;margin-bottom:12px;display:flex;flex-direction:column;gap:14px}
 .strip-item{display:flex;gap:16px;align-items:baseline}
-.si-k{font-size:12px;letter-spacing:.16em;color:var(--amber);font-weight:600;text-transform:uppercase;white-space:nowrap}
+.si-k{font-size:14px;letter-spacing:.01em;color:var(--amber);font-weight:700;white-space:nowrap}
 .si-v{color:var(--text);font-size:17px;font-weight:500}
 
 .feat{padding:56px 0}
