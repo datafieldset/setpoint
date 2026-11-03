@@ -2044,8 +2044,6 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         {dashboardTab === "market" && (
         <div className="market-cols">
         <aside className="onchain market-col-left">
-          <div className="section-head"><h2>Market</h2><span className="sh-sub">live</span></div>
-
           {marketMeter && (
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
               <div className="mm-head">
