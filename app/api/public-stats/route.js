@@ -44,6 +44,7 @@ import { ALL_SIGNALS, KILLED_COMBOS, FOCUS_MODE, PUBLIC_TESTING, isSignalVisible
 import { ensureSignalTrack } from "../../../lib/schema.js";
 import { resultR, avgResult, exitPrice } from "../../../lib/results.js";
 import { withCache } from "../../../lib/cache.js";
+import { groupSetups } from "../../../lib/setups.js";
 
 export const dynamic = "force-dynamic";
 
@@ -252,9 +253,9 @@ async function computeStats(conn, coins) {
   const liveSignals = [...new Set(liveRows.map((r) => r.label))].map((label) => {
     const mine = liveRows.filter((r) => r.label === label);
     const tfs = [...new Set(mine.map((r) => r.tf))].map((tf) => ({ tf, ...tally(mine.filter((r) => r.tf === tf)) }));
-    return { name: brandName(label), ...tally(mine), tfs, lastAt: mine[0].resolved_at };
+    return { name: brandName(label), ...tally(mine), tfs, setups: groupSetups(mine), lastAt: mine[0].resolved_at };
   }).sort((a, b) => (b.wins + b.losses) - (a.wins + a.losses));
-  const live = { ...tally(liveRows), total: liveRows.length, names: ALL_SIGNALS.filter((x) => isSignalVisible(x.name)).map((x) => brandName(x.name)), signals: liveSignals, recent: liveRows.slice(0, 60).map(toCard) };
+  const live = { ...tally(liveRows), total: liveRows.length, setups: groupSetups(liveRows), names: ALL_SIGNALS.filter((x) => isSignalVisible(x.name)).map((x) => brandName(x.name)), signals: liveSignals, recent: liveRows.slice(0, 60).map(toCard) };
   emergingSetups.sort((a, b) => b.rate - a.rate || (b.wins + b.losses) - (a.wins + a.losses));
   emergingTrades.sort((a, b) => String(b.resolvedAt).localeCompare(String(a.resolvedAt)));
 

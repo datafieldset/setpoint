@@ -73,6 +73,9 @@ function SignalRow({ s }) {
         {s.avgR != null && <span className={`ws-r ${s.avgR >= 0 ? "pos" : "neg"}`}>{fmtR(s.avgR)} per trade</span>}
         <span className="ws-last">last {fmtDay(s.lastAt)}</span>
       </div>
+      {s.setups && s.setups.setups > 0 && s.setups.setups < n && (
+        <div className="watch-setupnote">{n} trades = {s.setups.setups} separate setups. Counting each setup once: {Math.round(s.setups.rate * 100)}% win rate{s.setups.avgR != null ? `, ${fmtR(s.setups.avgR)} per setup` : ""}.</div>
+      )}
       {s.tfs.length > 1 && (
         <div className="watch-tfs">
           {s.tfs.map((t) => (
@@ -165,6 +168,11 @@ export default function WatchLiveContent({ onBack, coins: coinsProp }) {
                   : `${live.total} finished trade${live.total === 1 ? "" : "s"} from ${live.signals.length} live signal${live.signals.length === 1 ? "" : "s"}. Real prices, levels locked when each one fired.`}
               </div>
               {myCoins && <div className="watch-legend-total">Showing {myCoins.join(", ")}{(coinsProp && coinsProp.length) ? ", the coins you follow" : ""}.</div>}
+              {live.setups && live.setups.setups > 0 && live.setups.setups < live.total && (
+                <div className="watch-legend-total">
+                  That is {live.setups.setups} separate setups, since one move often fires on several charts at once. Counting each setup once: <b>{Math.round(live.setups.rate * 100)}% win rate</b>{live.setups.avgR != null ? <>, <b className={live.setups.avgR >= 0 ? "ws-r pos" : "ws-r neg"}>{fmtR(live.setups.avgR)}</b> per setup</> : null}.
+                </div>
+              )}
               {live.avgR != null && (
                 <div className="watch-legend-total">
                   Average result per trade: <b className={live.avgR >= 0 ? "ws-r pos" : "ws-r neg"}>{fmtR(live.avgR)}</b> (R is the amount risked on a trade).
@@ -308,6 +316,7 @@ const CSS = `
   .ws-slipped{color:var(--amber);font-size:11.5px}
   .ws-last{color:var(--dim);font-size:11.5px;min-width:62px;text-align:right}
   .watch-sig{display:flex;flex-direction:column;gap:4px}
+  .watch-setupnote{font-size:12px;color:var(--dim);padding:2px 4px 0}
   .watch-tfs{display:flex;flex-wrap:wrap;gap:6px;padding:0 4px}
   .watch-tfchip{font-size:11.5px;color:var(--muted);background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:2px 8px;font-variant-numeric:tabular-nums}
   .watch-tfchip b{color:var(--text)}
