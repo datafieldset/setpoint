@@ -193,3 +193,6 @@ Trend Rider description changed (1m skips stops under 0.2% of price). SIGNAL_RAT
 
 ## Oct 29 (v20.1): Rebound Rider 5m BTC gap rule
 No ALL_SIGNALS entry added or removed, no SIGNAL_RATES change; the Rebound Rider `what` text gained one sentence about the Binance gap rule (Guide stays accurate). New condition "gap" in lib/rebound.js (REBOUND_GAP_MAX = { "5m": 0 }), prices from lib/binanceGap.js, BTC only, fails open. Reason and numbers: memory/lessons-learned.md "Binance as a filter" (1,156 BTC trades: gap at or below 0 won 61.4% / +0.075R, above 0 won 53.2% / -0.069R, same in both halves and all three thirds). Treat live results as the test; check on Nov 22.
+
+## Nov 6 (v21.4): Rebound Rider shadow guard, no roster change
+Rebound Rider logs a "skip if more than 2% under the 6 hour high" shadow guard in signal_track.meta.shadow but still fires every trade it did before. SIGNAL_RATES, KILLED_COMBOS, ALL_SIGNALS and TESTING_SIGNALS are unchanged. In 2 years of BTC 5m history the guard took 56.1% wins / -0.018R to 58.5% / +0.024R, a thin edge that failed one of four time slices, so it is measured live before it is enforced. Trend Rider "skip pump tops" was tested and rejected (the skipped trades were the better ones). Full numbers in memory/version-history.md v21.4.
