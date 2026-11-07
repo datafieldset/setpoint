@@ -27,14 +27,23 @@ export async function GET(req) {
     await ensureSignalTrack(sql);
     const { searchParams } = new URL(req.url);
     const coin = searchParams.get("coin");
-    const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10) || 50, 200);
+    // v22.0 (Nov 7, Na: "our data should be centralized so you can access it from one location"): the whole resolved history is readable
+    // through this one route (read-only, behind the same ?key=). limit up to 5000, ?before=<ms> pages backward by resolved time,
+    // ?since=<ms> stops early, ?label= narrows to one signal. Default is still the latest 50. scripts/pull-trades.mjs pages through it.
+    const limit = Math.min(parseInt(searchParams.get("limit") || "50", 10) || 50, 5000);
+    const before = Number(searchParams.get("before")) || null;
+    const since = Number(searchParams.get("since")) || null;
+    const onlyLabel = searchParams.get("label") || null;
 
     const { noFocus, focusLabels } = focusSql;
     const rows = await sql`
-      SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, exit_price, r, outcome
+      SELECT coin, tf, label, dir, fired_at, resolved_at, entry, stop, target, exit_price, r, outcome, meta
       FROM signal_track
       WHERE outcome IN ('win', 'loss')
         AND (${coin}::text IS NULL OR coin = ${coin})
+        AND (${onlyLabel}::text IS NULL OR label = ${onlyLabel})
+        AND (${before}::bigint IS NULL OR resolved_at < to_timestamp(${before}::double precision / 1000))
+        AND (${since}::bigint IS NULL OR resolved_at >= to_timestamp(${since}::double precision / 1000))
         AND (${noFocus} OR label = ANY(${focusLabels}))
       ORDER BY resolved_at DESC
       LIMIT ${limit}
@@ -54,6 +63,7 @@ export async function GET(req) {
       exit: exitPrice(r),
       r: resultR(r),
       outcome: r.outcome,
+      shadow: r.meta?.shadow ?? null, // Rebound Rider's logged falling-knife guard (v21.4)
     }));
 
     return Response.json({ resolved }, { headers: noCache });

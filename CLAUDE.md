@@ -2,6 +2,8 @@
 
 All project memory is in the `/memory/` folder. Read all files there at the start of every session before doing anything.
 
+Data access: read `memory/data-access.md` before saying a number can't be checked. Every session can pull the full live trade history with `node scripts/pull-trades.mjs`; Na never downloads or pastes data for us.
+
 Keep `/memory/` updated as the project evolves: read it before every push, update it after every major decision.
 
 ## Standing rule: memory and code change together, in the same commit

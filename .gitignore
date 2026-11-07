@@ -6,3 +6,4 @@ out
 *.log
 recheck-candidates.flag
 report.md
+trades-live.json
