@@ -26,6 +26,11 @@
 - [ ] Try the awkward cases: tiny numbers (1 minute XLM levels a fraction of a cent apart), a value that has not loaded yet (slow the API with a route delay), a very long or very short label
 - [ ] Say in the reply what I saw and what I could not see (for example a live open trade on his phone)
 
+## Anything that is a sentence about the market (added Nov 6, after "flat this week" with the week at -1.7%)
+- [ ] The sentence is built in lib/ (lib/meter.js), not inside the page, so review.mjs can test it against the numbers beside it
+- [ ] Asked what the sentence cannot see (a week-over-week number cannot see a spike and a fall; a 5 minute read cannot see the week) and named it or limited it
+- [ ] verify-live.mjs shows the live meter sentence; read it next to the real chart numbers
+
 ## After pushing
 - [ ] `node scripts/verify-live.mjs` passes (waits for the deploy)
 - [ ] Looked at a real response from the changed route, not just the status code

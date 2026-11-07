@@ -79,6 +79,18 @@ for (const [f, t] of src) {
   }
 }
 
+// The Market Meter sentence must agree with the numbers next to it (lib/meter.js, added Nov 6).
+{
+  const { checkMeter } = await import(new URL("../lib/meter.js", import.meta.url));
+  const LAB = { "sideways-ranging": "No real direction yet", "bullish-trending": "Real uptrend, room left to run", "bearish-trending": "Real downtrend, room left to fall", "high-volatility": "Sharp swings", "low-volatility": "Quiet" };
+  let bad = 0, n = 0;
+  for (const stage of Object.keys(LAB)) for (const w1 of [-12, -5, -2, -1.7, -0.6, -0.5, -0.4, 0, 0.5, 1.7, 8]) for (const h24 of [-6, -1.4, -0.2, 0.3, 1.5, 4]) for (const vs50 of [-12, -7.4, -0.5, 0.5, 6]) for (const dd7 of [0, -4.9, -5, -9]) {
+    n++;
+    for (const e of checkMeter({ stage, phase: "building", level: 3, label: LAB[stage] }, { h1: 0.1, h24, w1, vs50, dd7, hiDay: "Tuesday" })) { if (bad++ < 5) problems.push("meter: " + e); }
+  }
+  if (bad > 5) problems.push(`meter: ${bad} disagreements between headline and numbers in ${n} cases`);
+}
+
 if (problems.length) {
   console.error(`REVIEW FAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
   process.exit(1);

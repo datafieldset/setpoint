@@ -5,6 +5,7 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
+import { meterHeadline, meterStageLine, meterPos, meterMovesFrom } from "../lib/meter.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
 import { useVisibleInterval } from "./useVisibleInterval.js";
@@ -656,78 +657,6 @@ function synthesizeMarketRead(marketMeter, signalBias) {
   return null;
 }
 
-// v19.37: the Market Meter's one-sentence headline. v20.6 (Na, Nov 2): it now states the real condition. Bitcoin was 6.5% under its
-// 50-day average and down 3.6% on the week, and the headline said "flat" because it only saw 12h / 24h / 3 days. The strip is now
-// 1 hour / 1 day / 1 week, the week leads the sentence, and the 50-day average is named. `moves` = { h1, h24, w1, vs50 } (all percent).
-const DAY_MOVE_NAMED = 1.45;  // a day move this big (the strip rounds to 1.5%) is named
-const WEEK_MOVE_NAMED = 2;    // a week move this big is named
-const NEAR_50 = 1;            // within 1% of the 50-day counts as "near" it, not above or below
-const fmtMove = (v) => { const t = Math.abs(v).toFixed(1); return t.endsWith(".0") ? t.slice(0, -2) : t; };
-// v21.5 (Nov 6, Na): the big picture can overrule a 5 minute wiggle. When the week is down, Bitcoin is under its 50-day and the day is not a
-// real rally, a 5 minute uptrend is a bounce inside a downtrend, not "a real uptrend" (mirror image for an up market). Nov 6 the meter said
-// "short term it's rising / Real uptrend" with the week -1.8%, the 50-day 7.5% above price and the marker right of center.
-function meterBackdrop(moves) {
-  if (!moves || moves.vs50 == null) return null;
-  if (moves.w1 < 0 && moves.vs50 <= -NEAR_50 && moves.h24 < DAY_MOVE_NAMED) return "down";
-  if (moves.w1 > 0 && moves.vs50 >= NEAR_50 && moves.h24 > -DAY_MOVE_NAMED) return "up";
-  return null;
-}
-function meterHeadline(m, moves) {
-  if (!m) return null;
-  const back = meterBackdrop(moves);
-  const against = (back === "down" && m.stage === "bullish-trending") || (back === "up" && m.stage === "bearish-trending");
-  const short = against ? (back === "down" ? "bouncing" : "pulling back") : {
-    "bullish-trending": "rising",
-    "bearish-trending": "falling",
-    "sideways-ranging": m.phase === "ending" ? "squeezed tight, may be about to break" : "moving sideways",
-    "high-volatility": "swinging hard",
-    "low-volatility": "quiet",
-  }[m.stage] || "mixed";
-  const trending = m.stage === "bullish-trending" || m.stage === "bearish-trending";
-  const sDir = m.stage === "bullish-trending" ? "up" : m.stage === "bearish-trending" ? "down" : null;
-  if (!moves) return `Short term, Bitcoin is ${short}.`;
-  const { h24, w1, vs50 } = moves;
-  const weekBig = Math.abs(w1) >= WEEK_MOVE_NAMED;
-  const dayBig = Math.abs(h24) >= DAY_MOVE_NAMED;
-  // Lead with the week. If the week is quiet but the day isn't, lead with the day. Otherwise it is flat.
-  let lead, leadDir;
-  if (weekBig) { leadDir = w1 > 0 ? "up" : "down"; lead = `${leadDir} ${fmtMove(w1)}% this week`; }
-  else if (dayBig) { leadDir = h24 > 0 ? "up" : "down"; lead = `${leadDir} ${fmtMove(h24)}% over the last day`; }
-  else { leadDir = null; lead = "flat this week"; }
-  const below50 = vs50 != null && vs50 <= -NEAR_50;
-  const above50 = vs50 != null && vs50 >= NEAR_50;
-  const tail50 = below50 ? " and still below its 50-day" : above50 ? " and holding above its 50-day" : "";
-  const joiner = against ? "but short term it's" : sDir && leadDir && sDir === leadDir ? "and short term it's still" : (!leadDir && !trending) || (sDir && !leadDir) ? "and short term it's" : "but short term it's";
-  let line = `Bitcoin is ${lead}${tail50}, ${joiner} ${short}.`;
-  if (m.level >= 4 && trending) line += " It's stretched, so chasing is risky.";
-  return line;
-}
-// v20.4/v20.6: the line under the gauge. The plain 5 minute sideways label would only repeat the headline, so it is hidden unless
-// something more is worth saying: a day move that has paused ("Sold off today, now pausing"), or any non-sideways read.
-function meterStageLine(m, moves) {
-  if (m.stage === "sideways-ranging" && m.phase !== "ending") {
-    if (moves && Math.abs(moves.h24) >= DAY_MOVE_NAMED) {
-      return moves.h24 < 0 ? "Sold off today, now pausing. No new direction yet." : "Rallied today, now pausing. No new direction yet.";
-    }
-    return null;
-  }
-  const back = meterBackdrop(moves);
-  if (back === "down" && m.stage === "bullish-trending") return "Bouncing inside a downtrend, not a new uptrend";
-  if (back === "up" && m.stage === "bearish-trending") return "Pulling back inside an uptrend, not a new downtrend";
-  return m.label;
-}
-// Where the marker sits on the bearish-to-bullish bar, 0 to 100 (50 is flat). Blends the 5m read (stage and strength) with the bigger
-// picture: 1h / 1d / 1w moves (the day counts most) and where price sits against its 50-day average, so a falling market below its
-// 50-day can never show a centered marker. Today (-1.5% day, -3.6% week, 6.5% under the 50-day) lands near 28.
-const meterPos = (m, moves) => {
-  const short = m.stage === "bullish-trending" ? m.level * 9 : m.stage === "bearish-trending" ? -m.level * 9 : 0;
-  const move = moves ? Math.max(-30, Math.min(30, moves.h1 * 2 + moves.h24 * 5 + moves.w1 * 1.5)) : 0;
-  const trend50 = moves && moves.vs50 != null ? Math.max(-10, Math.min(10, moves.vs50 * 1.5)) : 0;
-  const pos = Math.round(Math.max(4, Math.min(96, 50 + short + move + trend50)));
-  const back = meterBackdrop(moves);
-  return back === "down" ? Math.min(pos, 45) : back === "up" ? Math.max(pos, 55) : pos; // v21.5: the 5 minute read cannot flip the side the big picture is on
-};
-
 const GUIDE_DESC = {
   "Volume spike": "A sudden burst of trading, way more than usual, in the direction shown.",
   "Quiet accumulation": "Trading volume is quietly climbing while the price barely moves at all. Often the calm before a real move starts.",
@@ -927,7 +856,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the week is quiet) and says whether Bitcoin is still below, or holding above, its 50-day average. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, and names it when Bitcoin is 5% or more under its high of the past 7 days (a week-over-week number cannot see a spike and a fall). The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -1556,11 +1485,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             const j1 = await r1.json();
             const b1 = (j1.coins || []).find((c) => c.sym === "BTC");
             const cs = b1?.candles || [];
-            if (cs.length > 169) {
-              const last = cs[cs.length - 1].close;
-              const back = (h) => ((last / cs[cs.length - 1 - h].close) - 1) * 100;
-              setBtcMoves({ h1: back(1), h24: back(24), w1: back(168) });
-            }
+            const mv = meterMovesFrom(cs);
+            if (mv) setBtcMoves(mv);
           }
         } catch { /* leave the strip as it was */ }
       }

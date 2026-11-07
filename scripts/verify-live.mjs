@@ -4,6 +4,7 @@
 // the live site. Run: node scripts/verify-live.mjs [commitSha] (default HEAD)
 // Exits 1 on failure. See memory/review/README.md.
 import { execSync } from "child_process";
+import { meterMovesFrom, meterHeadline, checkMeter } from "../lib/meter.js";
 
 const BASE = process.env.SETPOINT_URL || "https://setpointalerts.com";
 const sha = process.argv[2] || execSync("git rev-parse HEAD").toString().trim();
@@ -46,5 +47,21 @@ try {
   if (r.status !== 400) bad.push(`/api/track accepted a fake trade (status ${r.status})`);
 } catch (e) { bad.push(`/api/track unreachable: ${e.message}`); }
 
+// 5. the Market Meter sentence must agree with the real candles the page uses (added Nov 6 after "flat this week" with the week at -1.7%)
+let meterNote = "meter not checked";
+try {
+  const { body } = await getJson("/api/market?symbols=BTC&tf=1h");
+  const cs = (body?.coins || []).find((c) => c.sym === "BTC")?.candles || [];
+  const mv = meterMovesFrom(cs);
+  if (!mv) bad.push("meter: not enough 1 hour candles from /api/market");
+  else {
+    for (const stage of ["sideways-ranging", "bullish-trending", "bearish-trending"]) {
+      const m = { stage, phase: "building", level: 3, label: stage === "bullish-trending" ? "Real uptrend, room left to run" : stage === "bearish-trending" ? "Real downtrend, room left to fall" : "No real direction yet" };
+      for (const e of checkMeter(m, { ...mv, vs50: -7 })) bad.push("meter: " + e);
+    }
+    meterNote = `meter reads: ${meterHeadline({ stage: "sideways-ranging", phase: "building", level: 1 }, { ...mv, vs50: -7 })}`;
+  }
+} catch (e) { bad.push(`meter check failed: ${e.message}`); }
+
 if (bad.length) { console.error("LIVE CHECK FAILED\n" + bad.map((b) => " - " + b).join("\n")); process.exit(1); }
-console.log(`live ok: deploy ${sha.slice(0, 7)} serving, homepage + watch up, stats healthy, fake trade rejected.`);
+console.log(`live ok: deploy ${sha.slice(0, 7)} serving, homepage + watch up, stats healthy, fake trade rejected.\n${meterNote}`);
