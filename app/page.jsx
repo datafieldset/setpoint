@@ -2664,7 +2664,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
 .lt-tab.on{background:var(--border);color:var(--text);font-weight:700}
 .lt-tab:focus-visible,.lt-about:focus-visible{outline:2px solid var(--green-soft);outline-offset:2px}
-.lt-legend{font-size:12px;color:var(--muted);line-height:1.45;margin-top:2px}
+.lt-legend{font-size:12px;color:var(--text);line-height:1.45;margin-top:2px}
 .lt-about{background:none;border:0;padding:0;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer}
 .lt-about-text{margin-top:6px}
 .cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
