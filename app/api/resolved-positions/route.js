@@ -67,6 +67,7 @@ export async function GET(req) {
       r: resultR(r),
       outcome: r.outcome,
       shadow: r.meta?.shadow ?? null, // Rebound Rider's logged falling-knife guard (v21.4)
+      box: r.meta?.box ?? null, // 48 hour market range in percent, 15m Trend Rider only (v22.5)
     }));
 
     return Response.json({ resolved }, { headers: noCache });
