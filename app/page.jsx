@@ -5,7 +5,7 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
-import { meterHeadline, meterStageLine, meterPos, meterMovesFrom } from "../lib/meter.js";
+import { meterHeadline, meterStageLine, meterPos, meterMovesFrom, meterFreshLine } from "../lib/meter.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
 import { useVisibleInterval } from "./useVisibleInterval.js";
@@ -807,7 +807,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         {publicTests.length > 0 && (
           <>
             <h3 className="guide-sub">In public testing</h3>
-            <p className="guide-lede">{FOCUS_MODE ? "Setpoint is being rebuilt one signal at a time, so this is the only signal live right now. " : ""}A public test is shown to everyone with its real record while it proves itself. It carries a "testing" tag, not a verified badge, until its live results clear the same bar as everything else.</p>
+            <p className="guide-lede">{FOCUS_MODE ? `Setpoint is being rebuilt one signal at a time, so ${publicTests.length === 1 ? "this is the only signal" : `these ${publicTests.length} are the only signals`} live right now. ` : ""}A public test is shown to everyone with its real record while it proves itself. It carries a "testing" tag, not a verified badge, until its live results clear the same bar as everything else.</p>
             {publicTests.map((x) => (
               <div className="guide-card" key={x.name}>
                 <div className="guide-card-top"><span className="guide-card-name">{x.name}</span></div>
@@ -856,7 +856,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, and, when Bitcoin is 5% or more under its high of the past 7 days, says when and where that high was and how far it fell since (a week-over-week number cannot see a spike and a fall). The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, and, when Bitcoin is 5% or more under its high of the past 7 days, says when and where that high was and how far it fell since (a week-over-week number cannot see a spike and a fall). When a single hour drops 2.5% or more and breaks the lowest low of the past 48 hours, an amber line appears under the sentence for the next 6 hours saying so, with the low it touched and how far it has bounced since. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -1993,6 +1993,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <span className="mm-sub">Bitcoin</span>
               </div>
               <div className="mm-headline">{meterHeadline(marketMeter, meterMoves)}</div>
+              {meterFreshLine(meterMoves) && <div className="mm-fresh">{meterFreshLine(meterMoves)}</div>}
               <div className="mm-gauge" role="img" aria-label={`Short-term read: ${marketMeter.label}`}>
                 <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, meterMoves)}%` }} /></div>
                 <div className="mm-gauge-ends"><span>Falling</span><span>Flat</span><span>Rising</span></div>
@@ -2716,6 +2717,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-level-text{font-family:'Bricolage Grotesque';font-weight:700;font-size:20px;margin-bottom:6px}
 .mm-stage{font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text);margin-bottom:2px}
 .mm-stage.ending{color:var(--amber)}
+.mm-fresh{font-size:13.5px;font-weight:600;line-height:1.45;color:var(--amber);margin:0 0 10px}
 .mm-scope-note{margin-top:6px;font-size:11px;color:var(--dim);line-height:1.4}
 .mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}

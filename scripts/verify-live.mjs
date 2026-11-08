@@ -4,7 +4,7 @@
 // the live site. Run: node scripts/verify-live.mjs [commitSha] (default HEAD)
 // Exits 1 on failure. See memory/review/README.md.
 import { execSync } from "child_process";
-import { meterMovesFrom, meterHeadline, checkMeter } from "../lib/meter.js";
+import { meterMovesFrom, meterHeadline, checkMeter, meterFreshLine } from "../lib/meter.js";
 
 const BASE = process.env.SETPOINT_URL || "https://setpointalerts.com";
 const sha = process.argv[2] || execSync("git rev-parse HEAD").toString().trim();
@@ -59,7 +59,11 @@ try {
       const m = { stage, phase: "building", level: 3, label: stage === "bullish-trending" ? "Real uptrend, room left to run" : stage === "bearish-trending" ? "Real downtrend, room left to fall" : "No real direction yet" };
       for (const e of checkMeter(m, { ...mv, vs50: -7 })) bad.push("meter: " + e);
     }
-    meterNote = `meter reads: ${meterHeadline({ stage: "sideways-ranging", phase: "building", level: 1 }, { ...mv, vs50: -7 })}`;
+    // freshness (v22.7): decide independently from the raw candles whether a flush happened in the last 6 hours, then compare with the meter
+    const n = cs.length; let expect = false;
+    for (let j = n - 1; j >= n - 7 && j >= 50; j--) { const b = cs[j]; if ((b.open - b.low) / b.open >= 0.025 && b.low < Math.min(...cs.slice(j - 48, j).map((x) => x.low))) { expect = true; break; } }
+    if (expect !== !!mv.fresh) bad.push(`meter freshness: raw candles say flush=${expect}, meter says ${!!mv.fresh}`);
+    meterNote = `meter fresh line: ${meterFreshLine(mv) || "(none, no flush in the last 6 hours)"} | meter reads: ${meterHeadline({ stage: "sideways-ranging", phase: "building", level: 1 }, { ...mv, vs50: -7 })}`;
   }
 } catch (e) { bad.push(`meter check failed: ${e.message}`); }
 

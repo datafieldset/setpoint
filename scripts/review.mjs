@@ -91,6 +91,52 @@ for (const [f, t] of src) {
   if (bad > 5) problems.push(`meter: ${bad} disagreements between headline and numbers in ${n} cases`);
 }
 
+// Freshness (v22.7): the meter must name a flush that just happened, and stay silent when there was none. Independent of lib/meter.js:
+// the flush is built by hand here, and the expected sentence parts are written out, not read from the module's constants.
+{
+  const { meterMovesFrom, meterFreshLine, checkMeter } = await import(new URL("../lib/meter.js", import.meta.url));
+  const flat = () => Array.from({ length: 200 }, (_, i) => ({ time: i * 3600e3, open: 75000, high: 75100, low: 74900, close: 75000 }));
+  const withFlush = (ago, lowPx = 73000) => { const cs = flat(); const j = 199 - ago; cs[j] = { time: j * 3600e3, open: 75000, high: 75050, low: lowPx, close: 74000 }; for (let i = j + 1; i < 200; i++) cs[i] = { time: i * 3600e3, open: 74000, high: 74300, low: 73900, close: 74200 }; return cs; };
+  for (const ago of [0, 1, 3, 6]) {
+    const line = meterFreshLine(meterMovesFrom(withFlush(ago)));
+    if (!line) problems.push(`meter freshness: a flush ${ago} hours ago is not named`);
+    else if (!line.includes("$73,000") || !line.includes("48-hour low")) problems.push(`meter freshness: line misses the low or the 48-hour wording: ${line}`);
+  }
+  for (const ago of [7, 20]) if (meterFreshLine(meterMovesFrom(withFlush(ago)))) problems.push(`meter freshness: a flush ${ago} hours ago is still named`);
+  if (meterFreshLine(meterMovesFrom(withFlush(1, 73900)))) problems.push("meter freshness: a 1.5% dip was called a flush");
+  const old = withFlush(2); old[150].low = 72000; if (meterFreshLine(meterMovesFrom(old))) problems.push("meter freshness: a drop that did not break the 48-hour low was called new");
+  const m = { stage: "bearish-trending", phase: "building", level: 3, label: "Real downtrend, room left to fall" };
+  for (const e of checkMeter(m, { ...meterMovesFrom(withFlush(2)), vs50: -5 })) problems.push("meter freshness: " + e);
+}
+
+// Flush Rider (lib/flush.js): the live detector must agree with the plain-English rules (v22.7). Built by hand, numbers written out.
+{
+  const { flushFires, FLUSH_MIN_RISK_PCT } = await import(new URL("../lib/flush.js", import.meta.url));
+  const H = 3600e3, now = 300 * H;
+  const bars = Array.from({ length: 100 }, (_, i) => ({ time: i * H, open: 100, high: 100.4, low: 99.6, close: 100 }));
+  const atr = bars.map(() => 1.0);
+  const flush = (arr) => { arr[80] = { time: 80 * H, open: 100, high: 100, low: 96, close: 97 }; return arr; }; // 4% drop, breaks the 48h low
+  const fires = (arr, forming) => flushFires(arr, forming, atr, now, 1e12, H);
+  // 1. a retest that touches the entry fills; entry 96.25, stop 95.25, target 99.25
+  const b1 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b1[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 }; b1[90] = { time: 90 * H, open: 98, high: 98, low: 96.2, close: 97 };
+  const f1 = fires(b1.slice(0, 99), b1[99]);
+  if (f1.length !== 1 || Math.abs(f1[0].entry - 96.25) > 1e-9 || Math.abs(f1[0].stop - 95.25) > 1e-9 || Math.abs(f1[0].target - 99.25) > 1e-9) problems.push("flush: retest did not give entry 96.25 / stop 95.25 / target 99.25: " + JSON.stringify(f1));
+  // 2. price never comes back: no trade
+  const b2 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b2[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 };
+  if (fires(b2.slice(0, 99), b2[99]).length) problems.push("flush: filled with no retest");
+  // 3. stop breaks first: no trade
+  const b3 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b3[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 }; b3[82] = { time: 82 * H, open: 97, high: 97, low: 95, close: 95.5 }; b3[90] = { time: 90 * H, open: 98, high: 98, low: 96.2, close: 97 };
+  if (fires(b3.slice(0, 99), b3[99]).length) problems.push("flush: filled after the stop broke");
+  // 4. only 1.9% drop: not a flush
+  const b4 = bars.map((b) => ({ ...b })); b4[80] = { time: 80 * H, open: 100, high: 100, low: 98.1, close: 99 }; b4[90] = { time: 90 * H, open: 99, high: 99, low: 98.2, close: 99 };
+  if (fires(b4.slice(0, 99), b4[99]).length) problems.push("flush: a 1.9% drop counted");
+  // 5. tiny stop (risk under 0.6% of price): skipped
+  const tiny = flushFires(flush(bars.map((b) => ({ ...b }))).slice(0, 99), null, bars.map(() => 0.3), now, 1e12, H);
+  if (tiny.length) problems.push(`flush: a stop under ${FLUSH_MIN_RISK_PCT}% was not skipped`);
+  // 6. an old fill is never backfilled
+  if (flushFires(b1.slice(0, 99), b1[99], atr, now, 1 * H, H).length) problems.push("flush: an old fill was backfilled");
+}
+
 if (problems.length) {
   console.error(`REVIEW FAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
   process.exit(1);
