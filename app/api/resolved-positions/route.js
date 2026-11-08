@@ -6,6 +6,7 @@
 // resolved correctly, only that something did. This lets a specific
 // trade (matched by coin, timeframe, label, direction, entry/stop/target)
 // be looked up directly against its real outcome and timestamps.
+import { QUIET_LOG } from "../../../lib/quietLog.js";
 import { isSignalVisible, focusSql } from "../../../lib/signals.js";
 import { checkKey } from "../../../lib/access.js";
 import { resultR, exitPrice } from "../../../lib/results.js";
@@ -34,6 +35,8 @@ export async function GET(req) {
     const before = Number(searchParams.get("before")) || null;
     const since = Number(searchParams.get("since")) || null;
     const onlyLabel = searchParams.get("label") || null;
+    // v22.2: ?include=quiet adds the quietly logged background signals (lib/quietLog.js) for analysis. Same key, still never shown to customers.
+    const quietLabels = searchParams.get("include") === "quiet" ? [...new Set(QUIET_LOG.map((q) => q.label))] : [];
 
     const { noFocus, focusLabels } = focusSql;
     const rows = await sql`
@@ -44,12 +47,12 @@ export async function GET(req) {
         AND (${onlyLabel}::text IS NULL OR label = ${onlyLabel})
         AND (${before}::bigint IS NULL OR resolved_at < to_timestamp(${before}::double precision / 1000))
         AND (${since}::bigint IS NULL OR resolved_at >= to_timestamp(${since}::double precision / 1000))
-        AND (${noFocus} OR label = ANY(${focusLabels}))
+        AND (${noFocus} OR label = ANY(${focusLabels}) OR label = ANY(${quietLabels}))
       ORDER BY resolved_at DESC
       LIMIT ${limit}
     `;
 
-    const resolved = rows.filter((r) => isSignalVisible(r.label)).map((r) => ({
+    const resolved = rows.filter((r) => isSignalVisible(r.label) || quietLabels.includes(r.label)).map((r) => ({
       coin: r.coin,
       tf: r.tf,
       label: r.label,

@@ -199,3 +199,6 @@ Rebound Rider logs a "skip if more than 2% under the 6 hour high" shadow guard i
 
 ## Nov 7 (v22.1): Rebound Rider 5m skips falling-knife buys
 ALL_SIGNALS Rebound Rider `what` changed (new sentence). SIGNAL_RATES, KILLED_COMBOS and TESTING_SIGNALS unchanged. Rule: on the 5 minute chart a buy is skipped when its entry is 2% or more under the 6 hour high. Evidence: live Rebound 5m buys Oct 13 to Nov 6 (88): the 5 skipped all lost (-5.0R), the 83 kept won 60% for +0.054R; the 9 losses of 11 trades since Oct 27 were successive buys into a falling market. 2 year BTC replay: skipped -0.110R vs kept +0.024R, one of four slices flipped. Re-check Nov 22. Trend Rider counterparts tested the same day (skip pump tops, skip week-down plus under 50-day, time of day) did NOT help and were not built.
+
+## Nov 7 (v22.2): four background signals log quietly, no roster change
+Momentum 30m bull, Momentum 15m bull, Reversal watch 5m bear and Grind Down 15m bear (Bitcoin only) now write signal_track rows with nothing shown anywhere (lib/quietLog.js). SIGNAL_RATES, KILLED_COMBOS, ALL_SIGNALS, TESTING_SIGNALS and VISIBLE_SIGNALS are unchanged. 2 year BTC replay of all original signals pooled: 33% wins, -0.008R at 2R targets (no edge as a group); these four were positive in both halves. Promote or drop after live data (see version-history v22.2).

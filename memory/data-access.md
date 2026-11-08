@@ -8,3 +8,6 @@ Na's rule: all data is reachable from one place, so no session ever asks him to 
 - **Backtest pages:** `/api/backtest` and `/api/backtest/download` (same key, or Basic Auth user `setpoint`).
 - **Not reachable from a cloud session:** the Neon database itself (DATABASE_URL lives in Vercel). Never ask Na to paste it. If a question needs a table the routes above do not expose, add a read-only field or route here, then update this file.
 - **Open issue, flagged to Na:** the key is hard-coded in `lib/access.js`, so anyone who can read the repo has it. It guards read-only data and the alert-closing routes. Moving it to an environment variable is the proper fix and needs Na's yes (Vercel setting).
+
+- **Replays on 2 years of BTC:** `node scripts/fetch-btc-history.mjs` (Binance mirror, writes BTC_5m.json and BTC_1d.json), then `node scripts/replay-background.mjs <tf>` for the original signals. Trend Rider and Rebound Rider replays use `lib/trend.js` / `lib/rebound.js` directly (see version-history v22.1 for the approach).
+- **Quiet-logged background signals (v22.2):** rows in signal_track for the labels in `lib/quietLog.js`; they are hidden from every customer surface, and `scripts/pull-trades.mjs` already asks for them (`?include=quiet` on resolved-positions, same key).

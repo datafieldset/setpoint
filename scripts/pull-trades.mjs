@@ -11,7 +11,7 @@ const out = process.argv[3] || "trades-live.json";
 const all = [];
 let before = null;
 for (let page = 0; page < 200; page++) {
-  const url = `${BASE}/api/resolved-positions?key=${KEY}&coin=${coin}&limit=2000${before ? `&before=${before}` : ""}`;
+  const url = `${BASE}/api/resolved-positions?key=${KEY}&coin=${coin}&limit=2000&include=quiet${before ? `&before=${before}` : ""}`;
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error(`resolved-positions ${r.status}`);
   const j = await r.json();

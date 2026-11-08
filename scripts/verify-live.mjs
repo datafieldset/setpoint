@@ -63,5 +63,14 @@ try {
   }
 } catch (e) { bad.push(`meter check failed: ${e.message}`); }
 
+// 6. quietly logged background signals must never show up on a customer surface (v22.2)
+try {
+  const { QUIET_LOG } = await import("../lib/quietLog.js");
+  const names = [...new Set(QUIET_LOG.map((q) => q.label))];
+  const pub = await getJson("/api/public-stats?coins=BTC");
+  const txt = JSON.stringify(pub.body?.live || {});
+  for (const n of names) if (txt.includes(`"${n}"`)) bad.push(`quiet signal "${n}" is visible in public stats`);
+} catch (e) { bad.push(`quiet-signal visibility check failed: ${e.message}`); }
+
 if (bad.length) { console.error("LIVE CHECK FAILED\n" + bad.map((b) => " - " + b).join("\n")); process.exit(1); }
 console.log(`live ok: deploy ${sha.slice(0, 7)} serving, homepage + watch up, stats healthy, fake trade rejected.\n${meterNote}`);
