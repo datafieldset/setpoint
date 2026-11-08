@@ -205,3 +205,6 @@ Momentum 30m bull, Momentum 15m bull, Reversal watch 5m bear and Grind Down 15m 
 
 ## Nov 7 (v22.3): Trend Rider 5m buys need normal volume
 ALL_SIGNALS Trend Rider `what` changed (new sentence). SIGNAL_RATES, KILLED_COMBOS and TESTING_SIGNALS unchanged. Rule: on the 5 minute chart a buy is skipped when the last hour's volume is below the 24 hour average. Evidence in version-history v22.3 (history 53% -0.070R below normal vs 64% +0.114R at or above; live 38% -0.327R vs 73% +0.273R, 13 and 22 trades). Other timeframes deliberately not changed yet; re-check Nov 22.
+
+## Nov 7 (v22.4): sells off on Trend Rider and Rebound Rider
+ALL_SIGNALS Trend Rider and Rebound Rider `what` changed (they no longer sell). SIGNAL_RATES, KILLED_COMBOS and TESTING_SIGNALS unchanged. 2 year BTC replay: Trend Rider sells 57% wins +0.005R (1,682 trades), Rebound sells 57% -0.006R (699). Re-enable per chart only with proof (15m Trend Rider sells +0.041R was the one mild positive). If BTC closes under its 200-day average neither signal fires until it is back above.
