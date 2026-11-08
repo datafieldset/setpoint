@@ -202,3 +202,6 @@ ALL_SIGNALS Rebound Rider `what` changed (new sentence). SIGNAL_RATES, KILLED_CO
 
 ## Nov 7 (v22.2): four background signals log quietly, no roster change
 Momentum 30m bull, Momentum 15m bull, Reversal watch 5m bear and Grind Down 15m bear (Bitcoin only) now write signal_track rows with nothing shown anywhere (lib/quietLog.js). SIGNAL_RATES, KILLED_COMBOS, ALL_SIGNALS, TESTING_SIGNALS and VISIBLE_SIGNALS are unchanged. 2 year BTC replay of all original signals pooled: 33% wins, -0.008R at 2R targets (no edge as a group); these four were positive in both halves. Promote or drop after live data (see version-history v22.2).
+
+## Nov 7 (v22.3): Trend Rider 5m buys need normal volume
+ALL_SIGNALS Trend Rider `what` changed (new sentence). SIGNAL_RATES, KILLED_COMBOS and TESTING_SIGNALS unchanged. Rule: on the 5 minute chart a buy is skipped when the last hour's volume is below the 24 hour average. Evidence in version-history v22.3 (history 53% -0.070R below normal vs 64% +0.114R at or above; live 38% -0.327R vs 73% +0.273R, 13 and 22 trades). Other timeframes deliberately not changed yet; re-check Nov 22.
