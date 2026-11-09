@@ -2339,7 +2339,7 @@ const CSS = `
   --amber:#F5B851; --amber-dim:rgba(245,184,81,.13);
   --ink:#080B0A; --panel:#0F1513; --panel2:#151E1A; --panel3:#1A2621;
   --border:#223029; --hair:rgba(255,255,255,.06);
-  --text:#EAF2EE; --muted:#93A69D; --dim:#5E7168;
+  --text:#EAF2EE; --soft-text:#C5D3CC; --muted:#93A69D; --dim:#5E7168;
 }
 *{box-sizing:border-box}
 .app{min-height:100vh;background:var(--ink);color:var(--text);font-family:'Inter',system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden;max-width:100vw}
@@ -2718,12 +2718,12 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-stage{font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text);margin-bottom:2px}
 .mm-stage.ending{color:var(--amber)}
 .mm-fresh{font-size:13.5px;font-weight:600;line-height:1.45;color:var(--amber);margin:0 0 10px}
-.mm-scope-note{margin-top:6px;font-size:11px;color:var(--dim);line-height:1.4}
+.mm-scope-note{margin-top:6px;font-size:11px;color:var(--soft-text);line-height:1.4}
 .mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
 .sb-score{color:var(--dim);font-weight:400;margin-left:2px}
-.sb-sub{color:var(--dim);font-size:10.5px;margin-top:6px;line-height:1.4}
+.sb-sub{color:var(--soft-text);font-size:10.5px;margin-top:6px;line-height:1.4}
 .fng-compact{flex:0 0 auto;border-bottom:none;padding:6px 0;margin-bottom:0}
 .mc-vol-block{flex:1;min-width:140px}
 .fng-val{font-family:'Bricolage Grotesque';font-size:40px;font-weight:800;letter-spacing:-.03em;line-height:1}
