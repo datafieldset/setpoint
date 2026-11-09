@@ -109,6 +109,28 @@ for (const [f, t] of src) {
   for (const e of checkMeter(m, { ...meterMovesFrom(withFlush(2)), vs50: -5 })) problems.push("meter freshness: " + e);
 }
 
+// Swing Rider (v22.8): the 4 hour chart belongs to it with a 3R target; every other chart stays Trend Rider at 0.75R. No chart may belong to both.
+{
+  const T = await import(new URL("../lib/trend.js", import.meta.url));
+  const S = await import(new URL("../lib/signals.js", import.meta.url));
+  if (T.riderFor("4h") !== "Swing Rider") problems.push("swing: 4h is not Swing Rider");
+  for (const tf of ["1h", "30m", "15m", "5m", "1m"]) if (T.riderFor(tf) !== "Trend Rider") problems.push(`swing: ${tf} is not Trend Rider`);
+  const own = (n) => S.ALL_SIGNALS.find((x) => x.name === n)?.tfs || [];
+  if (own("Trend Rider").includes("4h") || own("Swing Rider").join() !== "4h") problems.push("swing: Trend Rider and Swing Rider overlap or Swing Rider lacks 4h");
+  if (!S.VISIBLE_SIGNALS.includes("Swing Rider")) problems.push("swing: not in VISIBLE_SIGNALS");
+  // hand-built breakout: flat bars, then a rise; target must be 3x the risk on 4h and 0.75x on 1h
+  const mk = (sec) => { const b = []; for (let i = 0; i < 400; i++) { const p = 100 + i * 0.5; b.push({ time: i * sec * 1000, open: p, high: p + 1, low: p - 1, close: p + 0.5, vol: 1 }); } return b; };
+  for (const [tf, want] of [["4h", 3], ["1h", 0.75]]) {
+    const cfg = { ...T.TREND_TFS[tf], htf: [], buyConfirm: false, sellConfirm: false };
+    const B = mk(cfg.baseSec), pre = T.precompute(B), i = 350, f = B[i + 1];
+    const a = T.analyze(cfg, B, pre, i, { time: f.time, open: f.open, high: f.high + 50, low: f.low, close: f.open }, { sma: 50, htf: null });
+    const e = a?.bull;
+    if (!e || !e.touched) { problems.push(`swing: ${tf} test breakout did not touch`); continue; }
+    const k = (e.target - e.entry) / (e.entry - e.stop);
+    if (Math.abs(k - want) > 1e-9) problems.push(`swing: ${tf} target is ${k}R, wanted ${want}R`);
+  }
+}
+
 // Flush Rider (lib/flush.js): the live detector must agree with the plain-English rules (v22.7). Built by hand, numbers written out.
 {
   const { flushFires, FLUSH_MIN_RISK_PCT } = await import(new URL("../lib/flush.js", import.meta.url));

@@ -238,3 +238,6 @@ Nov 8 (Na, after BTC flushed to $73,510 at 11:00 HST: "we should be catching thi
 
 ## Nov 8: Flush Rider build notes
 Independent review caught: dir as a SQL literal breaks the idle dry-run (it reads dir at insert parameter 3, so pass it as a parameter); a late cron scan could push a stale alert (push only when scanMs <= 2x scan interval); the scan window must include an extra cooldown of bars; the 24-hour wait must be clock time. Wording lesson: "7 in 10 retest" is not "7 in 10 trades". Open research from Na: how Trend Rider, Rebound Rider and the hidden signals behave around flushes and could improve there.
+
+## Nov 8: Swing Rider build note
+Splitting a signal off a chart means its old rows keep the old label, so the one-trade-at-a-time check must read both labels or deploy day can fire the same breakout twice. The 4h e2e only fires if the run happens after price touches the level inside the forming bar; a test run too early shows no insert.
