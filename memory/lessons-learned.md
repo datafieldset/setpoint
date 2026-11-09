@@ -241,3 +241,6 @@ Independent review caught: dir as a SQL literal breaks the idle dry-run (it read
 
 ## Nov 8: Swing Rider build note
 Splitting a signal off a chart means its old rows keep the old label, so the one-trade-at-a-time check must read both labels or deploy day can fire the same breakout twice. The 4h e2e only fires if the run happens after price touches the level inside the forming bar; a test run too early shows no insert.
+
+## Nov 8: meter wording needs a live half
+Na: a headline that only tells the week's story stays the same all day while price moves. The fix is two halves, a story (slow) and a right-now line off the week's low (live, bounce % changes each refresh). Two percentages in one sentence (down 7.1% from the peak vs down 3.8% on the week) read as a contradiction because they start from different points; say which start each one uses.

@@ -109,6 +109,41 @@ for (const [f, t] of src) {
   for (const e of checkMeter(m, { ...meterMovesFrom(withFlush(2)), vs50: -5 })) problems.push("meter freshness: " + e);
 }
 
+// Meter headline, spike-then-drop form (v22.9, Na's wording): hand-built hourly candles, numbers written out.
+{
+  const { meterMovesFrom, meterHeadline, checkMeter } = await import(new URL("../lib/meter.js", import.meta.url));
+  const H = 3600e3, t0 = Date.parse("2026-11-01T00:00:00Z"); // 200 bars end Nov 9 07:00 UTC = Nov 8 evening in Honolulu
+  const m = { stage: "sideways-ranging", phase: "building", level: 3, label: "x" };
+  // path: flat 100,000 to bar 110, run to 110,000 at bar 130 (the high), fall to `lowPx` at bar `lowAt`, then drift to `endPx` by the last bar
+  const series = (lowPx, lowAt, endPx) => {
+    const px = [];
+    for (let i = 0; i < 200; i++) {
+      let v;
+      if (i < 110) v = 100000; else if (i <= 130) v = 100000 + (i - 110) * 500; else if (i <= lowAt) v = 110000 + (lowPx - 110000) * ((i - 130) / (lowAt - 130)); else v = lowPx + (endPx - lowPx) * ((i - lowAt) / (199 - lowAt));
+      px.push(v);
+    }
+    return px.map((v, i) => ({ time: t0 + i * H, open: v, close: v, high: v + (i === 130 ? 10 : 0), low: v - 0 }));
+  };
+  const run = (name, cs, want, mustNot = []) => {
+    const mv = { ...meterMovesFrom(cs), vs50: -5 };
+    const h = meterHeadline(m, mv);
+    for (const w of want) if (!h.includes(w)) problems.push(`meter spike: ${name}: wanted "${w}" in: ${h}`);
+    for (const w of mustNot) if (h.includes(w)) problems.push(`meter spike: ${name}: did not want "${w}" in: ${h}`);
+    for (const e of checkMeter(m, mv)) problems.push(`meter spike: ${name}: ${e}`);
+  };
+  // low at bar 195 (today in Honolulu), price back up to 97 from 95 (+2.1%), under where the run started (100)
+  run("gave it all back", series(95000, 195, 97000), ["spiked to $110,000 on", "gave it all back, down 11.8% from the peak", "Today it dropped to $95,000 and has since bounced 2.1% off the low"]);
+  // price ends at 101, above where the run started: no "gave it all back"
+  run("not all back", series(95000, 195, 101000), ["then fell 8.2%", "has since bounced 6.3% off the low"], ["gave it all back"]);
+  // price still at the low
+  run("near the low", series(95000, 195, 95100), ["is still sitting near the low"], ["bounced"]);
+  // low two days earlier: weekday name
+  run("older low", series(95000, 120 + 25, 97000), ["it dropped to $95,000"], ["Today it dropped"]);
+  // low BEFORE the high: old wording stays
+    const pre = []; for (let i = 0; i < 200; i++) { const v = i < 20 ? 100000 : i < 60 ? 90000 : i < 130 ? 90000 + (i - 60) * (20000 / 70) : 110000 - (i - 130) * (14000 / 69); pre.push({ time: t0 + i * H, open: v, close: v, high: v, low: v }); }
+  run("low before high", pre, ["Bitcoin hit its high of"], ["dropped to"]);
+}
+
 // Swing Rider (v22.8): the 4 hour chart belongs to it with a 3R target; every other chart stays Trend Rider at 0.75R. No chart may belong to both.
 {
   const T = await import(new URL("../lib/trend.js", import.meta.url));
