@@ -170,3 +170,5 @@ v23.0 (Nov 8, Na: the grey fine print under the Market Meter was hard to read an
 v23.1 (Nov 11, Na: "ok do it and push"). Notes only, no site change: memory/overhaul-plan.md (the signal overhaul plan and pass bar, written before results) and the Nov 8 flush research in lessons-learned.md. Also the first push after Na reconnected the repo to Vercel.
 
 v23.2 (Nov 11). Notes only: overhaul step 1 scoreboard and luck test results in lessons-learned.md. No site change.
+
+v23.3 (Nov 11). Notes only: overhaul steps 2 to 4 results (stress tests, 19 tries, locked year, Coinbase check) in lessons-learned.md and the tries list in overhaul-plan.md. No site change.

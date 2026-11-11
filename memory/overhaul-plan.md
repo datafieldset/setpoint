@@ -26,5 +26,15 @@ Rules are written here BEFORE results are looked at. Do not move the bar after s
 - A down-market or sell-side candidate (not designed yet).
 - "Move the stop to break-even" exit that still fits the fixed card (layout question for Na before building).
 
+## Tries written down Nov 11 BEFORE running them (Na away: "just do the test and improvements or changes without me")
+Counted: 17 tries. With this many, a pass needs the full bar, the luck test and the locked exam, and neighbors that agree.
+- Swing Rider neighbors (robustness, not shopping): target 2R, target 4R, lookback 10 bars, lookback 40 bars.
+- Swing Rider on other slow charts: 2 hour, 6 hour, 12 hour, daily.
+- Sell side (the bear-market gap): the same breakout rules as a 4 hour sell with a 3R target; the same on 1 hour; and "Pop" (Flush Rider mirrored: a 1 hour bar up 2.5%+ that breaks the 48 hour high, sell the retest, 3R).
+- Trend Rider 1 hour with a 2R target and with a 3R target; Rebound Rider 1 hour with a 3R target.
+- Flush Rider: below the 50-day only; neighbors (drop 2% and 3%, target 2R and 4R) as robustness.
+- Added Nov 11 after the tougher luck test, BEFORE running (tries 18 and 19): "trend-state buy": no breakout needed. Buy the next bar's open whenever the chart is above its 200-day, RSI above 60 and ADX above 20, stop 2 ATR, target 3R, one trade at a time. On 4 hour (N1) and on 1 hour (N2). Why: random buys under those three conditions made +0.36R on 4h, almost what Swing Rider makes (+0.46R), so the trend state may be the edge and the breakout trigger may add little.
+Ship rule while Na is away: only a signal that passes everything above ships, as a public test, through the normal data-only path. Live signals that fail stay as they are until Na picks (retire, hide or keep).
+
 ## Guardrails
 No look-ahead (use only what was visible at entry; see the Nov 8 Volume spike trap). Memory updated with every change. A separate agent re-checks anything customers see. Nothing ships to the site without Na's yes.
