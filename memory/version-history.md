@@ -168,3 +168,5 @@ v22.9 (Nov 8, Na: wording "BTC spiked to $81,100, then gave it all back, down 7.
 v23.0 (Nov 8, Na: the grey fine print under the Market Meter was hard to read and hid the "5 minute read" note). The two Market Meter fine-print lines (.sb-sub win-rate line, .mm-scope-note 5 minute note) now use a new --soft-text (#C5D3CC) instead of --dim (#5E7168): contrast about 11:1 on the panel, was about 3.3:1. Only those two rules changed. Checked: review.mjs, rendered the panel's lines on the panel background at phone width. Not checked: a full signed-in dashboard on a phone. Other places still use --dim for fine print (44 rules, e.g. .oc-foot, .sig-hint, .set-hint, .rr-sub, .guide-foot); left alone until Na says which.
 
 v23.1 (Nov 11, Na: "ok do it and push"). Notes only, no site change: memory/overhaul-plan.md (the signal overhaul plan and pass bar, written before results) and the Nov 8 flush research in lessons-learned.md. Also the first push after Na reconnected the repo to Vercel.
+
+v23.2 (Nov 11). Notes only: overhaul step 1 scoreboard and luck test results in lessons-learned.md. No site change.
