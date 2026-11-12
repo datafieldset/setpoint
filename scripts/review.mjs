@@ -207,6 +207,35 @@ for (const [f, t] of src) {
   if (R.signalReadiness(flush, { candles: fd, now: 100 * H1 + 1000, open: false })?.badge === "Armed") problems.push("ready: a flush that already filled should not read Armed");
 }
 
+// The Market Meter's share image (v24.7): lib/meterCard.js builds every word and number on it from the same code the meter reads.
+{
+  const { buildMeterCard } = await import(new URL("../lib/meterCard.js", import.meta.url));
+  const H = 3600e3, t0 = Date.parse("2026-11-01T00:00:00Z");
+  const fall = []; for (let i = 0; i < 200; i++) { const p = 100000 - i * 60; fall.push({ time: t0 + i * H, open: p, close: p, high: p + 20, low: p - 20 }); } // ends 88,060
+  const weekly = { daily50: 95000, daily200: 90000, sma: 70000 };
+  const c = buildMeterCard({ candles1h: fall, candles5m: null, weekly, fng: { value: 28, label: "Fear" }, now: Date.parse("2026-11-12T20:14:00Z") });
+  const bad = (msg) => problems.push("share card: " + msg);
+  if (!c) bad("returned nothing for good data");
+  else {
+    if (c.verdict !== "BEARISH" || c.bull) bad("price under the 50-day should read BEARISH");
+    if (c.price !== "$88,060") bad("price should be $88,060, got " + c.price);
+    if (!c.sentence.startsWith("Down ") || !c.sentence.includes("still below its 50-day") || !c.sentence.endsWith("near the bottom of today's range, low $88,040.") || c.sentence.includes("$88,060,")) bad("sentence: " + c.sentence);
+    if (c.ladder.map((r) => r.name).join("|") !== "50-day|200-day|Current price|200-week") bad("ladder order: " + c.ladder.map((r) => r.name).join("|"));
+    if (c.ladder[0].note !== "+7.9% to break" || c.ladder[1].note !== "+2.2% to reach" || c.ladder[3].note !== "+25.8% above") bad("ladder notes: " + c.ladder.map((r) => r.note).join(" | "));
+    if (c.range.note !== "Near the low" || c.range.low !== "$88,040" || !(c.range.at >= 0 && c.range.at <= 0.25)) bad("range: " + JSON.stringify(c.range));
+    if (c.moves.map((x) => x.k).join("|") !== "1h|1 day|1 week" || c.moves.some((x) => x.up !== false)) bad("moves: " + JSON.stringify(c.moves));
+    if (!c.goldenCross || c.fng?.value !== 28) bad("golden cross or Fear & Greed wrong");
+    if (!c.flip.pre.startsWith("Flip the story with a daily close above") || c.flip.hi !== "$95,000" || c.flip.gap !== true) bad("flip line: " + JSON.stringify(c.flip));
+    if (c.stamp !== "Nov 12, 10:14 AM HST") bad("time stamp (Honolulu): " + c.stamp);
+    if (/Rider|Trend|Bounce|alert/i.test(JSON.stringify(c).replace(/Alerts?\b/g, "").replace(/Bitcoin trend/gi, ""))) bad("the card must not name our signals");
+  }
+  const up = fall.map((b, i) => { const p = 80000 + i * 60; return { ...b, open: p, close: p, high: p + 20, low: p - 20 }; }); // ends 91,940, above the 50-day
+  const u = buildMeterCard({ candles1h: up, candles5m: null, weekly: { daily50: 90000, daily200: 85000, sma: 70000 }, fng: null, now: Date.now() });
+  if (!u || u.verdict !== "BULLISH" || !u.flip.pre.startsWith("Staying above the 50-day") || u.fng !== null) bad("price over the 50-day should read BULLISH with the stay-above line and no Fear & Greed when missing");
+  if (buildMeterCard({ candles1h: fall.slice(0, 50), candles5m: null, weekly, fng: null }) !== null) bad("too few candles should return nothing, not a guess");
+  if (buildMeterCard({ candles1h: fall, candles5m: null, weekly: null, fng: null }) !== null) bad("missing averages should return nothing, not a guess");
+}
+
 // Swing Rider and retirements (v23.4): the 4 hour chart is Swing Rider, entered at the open of a new bar when the trend checks pass (no breakout),
 // target 3 times the stop distance. Trend Rider (every other chart) and Rebound Rider are retired: no entries in ALL_SIGNALS, no charts scanned.
 {

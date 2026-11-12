@@ -41,3 +41,7 @@ Morning Brew: short, punchy, plain, contractions, no em dashes, a little dry hum
 ## v20.6 update (Nov 2)
 - The card shows the 1h / 1 day / 1 week moves beside the price (same hourly-candle math as the Market Meter). The old "-x% today" is gone. The top-right label reads "Bitcoin trend".
 - `--sub` is now the Market Meter headline, which leads with the week and the 50-day ("Bitcoin is down 3.5% this week and still below its 50-day, but short term it's moving sideways."). Read it off the Market tab or compute it from the same numbers, and make sure its week number equals the card's 1 week number.
+
+## v24.7 update (Nov 12)
+- The site now makes this same card itself: the Share button on the Market Meter (Copy image, Save image, Share) and `GET /api/meter-card` (1080 x 1080 PNG, code in `app/api/meter-card/route.jsx` and `lib/meterCard.js`). It adds a 24-hour range bar, labels the price row "Current price" and shows a time stamp top right. Same rules: market only, no signal info.
+- `render.mjs` still works for tweets. If a tweet should match the button's image exactly, download `/api/meter-card` instead (`curl -o card.png https://setpointalerts.com/api/meter-card`) and send that.

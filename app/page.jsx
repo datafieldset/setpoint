@@ -859,7 +859,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence that starts with Bitcoin's price and the condition it is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, then ends with where price sits in the last 24 hours (near the bottom, in the middle or near the top of that range, with the low or high). The short-term read itself is the gauge and the line under it. A spike and fall named below keeps its own wording.  and, when Bitcoin is 5% or more under its high of the past 7 days and that high is 3 days old or less, says when and where that high was and how far it fell since (a week-over-week number cannot see a spike and a fall). When a single hour drops 2.5% or more and breaks the lowest low of the past 48 hours, an amber line appears under the sentence for the next 6 hours saying so, with the low it touched and how far it has bounced since. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means. Under the moves, "How close is an alert" lists each live signal for Bitcoin with the checks it has met (a green tick) and the one it is still waiting on. The strength tick measures how strong the move is in either direction, so it can be green while Bitcoin is falling; the 200-day and momentum checks are the ones that say whether it is a buy. "Armed" means a buy is set and waiting for price to come back to it, and "Alert open" means a trade is already running.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence that starts with Bitcoin's price and the condition it is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, then ends with where price sits in the last 24 hours (near the bottom, in the middle or near the top of that range, with the low or high). The short-term read itself is the gauge and the line under it. A spike and fall named below keeps its own wording.  and, when Bitcoin is 5% or more under its high of the past 7 days and that high is 3 days old or less, says when and where that high was and how far it fell since (a week-over-week number cannot see a spike and a fall). When a single hour drops 2.5% or more and breaks the lowest low of the past 48 hours, an amber line appears under the sentence for the next 6 hours saying so, with the low it touched and how far it has bounced since. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means. Under the moves, "How close is an alert" lists each live signal for Bitcoin with the checks it has met (a green tick) and the one it is still waiting on. The strength tick measures how strong the move is in either direction, so it can be green while Bitcoin is falling; the 200-day and momentum checks are the ones that say whether it is a buy. "Armed" means a buy is set and waiting for price to come back to it, and "Alert open" means a trade is already running. The share button in the top right of the meter makes a square picture of today's Bitcoin read (the verdict, price, 1 hour, 1 day and 1 week moves, the last 24 hours' range, the 50-day, 200-day and 200-week lines, golden cross and Fear &amp; Greed, with the time it was made). Copy image puts it on your clipboard for an email, text or post, Save image downloads it, and on a phone Share opens your share sheet. It shows the market only, never our alerts.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -1738,6 +1738,67 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // v24.7 (Nov 12, Na approved the mockup): the Share button on the Market Meter. Copy puts the square card on the clipboard, Save downloads it,
+  // Share opens the phone's own share sheet. The picture is drawn by the server (/api/meter-card), so it is the same on every device.
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareMsg, setShareMsg] = useState("");
+  const [canShareFile, setCanShareFile] = useState(false);
+  const shareRef = useRef(null);
+  const shareBusy = useRef(false);        // one image at a time, so a double tap does not make two
+  const shareTimer = useRef(null);        // the "close the menu" timer, cleared when the menu is opened again
+  const sharePre = useRef(null);          // { at, blob }: the picture fetched when the menu opened, so the phone's Share still has the tap's permission (Safari)
+  useEffect(() => {
+    try { setCanShareFile(typeof navigator.canShare === "function" && navigator.canShare({ files: [new File([""], "x.png", { type: "image/png" })] })); } catch { /* no share sheet here */ }
+  }, []);
+  useEffect(() => {
+    if (!shareOpen || !canShareFile) return;
+    fetch("/api/meter-card", { cache: "no-store" }).then((r) => (r.ok ? r.blob() : null)).then((blob) => { if (blob) sharePre.current = { at: Date.now(), blob }; }).catch(() => {});
+  }, [shareOpen, canShareFile]);
+  useEffect(() => {
+    if (!shareOpen) return undefined;
+    const away = (e) => { if (shareRef.current && !shareRef.current.contains(e.target)) setShareOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setShareOpen(false); };
+    document.addEventListener("mousedown", away); document.addEventListener("touchstart", away); document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("touchstart", away); document.removeEventListener("keydown", esc); };
+  }, [shareOpen]);
+  const shareCard = useCallback(async (kind) => {
+    const get = () => fetch("/api/meter-card", { cache: "no-store" }).then((r) => { if (!r.ok) throw new Error("card " + r.status); return r.blob(); });
+    const fileName = `setpoint-bitcoin-${new Date().toLocaleDateString("en-CA", { timeZone: "Pacific/Honolulu" })}.png`;
+    const download = (blob) => { const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = fileName; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 4000); };
+    if (shareBusy.current) return;
+    shareBusy.current = true;
+    clearTimeout(shareTimer.current);
+    setShareMsg("Making the image...");
+    try {
+      if (kind === "copy") {
+        try {
+          if (!navigator.clipboard || typeof ClipboardItem === "undefined") throw new Error("no clipboard");
+          await navigator.clipboard.write([new ClipboardItem({ "image/png": get() })]); // a promise, so Safari keeps the tap's permission while the image loads
+          setShareMsg("Copied. Paste it anywhere.");
+        } catch {
+          download(await get());
+          setShareMsg("This browser blocked copying, so it saved the image instead.");
+        }
+      } else if (kind === "save") {
+        download(await get());
+        setShareMsg("Saved.");
+      } else {
+        const pre = sharePre.current && Date.now() - sharePre.current.at < 55000 ? sharePre.current.blob : null;
+        const blob = pre || (await get());
+        await navigator.share({ files: [new File([blob], fileName, { type: "image/png" })] });
+        setShareMsg("");
+        setShareOpen(false);
+        return;
+      }
+      shareTimer.current = setTimeout(() => { setShareOpen(false); setShareMsg(""); }, 2600);
+    } catch (e) {
+      if (e && e.name === "AbortError") { setShareMsg(""); return; } // they closed the share sheet
+      setShareMsg(e && e.name === "NotAllowedError" ? "Your phone wouldn't open the share sheet. Try Save image." : "Couldn't make the image. Try again in a minute.");
+    } finally {
+      shareBusy.current = false;
+    }
+  }, []);
+
   // v23.9: one row per live signal that declares `ready` (data, not code: the page never names a signal). Bitcoin only, like the meter.
   const readyRows = useMemo(() => {
     if (!btcReady) return [];
@@ -2014,7 +2075,33 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             <div className={`mm-panel ${marketMeter.confirmed ? "confirmed" : ""}`}>
               <div className="mm-head">
                 <span className="mm-title">Market Meter</span>
-                <span className="mm-sub">Bitcoin</span>
+                <span className="mm-head-r" ref={shareRef}>
+                  <span className="mm-sub">Bitcoin</span>
+                  <button type="button" className={`mm-share-btn ${shareOpen ? "open" : ""}`} aria-label="Share this meter" aria-expanded={shareOpen} aria-haspopup="menu" onClick={() => { clearTimeout(shareTimer.current); setShareOpen((v) => !v); setShareMsg(""); }}>
+                    <span className="mm-share-ic">
+                      <svg aria-hidden="true" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M8 10.5V2.5M5 5.2L8 2.3l3 2.9M3 8.5v4.2c0 .6.4 1 1 1h8c.6 0 1-.4 1-1V8.5" /></svg>
+                    </span>
+                  </button>
+                  {shareOpen && (
+                    <div className="mm-share-menu" role="menu">
+                      <button type="button" role="menuitem" className="mm-share-item" onClick={() => shareCard("copy")}>
+                        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="6" width="9" height="9" rx="2" /><path d="M12 6V4.5A1.5 1.5 0 0 0 10.5 3h-6A1.5 1.5 0 0 0 3 4.5v6A1.5 1.5 0 0 0 4.5 12H6" /></svg>
+                        <span>Copy image</span>
+                      </button>
+                      <button type="button" role="menuitem" className="mm-share-item" onClick={() => shareCard("save")}>
+                        <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 2.5v8.5M5.8 8l3.2 3.2L12.2 8M3 12.5v1.5A1.5 1.5 0 0 0 4.5 15.5h9A1.5 1.5 0 0 0 15 14v-1.5" /></svg>
+                        <span>Save image</span>
+                      </button>
+                      {canShareFile && (
+                        <button type="button" role="menuitem" className="mm-share-item" onClick={() => shareCard("share")}>
+                          <svg aria-hidden="true" width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 11.5v-8.5M6 5.7L9 2.7l3 3M3.5 9.5v4.7c0 .6.4 1 1 1h9c.6 0 1-.4 1-1V9.5" /></svg>
+                          <span>Share</span>
+                        </button>
+                      )}
+                      {shareMsg && <div className="mm-share-msg" role="status">{shareMsg}</div>}
+                    </div>
+                  )}
+                </span>
               </div>
               <div className="mm-headline">{meterHeadline(marketMeter, meterMoves)}</div>
               {meterFreshLine(meterMoves) && <div className="mm-fresh">{meterFreshLine(meterMoves)}</div>}
@@ -2745,6 +2832,16 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
 .mm-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .mm-sub{font-size:12px;color:var(--muted)}
+.mm-panel{position:relative}
+.mm-head-r{display:flex;align-items:center;gap:4px;position:relative}
+.mm-share-btn{width:44px;height:44px;margin:-14px -12px -14px 0;display:flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:10px;cursor:pointer;color:var(--soft-text)}
+.mm-share-ic{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid #2C3B34;border-radius:9px;background:#1A2621}
+.mm-share-btn:hover .mm-share-ic,.mm-share-btn:focus-visible .mm-share-ic{border-color:var(--green)}
+.mm-share-btn.open .mm-share-ic{border-color:var(--green);background:#1F2E27;color:var(--text)}
+.mm-share-menu{position:absolute;top:34px;right:-4px;z-index:20;width:224px;padding:6px;background:#1B2822;border:1px solid #2C3B34;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:flex;flex-direction:column}
+.mm-share-item{display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;background:transparent;border:0;border-radius:8px;color:var(--text);font:600 14px 'Inter',sans-serif;text-align:left;cursor:pointer}
+.mm-share-item:hover,.mm-share-item:focus-visible{background:#24342C}
+.mm-share-msg{padding:10px 12px 8px;font-size:13px;line-height:1.4;color:var(--soft-text);border-top:1px solid #2C3B34;margin-top:4px}
 .mm-moves{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;margin-top:10px}
 .mm-move{display:flex;align-items:baseline;gap:6px}
 .mm-move-k{font-size:12px;color:var(--muted)}
