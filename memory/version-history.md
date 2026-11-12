@@ -180,3 +180,5 @@ v23.5 (Nov 11, Na: "2. Yes."). Market Meter headline: the spike-and-drop story (
 v23.6 (Nov 11, Na: "Yes do it"). Swing Rider drops the "not stretched" check so it fires about 28 times a year on Bitcoin instead of about 12 (noStretch on the 4 hour chart; `what` text rewritten with the new replay numbers: 163 trades, 33% wins, +0.23R; held-out year 10 trades, +0.12R). Also notes: the funding and open-interest signal hunt (tries 20 to 28, all failed or too rare) in lessons-learned.md and overhaul-plan.md.
 
 v23.7 (Nov 11). Notes only: the Polymarket prediction-market study (tries 29 to 32, no usable signal) in lessons-learned.md and overhaul-plan.md. No site change.
+
+v23.8 (Nov 11, Na: "Yes do it"). Swing Rider gets its "not stretched" check back (noStretch removed, `what` text back to the 69-trade numbers). Reason and the late-entry split are in signal-roster.md. v23.6 was live about an hour with no trades opened.

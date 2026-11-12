@@ -71,3 +71,4 @@ Tries 29 to 32:
 - P3 Next-day lean: every 4 hours, the average Up price of the next 24 hourly markets that have not started; compare Bitcoin's next 24 hour move when the average is 0.52 or more, 0.48 or less, and in between.
 - P4 Daily market: the Up price just before the daily window opens against that day's move.
 Each is split into two halves by date; a result only counts if both halves agree. Also report plain calibration (when the crowd says 55%, how often is it up) and how often the price is anything other than 0.50 before the hour.
+- v23.8 (same night): the "not stretched" check is back on Swing Rider after the late-entry split showed the extra trades make about nothing. Live: Swing Rider (strict, about 12 a year) and Flush Rider (about 20 a year). Open: frequency without weaker trades; Market Meter improvements (proposal stage).
