@@ -6,6 +6,7 @@ import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
 import { meterHeadline, meterStageLine, meterPos, meterMovesFrom, meterFreshLine } from "../lib/meter.js";
+import { signalReadiness, readyTf } from "../lib/readiness.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
 import { useVisibleInterval } from "./useVisibleInterval.js";
@@ -810,7 +811,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
             <p className="guide-lede">{FOCUS_MODE ? `Setpoint is being rebuilt one signal at a time, so ${publicTests.length === 1 ? "this is the only signal" : `these ${publicTests.length} are the only signals`} live right now. ` : ""}A public test is shown to everyone with its real record while it proves itself. It carries a "testing" tag, not a verified badge, until its live results clear the same bar as everything else.</p>
             {publicTests.map((x) => (
               <div className="guide-card" key={x.name}>
-                <div className="guide-card-top"><span className="guide-card-name">{x.name}</span></div>
+                <div className="guide-card-top"><span className="guide-card-name">{brandName(x.name)}</span></div>
                 <div className="guide-card-desc">{x.what}</div>
               </div>
             ))}
@@ -856,7 +857,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <h2>The Market tab</h2>
         <p className="guide-lede">A separate tab, apart from your own coins, reading the broader market on its own terms. Everything here is real, live, background context, not a trading signal, and it never changes based on which coin you've selected.</p>
 
-        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, and, when Bitcoin is 5% or more under its high of the past 7 days, says when and where that high was and how far it fell since (a week-over-week number cannot see a spike and a fall). When a single hour drops 2.5% or more and breaks the lowest low of the past 48 hours, an amber line appears under the sentence for the next 6 hours saying so, with the low it touched and how far it has bounced since. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Market Meter</div><div className="guide-field-v">One plain sentence on the condition Bitcoin is in, then a bar from Falling to Rising with a marker, and Bitcoin's moves over 1 hour, 1 day and 1 week. The sentence leads with the week (or the day if the day moved more), calls the week flat only when it moved less than half a percent, says whether Bitcoin is still below, or holding above, its 50-day average, and, when Bitcoin is 5% or more under its high of the past 7 days and that high is 3 days old or less, says when and where that high was and how far it fell since (a week-over-week number cannot see a spike and a fall). When a single hour drops 2.5% or more and breaks the lowest low of the past 48 hours, an amber line appears under the sentence for the next 6 hours saying so, with the low it touched and how far it has bounced since. The marker blends the short-term 5 minute read, the 1 hour, 1 day and 1 week moves (the day counts most) and how far Bitcoin is from its 50-day average, so a market that is down on the week and under its 50-day sits on the falling side even if the last few minutes are quiet. If the 5 minute chart turns up inside that kind of market, the sentence says "bouncing", the line under the bar says "Bouncing inside a downtrend, not a new uptrend", and the marker stays on the falling side (the same in reverse for an up market). "Why this read?" opens the recent win-rate lean of long versus short trades and a plain note on what the marker means. Under the moves, "How close is an alert" lists each live signal for Bitcoin with the checks it has met (a green tick) and the one it is still waiting on. "Armed" means a buy is set and waiting for price to come back to it, and "Alert open" means a trade is already running.</div></div>
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
@@ -1104,6 +1105,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
   const [mmWhy, setMmWhy] = useState(false); // Market Meter 'Why' details open/closed
   const [btcMoves, setBtcMoves] = useState(null); // BTC's 1h / 1d / 1w change from 1h candles, the "bigger picture" strip on the Market Meter
   const btcMovesAt = useRef(0);
+  const [btcReady, setBtcReady] = useState(null); // v23.9: Bitcoin candles per chart plus the 200-day line, for the meter's "How close is an alert" section
   const [btcRegime, setBtcRegime] = useState(null); // BTC's real trend/exhaustion read, always 5m regardless of the selected alerts tab, powers the Market Meter below
   const [watchlistMeters15m, setWatchlistMeters15m] = useState({}); // sym -> real meter score, always 15m, powers the Market Meter's confirmation check specifically
   const [loading, setLoading] = useState(true);
@@ -1487,6 +1489,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             const cs = b1?.candles || [];
             const mv = meterMovesFrom(cs);
             if (mv) setBtcMoves(mv);
+            // v23.9: the charts the live signals read (from their own ALL_SIGNALS entries), for "How close is an alert".
+            const byTf = { "1h": cs };
+            const need = [...new Set(ALL_SIGNALS.filter((x) => x.ready && isSignalVisible(x.name)).map(readyTf).filter((t) => t && !byTf[t]))];
+            await Promise.all(need.map(async (t) => {
+              try {
+                const r = await fetch(`/api/market?symbols=BTC&tf=${t}`, { cache: "no-store" });
+                if (r.ok) byTf[t] = ((await r.json()).coins || []).find((c) => c.sym === "BTC")?.candles || null;
+              } catch { /* that signal's row is left out */ }
+            }));
+            setBtcReady({ byTf, sma: j1.trendSma || null, at: Date.now() });
           }
         } catch { /* leave the strip as it was */ }
       }
@@ -1723,6 +1735,16 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
       .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // v23.9: one row per live signal that declares `ready` (data, not code: the page never names a signal). Bitcoin only, like the meter.
+  const readyRows = useMemo(() => {
+    if (!btcReady) return [];
+    return ALL_SIGNALS.filter((x) => x.ready && isSignalVisible(x.name)).map((x) => {
+      const tf = readyTf(x);
+      const r = signalReadiness(x, { candles: btcReady.byTf[tf], sma: btcReady.sma, now: btcReady.at, open: openPositions.some((p) => p.label === x.name && p.coin === "BTC") });
+      return r ? { name: brandName(x.name), tf, ...r } : null;
+    }).filter(Boolean);
+  }, [btcReady, openPositions]);
 
   if (showGuide) {
     return (
@@ -2003,6 +2025,27 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 <div className="mm-moves">
                   {[["1h", meterMoves.h1], ["1 day", meterMoves.h24], ["1 week", meterMoves.w1]].map(([k, v]) => (
                     <div key={k} className="mm-move"><span className="mm-move-k">{k}</span><span className={`mm-move-v mono ${v >= 0 ? "up" : "down"}`}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span></div>
+                  ))}
+                </div>
+              )}
+              {readyRows.length > 0 && (
+                <div className="mm-ready">
+                  <div className="mm-ready-title">How close is an alert</div>
+                  {readyRows.map((r) => (
+                    <div key={r.name} className="mm-ready-sig">
+                      <div className="mm-ready-head">
+                        <span className="mm-ready-name">{r.name} <span className="mm-ready-tf">{r.tf}</span></span>
+                        <span className={`mm-ready-badge mono ${r.tone}`}>{r.badge}</span>
+                      </div>
+                      {r.lines.map((l, i) => (
+                        <div key={i} className={`mm-ready-line ${l.ok === false ? "waiting" : ""}`}>
+                          {l.ok === true
+                            ? <svg aria-hidden="true" className="mm-ready-ic" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="var(--green)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 8.5l3.2 3L13 4.5" /></svg>
+                            : <svg aria-hidden="true" className="mm-ready-ic" width="16" height="16" viewBox="0 0 16 16" fill="none" stroke={l.ok === false ? "var(--amber)" : "var(--muted)"} strokeWidth="2" strokeLinecap="round"><circle cx="8" cy="8" r="5.5" /></svg>}
+                          <span>{l.ok === true ? <span className="sr-only">Met: </span> : null}{l.text}</span>
+                        </div>
+                      ))}
+                    </div>
                   ))}
                 </div>
               )}
@@ -2718,6 +2761,19 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .mm-stage{font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text);margin-bottom:2px}
 .mm-stage.ending{color:var(--amber)}
 .mm-fresh{font-size:13.5px;font-weight:600;line-height:1.45;color:var(--amber);margin:0 0 10px}
+.mm-ready{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:14px}
+.mm-ready-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.mm-ready-sig{display:flex;flex-direction:column;gap:8px}
+.mm-ready-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.mm-ready-name{font-size:14px;font-weight:600}
+.mm-ready-tf{font-weight:400;color:var(--muted)}
+.mm-ready-badge{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
+.mm-ready-badge.wait{color:var(--amber)}
+.mm-ready-badge.go{color:var(--green)}
+.mm-ready-line{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.4;color:var(--soft-text)}
+.mm-ready-line.waiting{color:var(--text);font-weight:600}
+.mm-ready-ic{flex:none;margin-top:1px}
+.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .mm-scope-note{margin-top:6px;font-size:11px;color:var(--soft-text);line-height:1.4}
 .mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}

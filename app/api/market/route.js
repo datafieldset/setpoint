@@ -8,8 +8,9 @@ export const revalidate = 0;
 
 import { isValidTf } from "../../../lib/timeframes.js";
 import { reversalRisk, getLiveVerifiedGate, visibleGates, PUBLIC_TESTING, RETIRED_SIGNALS } from "../../../lib/signals.js";
-import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
+import { fetchCandles, getWeekly200MA, getDailySMA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
 import { withCache } from "../../../lib/cache.js";
+import { FILTER_DAYS } from "../../../lib/trend.js";
 
 // Kept local, market/route.js-specific: 24h stats display and the
 // signal-drift bias panel aren't needed by the server-side signal
@@ -136,7 +137,7 @@ export async function GET(req) {
   const tfParam = searchParams.get("tf");
   const tf = isValidTf(tfParam) ? tfParam : "15m";
 
-  const [coins, fng, bias, weekly200, signalBias, liveGateResult, whaleActivity] = await Promise.all([
+  const [coins, fng, bias, weekly200, signalBias, liveGateResult, whaleActivity, trendSma] = await Promise.all([
     Promise.all(
       symbols.map(async (sym) => {
         try {
@@ -155,12 +156,15 @@ export async function GET(req) {
     getSignalBias(),
     getLiveVerifiedGate(),
     getRecentWhaleActivity(),
+    // v23.9: Bitcoin's 200-day average exactly as the signal runner computes it (same function, cached an hour), so the meter's
+    // "How close is an alert" section checks the same line the signal does.
+    withTimeout(getDailySMA("BTC", FILTER_DAYS).catch(() => null), 8000, null),
   ]);
   const { gate: liveGate, regimeGate } = liveGateResult;
 
   const risk = reversalRisk(bias, fng?.value);
   return Response.json(
-    { coins, fng, bias, risk, weekly200, signalBias, liveGate: visibleGates(liveGate), regimeGate: visibleGates(regimeGate), recentWhaleOutflowOversold: whaleActivity.outflowOversold, recentWhaleInflowOverbought: whaleActivity.inflowOverbought, tf, at: Date.now() },
+    { coins, fng, bias, risk, weekly200, trendSma, signalBias, liveGate: visibleGates(liveGate), regimeGate: visibleGates(regimeGate), recentWhaleOutflowOversold: whaleActivity.outflowOversold, recentWhaleInflowOverbought: whaleActivity.inflowOverbought, tf, at: Date.now() },
     { headers: { "cache-control": "no-store, no-cache, must-revalidate, max-age=0" } }
   );
 }

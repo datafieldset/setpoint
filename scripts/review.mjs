@@ -148,6 +148,42 @@ for (const [f, t] of src) {
   // exactly 3 days old still tells the story (the base series ends 3 days after its high)
 }
 
+// "How close is an alert" (v23.9): the meter section reads the signals' own rules and uses the customer-facing names.
+{
+  const R = await import(new URL("../lib/readiness.js", import.meta.url));
+  const S = await import(new URL("../lib/signals.js", import.meta.url));
+  const T = await import(new URL("../lib/trend.js", import.meta.url));
+  const { brandName } = await import(new URL("../lib/brand.js", import.meta.url));
+  if (brandName("Swing Rider") !== "Trend" || brandName("Flush Rider") !== "Bounce") problems.push("ready: Swing Rider and Flush Rider should show as Trend and Bounce");
+  const live = S.ALL_SIGNALS.filter((x) => S.isSignalVisible(x.name));
+  for (const x of live) if (!x.ready || !R.READY[x.ready]) problems.push(`ready: live signal ${x.name} has no readiness kind (add ready: to its ALL_SIGNALS entry, or a function to READY)`);
+  const swing = S.ALL_SIGNALS.find((x) => x.name === "Swing Rider"), flush = S.ALL_SIGNALS.find((x) => x.name === "Flush Rider");
+  const H4 = 14400e3, H1 = 3600e3;
+  // steady climb on 4h: every check met when the 200-day sits 10% under price
+  const up = []; for (let i = 0; i < 120; i++) { const p = 100 + i * 0.5; up.push({ time: i * H4, open: p, high: p + 1, low: p - 1, close: p + 0.5 }); }
+  const now4 = 120 * H4 + 1000, last = up[119].close;
+  const all = R.signalReadiness(swing, { candles: up, sma: last / 1.1, now: now4, open: false });
+  if (!all || all.badge !== "Ready" || all.lines.filter((l) => l.ok === true).length !== 4) problems.push("ready: a strong uptrend should read Ready with 4 met checks: " + JSON.stringify(all));
+  const under = R.signalReadiness(swing, { candles: up, sma: last * 1.05, now: now4, open: false });
+  if (!under || under.badge !== "3 of 4 met" || !under.lines.at(-1).text.startsWith("Waiting: price needs to get back above its 200-day line (now 4.8% under)")) problems.push("ready: under the 200-day should read 3 of 4 with the waiting line last: " + JSON.stringify(under));
+  const far = R.signalReadiness(swing, { candles: up, sma: last / 1.3, now: now4, open: false });
+  if (!far || far.badge !== "3 of 4 met" || !far.lines.at(-1).text.includes("stretched too far")) problems.push("ready: 30% above the 200-day should wait on the stretch check: " + JSON.stringify(far));
+  if (R.signalReadiness(swing, { candles: up, sma: last, now: now4, open: true })?.badge !== "Alert open") problems.push("ready: an open trade should read Alert open");
+  if (R.signalReadiness(swing, { candles: up.slice(0, 10), sma: last, now: now4, open: false }) !== null) problems.push("ready: too few candles should return nothing, not a guess");
+  if (T.TREND_TFS["4h"].noStretch) problems.push("ready: test assumes the stretch check is on");
+  // flat 1h market at 100: quiet, names the 2-day low (99) and the distance (1.0%)
+  const flat = []; for (let i = 0; i < 100; i++) flat.push({ time: i * H1, open: 100, high: 100.5, low: 99, close: 100 });
+  const q = R.signalReadiness(flush, { candles: flat, now: 100 * H1 + 1000, open: false });
+  if (!q || q.badge !== "Quiet" || !q.lines[0].text.includes("That low is $99, 1.0% below price")) problems.push("ready: a flat market should read Quiet with the 2-day low: " + JSON.stringify(q));
+  // a flush 3 bars ago (open 100, low 96, close 98), price since at 98: the buy is armed just above 96
+  const fl = flat.map((b) => ({ ...b })); fl[96] = { time: 96 * H1, open: 100, high: 100, low: 96, close: 98 }; for (const k of [97, 98, 99]) fl[k] = { time: k * H1, open: 98, high: 98.5, low: 97.6, close: 98 };
+  const ar = R.signalReadiness(flush, { candles: fl, now: 100 * H1 + 1000, open: false });
+  if (!ar || ar.badge !== "Armed" || !ar.lines[0].text.includes("a sharp drop hit $96")) problems.push("ready: a fresh flush that has not been retested should read Armed: " + JSON.stringify(ar));
+  // the same flush, but price already came back to the buy level: no longer armed (it is an open alert by then)
+  const fd = fl.map((b) => ({ ...b })); fd[98] = { ...fd[98], low: 96.05 };
+  if (R.signalReadiness(flush, { candles: fd, now: 100 * H1 + 1000, open: false })?.badge === "Armed") problems.push("ready: a flush that already filled should not read Armed");
+}
+
 // Swing Rider and retirements (v23.4): the 4 hour chart is Swing Rider, entered at the open of a new bar when the trend checks pass (no breakout),
 // target 3 times the stop distance. Trend Rider (every other chart) and Rebound Rider are retired: no entries in ALL_SIGNALS, no charts scanned.
 {
