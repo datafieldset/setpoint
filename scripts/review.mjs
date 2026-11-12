@@ -176,7 +176,8 @@ for (const [f, t] of src) {
     if (Math.abs((e.entry - e.stop) - 2 * pre.atr[i]) > 1e-9) problems.push("swing: stop is not 2 ATR away");
   }
   if (at(276, 300)?.fire) problems.push("swing: fired under the 200-day average");
-  if (at(276, 200)?.fire) problems.push("swing: fired while stretched more than 20% above the 200-day average");
+  if (!at(276, 200)?.fire) problems.push("swing: did not fire when price is far above the 200-day average (v23.6 dropped the stretch check)");
+  if (!T.TREND_TFS["4h"].noStretch) problems.push("swing: the 4 hour chart should have noStretch set (v23.6)");
   if (T.analyze(cfg, B, pre, i, null, { sma: 250, htf: null })?.bull.fire) problems.push("swing: fired with no new bar");
   // a falling series: RSI is low, so no buy
   const D = B.map((b, k) => { const p = 400 - k * 0.5; return { ...b, open: p, high: p + 1, low: p - 1, close: p - 0.5 }; });
