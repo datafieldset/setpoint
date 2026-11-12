@@ -1741,7 +1741,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     if (!btcReady) return [];
     return ALL_SIGNALS.filter((x) => x.ready && isSignalVisible(x.name)).map((x) => {
       const tf = readyTf(x);
-      const r = signalReadiness(x, { candles: btcReady.byTf[tf], sma: btcReady.sma, now: btcReady.at, open: openPositions.some((p) => p.label === x.name && p.coin === "BTC") });
+      const r = signalReadiness(x, { candles: btcReady.byTf[tf], sma: btcReady.sma, now: btcReady.at, tf, open: openPositions.some((p) => p.label === x.name && p.coin === "BTC" && p.tf === tf) });
       return r ? { name: brandName(x.name), tf, ...r } : null;
     }).filter(Boolean);
   }, [btcReady, openPositions]);

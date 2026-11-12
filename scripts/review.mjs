@@ -174,7 +174,7 @@ for (const [f, t] of src) {
   // flat 1h market at 100: quiet, names the 2-day low (99) and the distance (1.0%)
   const flat = []; for (let i = 0; i < 100; i++) flat.push({ time: i * H1, open: 100, high: 100.5, low: 99, close: 100 });
   const q = R.signalReadiness(flush, { candles: flat, now: 100 * H1 + 1000, open: false });
-  if (!q || q.badge !== "Quiet" || !q.lines[0].text.includes("That low is $99, 1.0% below price")) problems.push("ready: a flat market should read Quiet with the 2-day low: " + JSON.stringify(q));
+  if (!q || q.badge !== "Quiet" || !q.lines[0].text.includes("2-day low ($99, 1.0% below price)")) problems.push("ready: a flat market should read Quiet with the 2-day low: " + JSON.stringify(q));
   // a flush 3 bars ago (open 100, low 96, close 98), price since at 98: the buy is armed just above 96
   const fl = flat.map((b) => ({ ...b })); fl[96] = { time: 96 * H1, open: 100, high: 100, low: 96, close: 98 }; for (const k of [97, 98, 99]) fl[k] = { time: k * H1, open: 98, high: 98.5, low: 97.6, close: 98 };
   const ar = R.signalReadiness(flush, { candles: fl, now: 100 * H1 + 1000, open: false });
