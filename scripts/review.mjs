@@ -144,8 +144,30 @@ for (const [f, t] of src) {
   run("low before high", pre, ["Bitcoin hit its high of"], ["dropped to"]);
   // v23.5: the same spike and drop, but the high is now 5 days old: no story, no weekday, no old price. The headline describes the week only.
   const old = series(95000, 195, 97000); for (let i = 200; i < 248; i++) old.push({ time: t0 + i * H, open: 97000, close: 97000, high: 97000, low: 97000 });
-  run("old high", old, ["Bitcoin is"], ["spiked", "$110,000", "gave it all back", "dropped to", "hit its high of"]);
+  run("old high", old, ["Bitcoin $97,000,"], ["spiked", "$110,000", "gave it all back", "dropped to", "hit its high of", "Bitcoin is"]);
   // exactly 3 days old still tells the story (the base series ends 3 days after its high)
+  // v24.4 (Na's wording): a quiet or sideways short term is replaced by where price sits in the last 24 hours, with the price up front.
+  // Week: 100,000 flat for 140 bars, then a down week to 94,000; the last 24 bars wander so we can set where price ends inside them.
+  const day = (endPx, loPx, hiPx) => { const cs = []; for (let i = 0; i < 200; i++) { const v = i < 160 ? 100000 : 100000 - (i - 160) * 100; cs.push({ time: t0 + i * H, open: v, close: v, high: v, low: v }); }
+    for (let i = 176; i < 200; i++) { const b = cs[i]; b.open = 96000; b.close = 96000; b.high = 96000; b.low = 96000; }
+    cs[180] = { ...cs[180], high: hiPx, low: hiPx, open: hiPx, close: hiPx }; cs[190] = { ...cs[190], high: loPx, low: loPx, open: loPx, close: loPx }; cs[199] = { ...cs[199], open: endPx, close: endPx, high: endPx, low: endPx }; return cs; };
+  const wk = (cs) => ({ ...meterMovesFrom(cs), vs50: -5 });
+  const lowDay = day(94300, 94000, 98000), midDay = day(96000, 94000, 98000), topDay = day(97800, 94000, 98000), flatDay = day(96000, 95800, 96100);
+  const rr = (name, cs, want, mustNot = []) => { const mv = wk(cs); const h = meterHeadline(m, mv); for (const w of want) if (!h.includes(w)) problems.push(`meter range: ${name}: wanted "${w}" in: ${h}`); for (const w of mustNot) if (h.includes(w)) problems.push(`meter range: ${name}: did not want "${w}" in: ${h}`); for (const e of checkMeter(m, mv)) problems.push(`meter range: ${name}: ${e}`); };
+  rr("bottom", lowDay, ["Bitcoin $94,300, down", "still near the bottom of today's range, low $94,000."], ["short term", "moving sideways"]);
+  rr("middle", midDay, ["Bitcoin $96,000, down", "in the middle of today's range."], ["short term", "near the bottom"]);
+  rr("top", topDay, ["near the top of today's range, high $98,000."], ["still near the top", "short term"]); // a down week, so no "still"
+  rr("tiny range", flatDay, ["short term it's moving sideways"], ["today's range"]);   // 0.3% range: no position, old wording
+  { // a notable short-term read is not replaced
+    const mv = wk(lowDay); const h = meterHeadline({ stage: "high-volatility", phase: "building", level: 3, label: "x" }, mv);
+    if (!h.includes("swinging hard") || h.includes("today's range")) problems.push("meter range: a notable short-term read should stay: " + h);
+  }
+  { // an up week near the top says "still"; hand-set numbers
+    const mv = { h1: 0, h24: 0.2, w1: 5, dd7: -0.5, hiDay: "Monday", hiAgo: 1, hi7: 100500, hiAt: 0, lo7: 95000, loAt: 0, loAgo: 6, loDay: "Friday", runStart: 95000, px: 100000, hi24: 100500, lo24: 98000, vs50: 3, fresh: null };
+    const h = meterHeadline(m, mv);
+    if (!h.includes("Bitcoin $100,000, up 5% this week and holding above its 50-day, still near the top of today's range, high $100,500.")) problems.push("meter range: up-week wording: " + h);
+    for (const e of checkMeter(m, mv)) problems.push("meter range: up-week: " + e);
+  }
 }
 
 // "How close is an alert" (v23.9): the meter section reads the signals' own rules and uses the customer-facing names.
