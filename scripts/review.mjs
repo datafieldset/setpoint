@@ -158,9 +158,10 @@ for (const [f, t] of src) {
   rr("middle", midDay, ["Bitcoin $96,000, down", "in the middle of today's range."], ["short term", "near the bottom"]);
   rr("top", topDay, ["near the top of today's range, high $98,000."], ["still near the top", "short term"]); // a down week, so no "still"
   rr("tiny range", flatDay, ["short term it's moving sideways"], ["today's range"]);   // 0.3% range: no position, old wording
-  { // a notable short-term read is not replaced
-    const mv = wk(lowDay); const h = meterHeadline({ stage: "high-volatility", phase: "building", level: 3, label: "x" }, mv);
-    if (!h.includes("swinging hard") || h.includes("today's range")) problems.push("meter range: a notable short-term read should stay: " + h);
+  for (const stage of ["bearish-trending", "high-volatility", "bullish-trending", "low-volatility"]) { // v24.5: every short-term read ends with the range line
+    const mv = wk(lowDay); const st = { stage, phase: "building", level: 3, label: "x" }; const h = meterHeadline(st, mv);
+    if (!h.endsWith("still near the bottom of today's range, low $94,000.") || h.includes("short term")) problems.push(`meter range: ${stage} should end with the range line: ` + h);
+    for (const e of checkMeter(st, mv)) problems.push(`meter range: ${stage}: ${e}`);
   }
   { // an up week near the top says "still"; hand-set numbers
     const mv = { h1: 0, h24: 0.2, w1: 5, dd7: -0.5, hiDay: "Monday", hiAgo: 1, hi7: 100500, hiAt: 0, lo7: 95000, loAt: 0, loAgo: 6, loDay: "Friday", runStart: 95000, px: 100000, hi24: 100500, lo24: 98000, vs50: 3, fresh: null };
