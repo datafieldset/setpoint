@@ -168,15 +168,15 @@ function bandPolygons(a, b, x, y) {
 // v19.49 (Na, Oct 29): Bitcoin's daily price against its 50-day average over the last 90 days. The space between the
 // two is shaded green while price is above the line and red while it's below, so a test of the line is easy to see.
 // `price` is the live price; the last point of the series uses it so the dot is current.
-function PriceVs50Chart({ series, price }) {
+function PriceVs50Chart({ series, price, field = "sma50" }) {  // field: which average to draw (v24.3: "sma200" for the 200-day tab)
   if (!series || series.length < 2) return null;
   const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
   const W = 300, H = 120, PAD = 6;
-  const vals = pts.flatMap((p) => [p.close, p.sma50]);
+  const vals = pts.flatMap((p) => [p.close, p[field]]);
   const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
   const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
   const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const bands = bandPolygons(pts.map((p) => p.close), pts.map((p) => p.sma50), x, y);
+  const bands = bandPolygons(pts.map((p) => p.close), pts.map((p) => p[field]), x, y);
   const last = pts[pts.length - 1];
   const labels = [0, 1, 2, 3].map((k) => {
     const idx = Math.round((k * (pts.length - 1)) / 3);
@@ -186,7 +186,7 @@ function PriceVs50Chart({ series, price }) {
     <div className="chart-wrap">
       <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {bands}
-        <polyline points={pts.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p[field])}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
         <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
       <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
@@ -234,10 +234,11 @@ function LongTermLines({ weekly200, price: livePrice }) {
     : <>A daily close below <b className="mono">${fmtPrice(line50)}</b> would break the 50-day ({Math.abs(dist).toFixed(1)}% below where it is now).</>;
   const legends = {
     d50: <>White line is Bitcoin's daily close, dashed amber is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
+    d200: line200 != null ? <>White line is Bitcoin's daily close, dashed amber is the 200-day average (${fmtPrice(line200)}), {Math.abs(((price - line200) / line200) * 100).toFixed(1)}% {price >= line200 ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
     cross: line200 != null ? <>Dashed amber is the 50-day (${fmtPrice(line50)}), white is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross. Green fill: 50 above 200." : "The 50 is below the 200, a death cross. Red fill: 50 below 200."} The dot is the most recent cross.</> : null,
     w200: lineW != null ? <>White line is Bitcoin's weekly close over the last 75 weeks, dashed amber is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
   };
-  const tabs = [["d50", "50-day", weekly200.dailyPrice?.length > 1], ["cross", "Golden cross", weekly200.dailySeries?.length > 1 && line200 != null], ["w200", "200-week", weekly200.priceSeries?.length > 1 && lineW != null]].filter((t) => t[2]);
+  const tabs = [["d50", "50‑day", weekly200.dailyPrice?.length > 1], ["cross", "Golden cross", weekly200.dailySeries?.length > 1 && line200 != null], ["d200", "200‑day", weekly200.dailyPrice200?.length > 1 && line200 != null], ["w200", "200‑week", weekly200.priceSeries?.length > 1 && lineW != null]].filter((t) => t[2]);
   const active = tabs.some((t) => t[0] === tab) ? tab : tabs[0]?.[0];
   const golden = line200 != null && line50 >= line200;
 
@@ -266,6 +267,7 @@ function LongTermLines({ weekly200, price: livePrice }) {
       </div>
       {active === "d50" && <PriceVs50Chart series={weekly200.dailyPrice} price={livePrice} />}
       {active === "cross" && <CrossoverChart series={weekly200.dailySeries} />}
+      {active === "d200" && <PriceVs50Chart series={weekly200.dailyPrice200} price={livePrice} field="sma200" />}
       {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} price={livePrice} />}
       <div className="lt-legend">{legends[active]}</div>
       <div className="w200-note">
@@ -861,7 +863,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Three tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Four tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below), Bitcoin's daily price against the 200-day over 90 days (the same green and red fill), and the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near. The averages move a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself. The number is the Crypto Fear &amp; Greed Index from <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener noreferrer">Alternative.me</a>.</div></div>
       </div>
 
@@ -2705,7 +2707,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
 .lt-ladder{width:100%;max-width:330px;height:auto;display:block;margin:2px 0}
 .lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
-.lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:13px;font-weight:500;cursor:pointer}
+.lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;line-height:1.15;padding:0 2px;font-weight:500;cursor:pointer;text-wrap:balance}
 .lt-tab.on{background:var(--border);color:var(--text);font-weight:700}
 .lt-tab:focus-visible,.lt-about:focus-visible{outline:2px solid var(--green-soft);outline-offset:2px}
 .lt-legend{font-size:12px;color:var(--text);line-height:1.45;margin-top:2px}
