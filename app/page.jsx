@@ -424,9 +424,9 @@ function MeterExample() {
 }
 
 function Landing({ onPickPlan, onSignIn }) {
-  // v20.7: the example card now shows a signal that is really on the dashboard (Trend Rider), with no made-up win rate, and a target
-  // closer than the stop, like the real thing. It is labeled as an example.
-  const demoSig = { label: "Trend Rider", dir: "bull", strength: 0.72, verifiedVia: "testing", note: "Broke above its 20-bar high on the 15m chart", entry: 76200, stop: 75100, target: 77025, rr: 0.75, tf: "15m" };
+  // v20.7: the example card shows a signal that is really on the dashboard, with no made-up win rate. It is labeled as an example.
+  // v23.4: Trend Rider is retired, so the example is Swing Rider on the 4 hour chart, with its real shape (target 3 times the stop distance).
+  const demoSig = { label: "Swing Rider", dir: "bull", strength: 0.72, verifiedVia: "testing", note: "Strong uptrend on the 4h chart", entry: 76200, stop: 74700, target: 80700, rr: 3, tf: "4h" };
   const tiers = PRICING_LIST.map((p) => ({ ...p, pop: p.id === "trader", cta: `Get ${p.name}` }));
   useEffect(() => {
     fetch("/api/track-visit", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ path: "/" }) }).catch(() => {});

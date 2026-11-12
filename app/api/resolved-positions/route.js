@@ -7,7 +7,7 @@
 // trade (matched by coin, timeframe, label, direction, entry/stop/target)
 // be looked up directly against its real outcome and timestamps.
 import { QUIET_LOG } from "../../../lib/quietLog.js";
-import { isSignalVisible, focusSql } from "../../../lib/signals.js";
+import { isSignalVisible, focusSql, RETIRED_SIGNALS } from "../../../lib/signals.js";
 import { checkKey } from "../../../lib/access.js";
 import { resultR, exitPrice } from "../../../lib/results.js";
 import { ensureSignalTrack } from "../../../lib/schema.js";
@@ -36,7 +36,8 @@ export async function GET(req) {
     const since = Number(searchParams.get("since")) || null;
     const onlyLabel = searchParams.get("label") || null;
     // v22.2: ?include=quiet adds the quietly logged background signals (lib/quietLog.js) for analysis. Same key, still never shown to customers.
-    const quietLabels = searchParams.get("include") === "quiet" ? [...new Set(QUIET_LOG.map((q) => q.label))] : [];
+    // v23.4: the same switch also returns retired public tests (Trend Rider, Rebound Rider), so the full history stays readable for analysis.
+    const quietLabels = searchParams.get("include") === "quiet" ? [...new Set([...QUIET_LOG.map((q) => q.label), ...RETIRED_SIGNALS])] : [];
 
     const { noFocus, focusLabels } = focusSql;
     const rows = await sql`

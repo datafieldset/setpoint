@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 import { isValidTf } from "../../../lib/timeframes.js";
-import { reversalRisk, getLiveVerifiedGate, visibleGates, PUBLIC_TESTING } from "../../../lib/signals.js";
+import { reversalRisk, getLiveVerifiedGate, visibleGates, PUBLIC_TESTING, RETIRED_SIGNALS } from "../../../lib/signals.js";
 import { fetchCandles, getWeekly200MA, fetchFng, fetchBroadMarketBias, getRecentWhaleActivity, HEADERS } from "../../../lib/marketContext.js";
 import { withCache } from "../../../lib/cache.js";
 
@@ -94,7 +94,7 @@ async function fetchSignalBiasFromDB() {
       SELECT dir, outcome
       FROM signal_track
       WHERE outcome IN ('win', 'loss')
-        AND NOT (label = ANY(${PUBLIC_TESTING}))
+        AND NOT (label = ANY(${[...PUBLIC_TESTING, ...RETIRED_SIGNALS]}))
       ORDER BY resolved_at DESC
       LIMIT 400
     `;

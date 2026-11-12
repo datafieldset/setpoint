@@ -144,26 +144,40 @@ for (const [f, t] of src) {
   run("low before high", pre, ["Bitcoin hit its high of"], ["dropped to"]);
 }
 
-// Swing Rider (v22.8): the 4 hour chart belongs to it with a 3R target; every other chart stays Trend Rider at 0.75R. No chart may belong to both.
+// Swing Rider and retirements (v23.4): the 4 hour chart is Swing Rider, entered at the open of a new bar when the trend checks pass (no breakout),
+// target 3 times the stop distance. Trend Rider (every other chart) and Rebound Rider are retired: no entries in ALL_SIGNALS, no charts scanned.
 {
   const T = await import(new URL("../lib/trend.js", import.meta.url));
   const S = await import(new URL("../lib/signals.js", import.meta.url));
-  if (T.riderFor("4h") !== "Swing Rider") problems.push("swing: 4h is not Swing Rider");
-  for (const tf of ["1h", "30m", "15m", "5m", "1m"]) if (T.riderFor(tf) !== "Trend Rider") problems.push(`swing: ${tf} is not Trend Rider`);
-  const own = (n) => S.ALL_SIGNALS.find((x) => x.name === n)?.tfs || [];
-  if (own("Trend Rider").includes("4h") || own("Swing Rider").join() !== "4h") problems.push("swing: Trend Rider and Swing Rider overlap or Swing Rider lacks 4h");
-  if (!S.VISIBLE_SIGNALS.includes("Swing Rider")) problems.push("swing: not in VISIBLE_SIGNALS");
-  // hand-built breakout: flat bars, then a rise; target must be 3x the risk on 4h and 0.75x on 1h
-  const mk = (sec) => { const b = []; for (let i = 0; i < 400; i++) { const p = 100 + i * 0.5; b.push({ time: i * sec * 1000, open: p, high: p + 1, low: p - 1, close: p + 0.5, vol: 1 }); } return b; };
-  for (const [tf, want] of [["4h", 3], ["1h", 0.75]]) {
-    const cfg = { ...T.TREND_TFS[tf], htf: [], buyConfirm: false, sellConfirm: false };
-    const B = mk(cfg.baseSec), pre = T.precompute(B), i = 350, f = B[i + 1];
-    const a = T.analyze(cfg, B, pre, i, { time: f.time, open: f.open, high: f.high + 50, low: f.low, close: f.open }, { sma: 50, htf: null });
-    const e = a?.bull;
-    if (!e || !e.touched) { problems.push(`swing: ${tf} test breakout did not touch`); continue; }
-    const k = (e.target - e.entry) / (e.entry - e.stop);
-    if (Math.abs(k - want) > 1e-9) problems.push(`swing: ${tf} target is ${k}R, wanted ${want}R`);
+  const RB = await import(new URL("../lib/rebound.js", import.meta.url));
+  if (T.riderFor("4h") !== "Swing Rider" || T.tfsFor("Swing Rider").join() !== "4h") problems.push("swing: 4h is not Swing Rider");
+  if (T.tfsFor("Trend Rider").length) problems.push("retire: Trend Rider still owns a chart");
+  for (const tf of ["1h", "30m", "15m", "5m", "1m"]) if (!T.TREND_TFS[tf].retired) problems.push(`retire: ${tf} is not retired`);
+  if (T.TREND_TFS["4h"].retired) problems.push("retire: the 4 hour chart must not be retired");
+  if (RB.REBOUND_TFS.length) problems.push("retire: Rebound Rider still scans a chart");
+  for (const n of ["Trend Rider", "Rebound Rider"]) if (S.ALL_SIGNALS.some((x) => x.name === n) || S.VISIBLE_SIGNALS.includes(n) || S.isSignalVisible(n)) problems.push(`retire: ${n} is still listed or visible`);
+  if (S.RETIRED_SIGNALS.join() !== "Trend Rider,Rebound Rider") problems.push("retire: RETIRED_SIGNALS should list Trend Rider and Rebound Rider");
+  if (S.RETIRED_SIGNALS.some((n) => S.PUBLIC_TESTING.includes(n))) problems.push("retire: a retired signal is still a public test");
+  if (S.VISIBLE_SIGNALS.join() !== "Swing Rider,Flush Rider") problems.push("retire: VISIBLE_SIGNALS should be Swing Rider and Flush Rider");
+  // hand-built steady climb (every bar up, so RSI and ADX are high). Last finished bar closes near 275.
+  const cfg = T.TREND_TFS["4h"];
+  const B = []; for (let i = 0; i < 400; i++) { const p = 100 + i * 0.5; B.push({ time: i * cfg.baseSec * 1000, open: p, high: p + 1, low: p - 1, close: p + 0.5, vol: 1 }); }
+  const pre = T.precompute(B), i = 350, t = B[i + 1].time;
+  const at = (open, sma) => T.analyze(cfg, B, pre, i, { time: t, open, high: open, low: open, close: open }, { sma, htf: null })?.bull;
+  const e = at(276, 250); // 10% above the 200-day: fires, with no breakout needed (the bar's high equals its open)
+  if (!e || !e.fire) problems.push("swing: did not fire in a strong trend at the bar's open");
+  else {
+    if (e.entry !== 276) problems.push(`swing: entry ${e.entry} is not the bar's open 276`);
+    if (Math.abs((e.target - e.entry) / (e.entry - e.stop) - 3) > 1e-9) problems.push("swing: target is not 3 times the stop distance");
+    if (Math.abs((e.entry - e.stop) - 2 * pre.atr[i]) > 1e-9) problems.push("swing: stop is not 2 ATR away");
   }
+  if (at(276, 300)?.fire) problems.push("swing: fired under the 200-day average");
+  if (at(276, 200)?.fire) problems.push("swing: fired while stretched more than 20% above the 200-day average");
+  if (T.analyze(cfg, B, pre, i, null, { sma: 250, htf: null })?.bull.fire) problems.push("swing: fired with no new bar");
+  // a falling series: RSI is low, so no buy
+  const D = B.map((b, k) => { const p = 400 - k * 0.5; return { ...b, open: p, high: p + 1, low: p - 1, close: p - 0.5 }; });
+  const pd = T.precompute(D);
+  if (T.analyze(cfg, D, pd, i, { time: t, open: 224, high: 224, low: 224, close: 224 }, { sma: 210, htf: null })?.bull.fire) problems.push("swing: fired in a falling market");
 }
 
 // Flush Rider (lib/flush.js): the live detector must agree with the plain-English rules (v22.7). Built by hand, numbers written out.

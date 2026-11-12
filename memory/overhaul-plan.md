@@ -38,3 +38,8 @@ Ship rule while Na is away: only a signal that passes everything above ships, as
 
 ## Guardrails
 No look-ahead (use only what was visible at entry; see the Nov 8 Volume spike trap). Memory updated with every change. A separate agent re-checks anything customers see. Nothing ships to the site without Na's yes.
+
+## Status Nov 11 (after Na's decisions)
+- Done: steps 1 to 4 (results in lessons-learned.md). Shipped v23.4: Swing Rider entry replaced, Trend Rider and Rebound Rider retired.
+- Live now: Swing Rider (4h) and Flush Rider (1h), both public tests. Sellable bar: 20+ live trades with a positive average; compare live to replay monthly.
+- Open: no down-market signal (three sell ideas failed). Next research should use data beyond price (see lessons-learned.md Nov 11 for what was tried).
