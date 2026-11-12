@@ -142,6 +142,10 @@ for (const [f, t] of src) {
   // low BEFORE the high: old wording stays
     const pre = []; for (let i = 0; i < 200; i++) { const v = i < 20 ? 100000 : i < 60 ? 90000 : i < 130 ? 90000 + (i - 60) * (20000 / 70) : 110000 - (i - 130) * (14000 / 69); pre.push({ time: t0 + i * H, open: v, close: v, high: v, low: v }); }
   run("low before high", pre, ["Bitcoin hit its high of"], ["dropped to"]);
+  // v23.5: the same spike and drop, but the high is now 5 days old: no story, no weekday, no old price. The headline describes the week only.
+  const old = series(95000, 195, 97000); for (let i = 200; i < 248; i++) old.push({ time: t0 + i * H, open: 97000, close: 97000, high: 97000, low: 97000 });
+  run("old high", old, ["Bitcoin is"], ["spiked", "$110,000", "gave it all back", "dropped to", "hit its high of"]);
+  // exactly 3 days old still tells the story (the base series ends 3 days after its high)
 }
 
 // Swing Rider and retirements (v23.4): the 4 hour chart is Swing Rider, entered at the open of a new bar when the trend checks pass (no breakout),
