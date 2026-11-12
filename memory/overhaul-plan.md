@@ -62,3 +62,12 @@ A pass needs the full bar, the luck test and the locked exam. With 27 tries, one
 ## Status Nov 11 night
 - Tries 20 to 28 are done: all fail or are too rare (results in lessons-learned.md). 28 tries counted.
 - Shipped v23.6 (Na: "Yes do it"): Swing Rider without the "not stretched" check. The real replay number is +0.23R on 163 trades, not the +0.35R first quoted (see signal-roster.md, Nov 11 v23.6).
+
+## Prediction-market study (Nov 11 night, Na: Kalshi and Polymarket "have been great for analytics of where the market moves next", then "Yes run it"). Study only, nothing built.
+Written BEFORE looking at any result. Data: Polymarket "Bitcoin Up or Down" hourly markets (12,758 of them, May 28 2025 to Nov 12 2026, each opens about 2 days before its hour and settles on the Binance 1 hour candle) and the daily ones (about 600, from Mar 2025). Kalshi hourly Bitcoin contracts are reachable too; start with Polymarket because one market is one clean yes/no on the next hour. History is about 17 months, almost all inside our locked year, so nothing here can pass the normal bar; the best outcome is "worth logging live".
+Tries 29 to 32:
+- P1 Hourly lean: the Up price in the last 5 minutes before the hour opens. At 0.53 or more buy Bitcoin at the hour's open and sell at its close; at 0.47 or less the reverse. Report the hit rate and the average move against the 0.20% cost.
+- P2 Early lean: the same with the price 6 hours before the hour opens.
+- P3 Next-day lean: every 4 hours, the average Up price of the next 24 hourly markets that have not started; compare Bitcoin's next 24 hour move when the average is 0.52 or more, 0.48 or less, and in between.
+- P4 Daily market: the Up price just before the daily window opens against that day's move.
+Each is split into two halves by date; a result only counts if both halves agree. Also report plain calibration (when the crowd says 55%, how often is it up) and how often the price is anything other than 0.50 before the hour.
