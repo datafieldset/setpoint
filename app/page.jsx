@@ -5,6 +5,7 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
+import { pickFocus } from "../lib/lineFocus.js";
 import { meterHeadline, meterStageLine, meterPos, meterMovesFrom, meterFreshLine } from "../lib/meter.js";
 import { signalReadiness, readyTf } from "../lib/readiness.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
@@ -206,17 +207,18 @@ function LongTermLines({ weekly200, price: livePrice }) {
   const lastClose = weekly200.dailyPrice?.length ? weekly200.dailyPrice[weekly200.dailyPrice.length - 1].close : null;
   const price = livePrice || lastClose;
   if (!price || line50 == null) return null;
-  const dist = ((price - line50) / line50) * 100;
-  const below = dist < 0;
-  const testing = Math.abs(dist) <= 1.5;
-  const tag = testing ? (below ? "Testing the 50-day from below" : "Testing the 50-day from above") : below ? "Below the 50-day" : "Above the 50-day";
+  // v24.8 (Na, Nov 13): the highlight follows the line price is closest to (within 5%, else the 50-day), coloured by danger or opportunity.
+  // Same rule as the share card (lib/lineFocus.js).
+  const f = pickFocus(price, { d50: line50, d200: line200, w200: lineW });
+  const toneVar = { amber: "var(--amber)", green: "var(--green-soft)", red: "var(--red-soft)" }[f.tone];
+  const tag = `${f.tone === "amber" ? `Testing the ${f.key} from ${f.above ? "above" : "below"}` : `${f.above ? "Above" : "Below"} the ${f.key}`}, ${f.dist >= 0 ? "+" : ""}${f.dist.toFixed(1)}%`;
 
   // Ladder: every line and Bitcoin on one vertical scale, labels nudged apart so none overlap.
   const rungs = [
-    { k: "50-day", v: line50, c: "var(--amber)" },
+    { k: "50-day", v: line50, c: f.key === "50-day" ? toneVar : "var(--muted)" },
     { k: "Bitcoin", v: price, c: "var(--text)", me: true },
-    line200 != null && { k: "200-day", v: line200, c: "var(--muted)" },
-    lineW != null && { k: "200-week", v: lineW, c: "var(--muted)" },
+    line200 != null && { k: "200-day", v: line200, c: f.key === "200-day" ? toneVar : "var(--muted)" },
+    lineW != null && { k: "200-week", v: lineW, c: f.key === "200-week" ? toneVar : "var(--muted)" },
   ].filter(Boolean).sort((x, y) => y.v - x.v);
   const hi = rungs[0].v, lo = rungs[rungs.length - 1].v, pad = (hi - lo) * 0.05 || 1;
   const LH = 190, top = 14, bot = LH - 14;
@@ -229,9 +231,7 @@ function LongTermLines({ weekly200, price: livePrice }) {
     return { ...r, y, ly };
   });
 
-  const need = below
-    ? <>To break the 50-day, Bitcoin needs a daily close above <b className="mono">${fmtPrice(line50)}</b> ({Math.abs(dist).toFixed(1)}% above where it is now).</>
-    : <>A daily close below <b className="mono">${fmtPrice(line50)}</b> would break the 50-day ({Math.abs(dist).toFixed(1)}% below where it is now).</>;
+  const need = <>{f.pre}<b className="mono">${fmtPrice(f.v)}</b>{f.post}</>;
   const legends = {
     d50: <>White line is Bitcoin's daily close, dashed amber is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
     d200: line200 != null ? <>White line is Bitcoin's daily close, dashed amber is the 200-day average (${fmtPrice(line200)}), {Math.abs(((price - line200) / line200) * 100).toFixed(1)}% {price >= line200 ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
@@ -245,7 +245,7 @@ function LongTermLines({ weekly200, price: livePrice }) {
   return (
     <div className="w200-panel lt-card">
       <div className="w200-head">Bitcoin vs its long-term lines</div>
-      <div className={`cross-tag ${below ? "death" : "golden"}`}>{tag}, {dist >= 0 ? "+" : ""}{dist.toFixed(1)}%</div>
+      <div className={`cross-tag ${f.tone === "amber" ? "test" : f.tone === "green" ? "golden" : "death"}`}>{tag}</div>
       <svg className="lt-ladder" viewBox={`0 0 330 ${LH}`} role="img" aria-label={`Where Bitcoin sits against its averages: ${rungs.map((r) => `${r.k} $${fmtPrice(r.v)}`).join(", ")}`}>
         <line x1="14" y1={top - 4} x2="14" y2={bot + 4} stroke="var(--border)" strokeWidth="2" />
         {placed.map((r) => (
@@ -863,7 +863,7 @@ function Guide({ onBack, account, liveGate, regimeGate }) {
         <div className="guide-field"><div className="guide-field-k">Confirmed</div><div className="guide-field-v">Shows up when two separate, real things agree at once, your own watchlist genuinely showing exhaustion, and the bias read below genuinely showing both sides weak. Worth extra attention when it appears, it's rare on purpose.</div></div>
         <div className="guide-field"><div className="guide-field-k">Bullish or bearish read</div><div className="guide-field-v">Shows whether longs or shorts have actually been winning more, based on real, resolved trades, not a guess or a forecast. A read on what's genuinely been working lately, not a prediction of what's coming next. "Both sides weak" means neither longs nor shorts have a real edge right now, worth extra caution regardless of direction.</div></div>
         <div className="guide-field"><div className="guide-field-k">Large trade flow</div><div className="guide-field-v">Real, large individual trades, big enough to matter, read directly off the exchange's own trade feed. Net buying has a genuine, backtested edge behind it. Net selling is shown for context only, it hasn't proven itself a reliable read either direction.</div></div>
-        <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. Under it, the exact daily close Bitcoin needs to break the 50-day (or fall back through it). Four tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), Bitcoin's daily price against the 200-day over 90 days (the same green and red fill), the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near, and last, the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below). The averages move a little every day. Background context, not a trading signal.</div></div>
+        <div className="guide-field"><div className="guide-field-k">Bitcoin vs its long-term lines</div><div className="guide-field-v">One card with a price ladder showing where Bitcoin sits against its 50-day, 200-day and 200-week averages, and how far it is from each. The line price is closest to (within 5%, otherwise the 50-day) is highlighted, and its colour shows the stakes: amber when price is within 1% of it and it is being tested, green when price is more than 1% above it, red when price is more than 1% below it. One sentence under the ladder says what that line means right now. The share image uses the same rule. Four tabs show one chart at a time: Bitcoin's daily price against the 50-day (green fill while above, red while below), Bitcoin's daily price against the 200-day over 90 days (the same green and red fill), the weekly price against the 200-week average, the long-run floor every prior bear market has bottomed near, and last, the 50-day and 200-day averages over 120 days (a golden cross when the 50 is above the 200, a death cross below). The averages move a little every day. Background context, not a trading signal.</div></div>
         <div className="guide-field"><div className="guide-field-k">Fear &amp; Greed Index</div><div className="guide-field-v">A widely-used, real, third-party read on the crypto market's overall mood, from extreme fear to extreme greed. Background context, not something Setpoint computes itself. The number is the Crypto Fear &amp; Greed Index from <a href="https://alternative.me/crypto/fear-and-greed-index/" target="_blank" rel="noopener noreferrer">Alternative.me</a>.</div></div>
       </div>
 
@@ -2802,6 +2802,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .lt-about-text{margin-top:6px}
 .cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
 .cross-tag.death{color:var(--red-soft);background:var(--red-dim)}
+.cross-tag.test{color:var(--amber);background:var(--amber-dim)}
 .macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .macro-panel.bullish{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .macro-panel.bearish{background:var(--red-dim);border-color:rgba(255,92,108,.3)}

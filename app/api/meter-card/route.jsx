@@ -28,6 +28,7 @@ function loadFonts() {
 }
 
 const RED = "#FF4D5E", GREEN = "#00D179", AMBER = "#F5B544", GREY = "#8FA39A";
+const TONE = { amber: AMBER, green: GREEN, red: RED };
 const col = (up) => (up === null ? "#93A69D" : up ? GREEN : RED);
 
 export async function GET(request) {
@@ -94,15 +95,15 @@ export async function GET(request) {
           <div style={{ display: "flex", position: "relative", marginTop: 26, height: 248 }}>
             <div style={{ position: "absolute", left: 219, top: 10, bottom: 10, width: 3, borderRadius: 2, background: "#26332D" }} />
             {c.ladder.map((r, i) => {
-              const isPx = r.cls === "px", isD50 = r.cls === "d50";
+              const isPx = r.cls === "px", t = r.hi ? TONE[r.tone] : null;
               return (
                 <div key={r.name} style={{ ...rowBase, top: pos[i], height: heights[i], ...(isPx ? { background: "rgba(255,255,255,0.07)", borderRadius: 12 } : {}) }}>
-                  <span style={{ width: 190, display: "flex", justifyContent: "flex-end", fontSize: 27, fontWeight: 600, color: isPx ? "#fff" : GREY }}>{r.name}</span>
+                  <span style={{ width: 190, display: "flex", justifyContent: "flex-end", fontSize: 27, fontWeight: 600, color: isPx || t ? "#fff" : GREY }}>{r.name}</span>
                   <span style={{ width: 60, display: "flex", justifyContent: "center" }}>
-                    <div style={isPx ? dot("#fff", "0 0 16px #fff") : isD50 ? dot(AMBER, `0 0 0 3px ${AMBER}`) : dot("#26332D", "0 0 0 3px #3A4A43")} />
+                    <div style={isPx ? dot("#fff", "0 0 16px #fff") : t ? dot(t, `0 0 0 3px ${t}`) : dot("#26332D", "0 0 0 3px #3A4A43")} />
                   </span>
-                  <span style={{ fontFamily: "Montserrat", fontWeight: 800, fontSize: isPx ? 42 : 36, color: isD50 ? AMBER : "#EAF2EE" }}>{r.value}</span>
-                  <span style={{ marginLeft: "auto", paddingRight: isPx ? 18 : 0, fontSize: 26, fontWeight: 600, color: isPx ? (c.bull ? GREEN : RED) : GREY }}>{r.note}</span>
+                  <span style={{ fontFamily: "Montserrat", fontWeight: 800, fontSize: isPx ? 42 : 36, color: t || "#EAF2EE" }}>{r.value}</span>
+                  <span style={{ marginLeft: "auto", paddingRight: isPx ? 18 : 0, fontSize: 26, fontWeight: 600, color: isPx ? (c.bull ? GREEN : RED) : t || GREY }}>{r.note}</span>
                 </div>
               );
             })}
@@ -120,9 +121,9 @@ export async function GET(request) {
                 </div>
               )}
             </div>
-            <div style={flex({ alignItems: "center", fontSize: 28, fontWeight: 500, color: "#C7D4CD" })}>
+            <div style={flex({ alignItems: "center", fontSize: (c.flip.pre + c.flip.hi + c.flip.post).length > 58 ? 26 : 28, fontWeight: 500, color: "#C7D4CD" })}>
               <span>{c.flip.pre}</span>
-              <span style={{ color: AMBER, fontWeight: 600, marginLeft: c.flip.gap ? 8 : 0 }}>{c.flip.hi}</span>
+              <span style={{ color: TONE[c.flip.tone] || AMBER, fontWeight: 600, marginLeft: c.flip.gap ? 8 : 0 }}>{c.flip.hi}</span>
               {c.flip.post ? <span>{c.flip.post}</span> : null}
             </div>
           </div>

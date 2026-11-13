@@ -225,13 +225,27 @@ for (const [f, t] of src) {
     if (c.range.note !== "Near the low" || c.range.low !== "$88,040" || !(c.range.at >= 0 && c.range.at <= 0.25)) bad("range: " + JSON.stringify(c.range));
     if (c.moves.map((x) => x.k).join("|") !== "1h|1 day|1 week" || c.moves.some((x) => x.up !== false)) bad("moves: " + JSON.stringify(c.moves));
     if (!c.goldenCross || c.fng?.value !== 28) bad("golden cross or Fear & Greed wrong");
-    if (!c.flip.pre.startsWith("Flip the story with a daily close above") || c.flip.hi !== "$95,000" || c.flip.gap !== true) bad("flip line: " + JSON.stringify(c.flip));
+    if (c.flip.pre !== "Below the 200-day (" || c.flip.hi !== "$90,000" || c.flip.tone !== "red" || c.ladder.filter((r) => r.hi).map((r) => r.name).join() !== "200-day") bad("highlight should be the closest line (200-day, 2.2% under, red): " + JSON.stringify(c.flip));
     if (c.stamp !== "Nov 12, 10:14 AM HST") bad("time stamp (Honolulu): " + c.stamp);
     if (/Rider|Trend|Bounce|alert/i.test(JSON.stringify(c).replace(/Alerts?\b/g, "").replace(/Bitcoin trend/gi, ""))) bad("the card must not name our signals");
   }
   const up = fall.map((b, i) => { const p = 80000 + i * 60; return { ...b, open: p, close: p, high: p + 20, low: p - 20 }; }); // ends 91,940, above the 50-day
   const u = buildMeterCard({ candles1h: up, candles5m: null, weekly: { daily50: 90000, daily200: 85000, sma: 70000 }, fng: null, now: Date.now() });
-  if (!u || u.verdict !== "BULLISH" || !u.flip.pre.startsWith("Staying above the 50-day") || u.fng !== null) bad("price over the 50-day should read BULLISH with the stay-above line and no Fear & Greed when missing");
+  if (!u || u.verdict !== "BULLISH" || !u.flip.pre.startsWith("Above the 50-day (") || u.fng !== null) bad("price over the 50-day should read BULLISH with the stay-above line and no Fear & Greed when missing");
+  // v24.8: the highlighted line follows the closest line within 5% (else the 50-day) and its colour says danger or opportunity.
+  const hl = (w) => { const r = buildMeterCard({ candles1h: fall, candles5m: null, weekly: w, fng: null }); const h = r && r.ladder.find((x) => x.hi); return r && h ? { line: h.name, tone: h.tone, flip: r.flip, hiCount: r.ladder.filter((x) => x.hi).length } : null; };
+  const cases = [
+    [{ daily50: 130000, daily200: 120000, sma: 87500 }, "200-week", "amber", "Holding above the 200-week ("],   // 0.6% above: being tested from above
+    [{ daily50: 130000, daily200: 88500, sma: 60000 }, "200-day", "amber", "A close back above the 200-day ("],   // 0.5% below: being tested from below
+    [{ daily50: 130000, daily200: 120000, sma: 85000 }, "200-week", "green", "Above the 200-week ("],             // 3.6% above: cushion
+    [{ daily50: 91000, daily200: 120000, sma: 60000 }, "50-day", "red", "Flip the story with a daily close above"], // 3.2% below, within 5%, red
+    [{ daily50: 100000, daily200: 120000, sma: 60000 }, "50-day", "red", "Flip the story with a daily close above"], // nothing within 5%: falls back to the 50-day
+  ];
+  for (const [w, line, tone, text] of cases) {
+    const r = hl(w);
+    const want = text;
+    if (!r || r.line !== line || r.tone !== tone || r.hiCount !== 1 || !r.flip.pre.startsWith(want) || r.flip.tone !== tone) bad("highlight " + JSON.stringify(w) + " expected " + line + " " + tone + " '" + want + "', got " + JSON.stringify(r));
+  }
   if (buildMeterCard({ candles1h: fall.slice(0, 50), candles5m: null, weekly, fng: null }) !== null) bad("too few candles should return nothing, not a guess");
   if (buildMeterCard({ candles1h: fall, candles5m: null, weekly: null, fng: null }) !== null) bad("missing averages should return nothing, not a guess");
 }
