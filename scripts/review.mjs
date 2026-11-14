@@ -232,14 +232,16 @@ for (const [f, t] of src) {
   const up = fall.map((b, i) => { const p = 80000 + i * 60; return { ...b, open: p, close: p, high: p + 20, low: p - 20 }; }); // ends 91,940, above the 50-day
   const u = buildMeterCard({ candles1h: up, candles5m: null, weekly: { daily50: 90000, daily200: 85000, sma: 70000 }, fng: null, now: Date.now() });
   if (!u || u.verdict !== "BULLISH" || !u.flip.pre.startsWith("Above the 50-day (") || u.fng !== null) bad("price over the 50-day should read BULLISH with the stay-above line and no Fear & Greed when missing");
-  // v24.8: the highlighted line follows the closest line within 5% (else the 50-day) and its colour says danger or opportunity.
+  // v24.8: the highlighted line follows the closest line, however far (v24.9) and its colour says danger or opportunity.
   const hl = (w) => { const r = buildMeterCard({ candles1h: fall, candles5m: null, weekly: w, fng: null }); const h = r && r.ladder.find((x) => x.hi); return r && h ? { line: h.name, tone: h.tone, flip: r.flip, hiCount: r.ladder.filter((x) => x.hi).length } : null; };
   const cases = [
     [{ daily50: 130000, daily200: 120000, sma: 87500 }, "200-week", "amber", "Holding above the 200-week ("],   // 0.6% above: being tested from above
     [{ daily50: 130000, daily200: 88500, sma: 60000 }, "200-day", "amber", "A close back above the 200-day ("],   // 0.5% below: being tested from below
     [{ daily50: 130000, daily200: 120000, sma: 85000 }, "200-week", "green", "Above the 200-week ("],             // 3.6% above: cushion
     [{ daily50: 91000, daily200: 120000, sma: 60000 }, "50-day", "red", "Flip the story with a daily close above"], // 3.2% below, within 5%, red
-    [{ daily50: 100000, daily200: 120000, sma: 60000 }, "50-day", "red", "Flip the story with a daily close above"], // nothing within 5%: falls back to the 50-day
+    [{ daily50: 100000, daily200: 120000, sma: 60000 }, "50-day", "red", "Flip the story with a daily close above"], // 11.9% below, still the closest
+    [{ daily50: 130000, daily200: 100000, sma: 60000 }, "200-day", "red", "Below the 200-day ("],   // 11.9% below the 200-day, no 5% cutoff any more
+    [{ daily50: 130000, daily200: 110000, sma: 94500 }, "200-week", "red", "Below the 200-week ("],  // 6.8% below the 200-week (Nov 14 case): not the far 50-day
   ];
   for (const [w, line, tone, text] of cases) {
     const r = hl(w);
