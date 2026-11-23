@@ -1,3 +1,4 @@
+// NOTE (v25.4): the original detectors were deleted from lib/signals.js; only Momentum remains (it runs Calm Rider). To replay the old ones, check out commit d6b9ae2.
 // scripts/replay-background.mjs (v22.2): replays every original signal on 2 years of BTC history with real win/loss results.
 // Usage: node scripts/fetch-btc-history.mjs   (writes BTC_5m.json, BTC_1d.json in the current folder)  then  node scripts/replay-background.mjs 15m
 // Writes bg_<tf>.json. Targets are each signal's own (all 2R today), entry at the signal bar close, one open trade per signal+direction, no fees.
