@@ -91,7 +91,7 @@ when a human opens an admin view, never from a hot, automated loop —
 the same class of query-frequency mistake that caused the Neon
 incident below is exactly what this isolation is meant to prevent.
 
-**`/api/cron/check-promotions`** — the real, automated half. Runs
+**(Removed v25.5) `/api/cron/check-promotions`** — the old automated half. Runs
 every 6 hours (see cron section above), checks every real signal,
 every timeframe, every direction, for anything genuinely qualifying
 for established or emerging tier that doesn't have a static
