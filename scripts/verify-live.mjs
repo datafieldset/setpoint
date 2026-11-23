@@ -67,10 +67,9 @@ try {
   }
 } catch (e) { bad.push(`meter check failed: ${e.message}`); }
 
-// 6. quietly logged background signals must never show up on a customer surface (v22.2)
+// 6. the old hidden signals must never show up on a customer surface (v22.2, kept after the quiet logging was removed in v25.3)
 try {
-  const { QUIET_LOG } = await import("../lib/quietLog.js");
-  const names = [...new Set(QUIET_LOG.map((q) => q.label))];
+  const names = ["Momentum", "Reversal watch", "Grind Down"];
   const pub = await getJson("/api/public-stats?coins=BTC");
   const txt = JSON.stringify(pub.body?.live || {});
   for (const n of names) if (txt.includes(`"${n}"`)) bad.push(`quiet signal "${n}" is visible in public stats`);
