@@ -266,7 +266,7 @@ for (const [f, t] of src) {
   for (const n of ["Trend Rider", "Rebound Rider"]) if (S.ALL_SIGNALS.some((x) => x.name === n) || S.VISIBLE_SIGNALS.includes(n) || S.isSignalVisible(n)) problems.push(`retire: ${n} is still listed or visible`);
   if (S.RETIRED_SIGNALS.join() !== "Trend Rider,Rebound Rider") problems.push("retire: RETIRED_SIGNALS should list Trend Rider and Rebound Rider");
   if (S.RETIRED_SIGNALS.some((n) => S.PUBLIC_TESTING.includes(n))) problems.push("retire: a retired signal is still a public test");
-  if (S.VISIBLE_SIGNALS.join() !== "Swing Rider,Flush Rider,Flow Rider") problems.push("retire: VISIBLE_SIGNALS should be Swing Rider, Flush Rider and Flow Rider");
+  if (S.VISIBLE_SIGNALS.join() !== "Swing Rider,Flush Rider,Flow Rider,Calm Rider") problems.push("retire: VISIBLE_SIGNALS should be Swing Rider, Flush Rider, Flow Rider and Calm Rider");
   // hand-built steady climb (every bar up, so RSI and ADX are high). Last finished bar closes near 275.
   const cfg = T.TREND_TFS["4h"];
   const B = []; for (let i = 0; i < 400; i++) { const p = 100 + i * 0.5; B.push({ time: i * cfg.baseSec * 1000, open: p, high: p + 1, low: p - 1, close: p + 0.5, vol: 1 }); }
@@ -412,6 +412,66 @@ for (const [f, t] of src) {
   ins.length = 0;
   const r2 = await RT.runTrend(sql, null, deps(async () => null));
   if (ins.length || r2.byCoin.BTC.byTf["flow:4h"]?.skipped !== "feed_unavailable" || r2.byCoin.BTC.feedFailed) problems.push("flow runner: a missing Binance feed must log nothing and must not count as a failed scan");
+}
+
+// Calm Rider (lib/calmRider.js, v25.2): the Momentum buy, only while the hourly swings are calm. Built by hand; the module must agree with the plain-English rules.
+{
+  const C = await import(new URL("../lib/calmRider.js", import.meta.url));
+  const S = await import(new URL("../lib/signals.js", import.meta.url));
+  const { brandName } = await import(new URL("../lib/brand.js", import.meta.url));
+  const R = await import(new URL("../lib/readiness.js", import.meta.url));
+  const H = 3600e3, n = 400, t0 = Math.floor(Date.UTC(2026, 0, 1) / H) * H;
+  if (C.CALM_MAX_ATR_PCT !== 1.2 || C.CALM_WINDOW !== 300 || C.CALM_DETECTOR_LABEL !== "Momentum" || C.CALM_TFS.join() !== "1h,30m") problems.push("calm: the study's settings changed without a new study");
+  const mk = (rng, jump = 2.8) => Array.from({ length: n }, (_, i) => i === n - 1
+    ? { time: t0 + i * H, open: 100, high: 100 * (1 + jump / 100 + 0.001), low: 99.95, close: 100 * (1 + jump / 100), volumeto: 5 }
+    : { time: t0 + i * H, open: 100, high: 100 + rng, low: 100 - rng, close: 100 + (i % 2 ? 0.05 : -0.05), volumeto: 5 });
+  const now = t0 + n * H + 2 * 60e3, fresh = 15 * 60e3;
+  const calm = C.calmBars("1h", mk(0.15), now);
+  const f1 = C.calmFires("1h", calm, calm, now, fresh);
+  if (f1.length !== 1) problems.push("calm: a strong up candle in a calm market did not fire exactly once: " + JSON.stringify(f1));
+  else {
+    const f = f1[0];
+    if (f.barTime !== t0 + (n - 1) * H || Math.abs(f.entry - 102.8) > 1e-9) problems.push("calm: entry should be the candle's close: " + JSON.stringify(f));
+    if (!(f.stop < f.entry && f.target > f.entry) || Math.abs((f.target - f.entry) / (f.entry - f.stop) - 2) > 1e-6) problems.push("calm: stop must sit below and the target 2R above: " + JSON.stringify(f));
+    if (!(f.atrPct < C.CALM_MAX_ATR_PCT)) problems.push("calm: fired with a swinging market");
+  }
+  const swingy = C.calmBars("1h", mk(1.6), now);
+  if (C.calmFires("1h", swingy, swingy, now, fresh).length) problems.push("calm: fired while the hourly swings were big");
+  if (C.calmFires("1h", C.calmBars("1h", mk(0.15, 1.0), now), calm, now, fresh).length) problems.push("calm: a weak up candle fired");
+  if (C.calmFires("1h", calm, calm, now + 3 * H, fresh).length) problems.push("calm: an old candle was backfilled");
+  const hole = calm.slice(); hole.splice(n - 2, 1);
+  if (C.calmFires("1h", hole, calm, now, fresh).length) problems.push("calm: fired across a hole in the data");
+  // 30 minute chart from 15 minute candles
+  const k = Array.from({ length: 600 }, (_, i) => { const t = t0 + i * 900e3; return i >= 598 ? { time: t, open: 100, high: 101.9, low: 99.95, close: i === 599 ? 101.8 : 100.9, volumeto: 5 } : { time: t, open: 100, high: 100.1, low: 99.9, close: 100 + (i % 2 ? 0.03 : -0.03), volumeto: 5 }; });
+  const now30 = t0 + 600 * 900e3 + 2 * 60e3, hrs = Array.from({ length: 200 }, (_, i) => ({ time: t0 + (i + 25) * H - 0, open: 100, high: 100.15, low: 99.85, close: 100, volumeto: 5 }));
+  const b30 = C.calmBars("30m", k, now30), f30 = C.calmFires("30m", b30, hrs, now30, fresh);
+  if (b30.length !== 300 || f30.length !== 1 || Math.abs(f30[0].entry - 101.8) > 1e-9) problems.push("calm: 30 minute chart should give 300 bars and one buy at 101.8: " + b30.length + " " + JSON.stringify(f30));
+  // readiness
+  const ce = S.ALL_SIGNALS.find((x) => x.name === "Calm Rider");
+  const rc = (cs) => R.signalReadiness(ce, { candles: cs, now, open: false });
+  if (rc(mk(0.15))?.badge !== "Calm" || rc(mk(1.6))?.badge !== "Quiet" || rc(null) !== null) problems.push("calm: readiness badges wrong");
+  if (!ce || !ce.publicTest || !ce.serverOnly || ce.ready !== "calm" || ce.tfs.join() !== C.CALM_TFS.join() || ce.coins.join() !== "BTC" || brandName("Calm Rider") !== "Spark") problems.push("calm: ALL_SIGNALS entry or brand name wrong");
+  if (!S.SERVER_ONLY_SIGNALS.includes("Calm Rider") || !S.PUBLIC_TESTING.includes("Calm Rider")) problems.push("calm: must be server-only and a public test");
+}
+
+// Calm Rider through the real runner (lib/trendRunner.js scanCalm) with a stand-in database: one Spark buy on the 1 hour chart with the right numbers.
+{
+  const RT = await import(new URL("../lib/trendRunner.js", import.meta.url));
+  const H = 3600e3, now = Math.floor(Date.UTC(2026, 2, 1) / H) * H + 3 * 60e3, ins = [];
+  const sql = async (strs, ...vals) => { if (/INSERT INTO signal_track/.test(strs.join("?"))) { ins.push(vals); return [{ id: 1 }]; } return []; };
+  const fetchGran = async (s, p) => Array.from({ length: p * 300 }, (_, i) => {
+    const time = Math.floor(now / (s * 1000)) * s * 1000 - (p * 300 - 1 - i) * s * 1000, last = i === p * 300 - 2 && s === 3600;
+    return last ? { time, open: 100, high: 102.9, low: 99.95, close: 102.8, volumeto: 10 } : { time, open: 100, high: 100.15, low: 99.85, close: 100 + (i % 2 ? 0.05 : -0.05), volumeto: 10 };
+  });
+  const run = (gran) => RT.runTrend(sql, null, { now, forceFull: true, coins: ["BTC"], fetchGran: gran, getDailySMA: async () => 100, crowd: async () => null, getFlow: async () => null, resolveIo: { fetchCandles: async () => [], now } });
+  const r1 = await run(fetchGran);
+  const rows = ins.filter((v) => v[2] === "Calm Rider");
+  if (rows.length !== 1 || rows[0][3] !== "bull" || rows[0][1] !== "1h" || Math.abs(rows[0][5] - 102.8) > 1e-9 || !(rows[0][6] < 102.8) || !(rows[0][7] > 102.8)) problems.push("calm runner: expected exactly one Calm Rider buy on 1h at 102.8: " + JSON.stringify(rows));
+  else if (JSON.parse(rows[0][9]).scanFrom !== rows[0][8] + H) problems.push("calm runner: the resolver must start at the end of the signal candle");
+  if (r1.byCoin.BTC.byTf["calm:1h"]?.opened !== 1 || r1.byCoin.BTC.byTf["calm:1h"]?.error) problems.push("calm runner: result should count one opened trade with no error: " + JSON.stringify(r1.byCoin.BTC.byTf["calm:1h"]));
+  ins.length = 0;
+  await run(async (s, p) => { if (s === 900) throw new Error("down"); return fetchGran(s, p); });
+  if (ins.filter((v) => v[2] === "Calm Rider" && v[1] === "30m").length) problems.push("calm runner: a missing 30 minute feed must not log a 30m trade");
 }
 
 if (problems.length) {
