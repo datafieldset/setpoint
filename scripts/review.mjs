@@ -291,25 +291,29 @@ for (const [f, t] of src) {
 
 // Flush Rider (lib/flush.js): the live detector must agree with the plain-English rules (v22.7). Built by hand, numbers written out.
 {
-  const { flushFires, FLUSH_MIN_RISK_PCT } = await import(new URL("../lib/flush.js", import.meta.url));
+  const { flushFires, FLUSH_MIN_RISK_PCT, FLUSH_MIN_ATR_PCT, FLUSH_DROP_PCT } = await import(new URL("../lib/flush.js", import.meta.url));
   const H = 3600e3, now = 300 * H;
   const bars = Array.from({ length: 100 }, (_, i) => ({ time: i * H, open: 100, high: 100.4, low: 99.6, close: 100 }));
-  const atr = bars.map(() => 1.0);
+  const atr = bars.map(() => 1.6); // 1.6% of a 100 price: above the 1.5% volatility gate (v25.0)
   const flush = (arr) => { arr[80] = { time: 80 * H, open: 100, high: 100, low: 96, close: 97 }; return arr; }; // 4% drop, breaks the 48h low
   const fires = (arr, forming) => flushFires(arr, forming, atr, now, 1e12, H);
-  // 1. a retest that touches the entry fills; entry 96.25, stop 95.25, target 99.25
+  // 1. a retest that touches the entry fills; entry 96.4, stop 94.8, target 101.2
   const b1 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b1[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 }; b1[90] = { time: 90 * H, open: 98, high: 98, low: 96.2, close: 97 };
   const f1 = fires(b1.slice(0, 99), b1[99]);
-  if (f1.length !== 1 || Math.abs(f1[0].entry - 96.25) > 1e-9 || Math.abs(f1[0].stop - 95.25) > 1e-9 || Math.abs(f1[0].target - 99.25) > 1e-9) problems.push("flush: retest did not give entry 96.25 / stop 95.25 / target 99.25: " + JSON.stringify(f1));
+  if (f1.length !== 1 || Math.abs(f1[0].entry - 96.4) > 1e-9 || Math.abs(f1[0].stop - 94.8) > 1e-9 || Math.abs(f1[0].target - 101.2) > 1e-9) problems.push("flush: retest did not give entry 96.4 / stop 94.8 / target 101.2: " + JSON.stringify(f1));
   // 2. price never comes back: no trade
   const b2 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b2[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 };
   if (fires(b2.slice(0, 99), b2[99]).length) problems.push("flush: filled with no retest");
   // 3. stop breaks first: no trade
-  const b3 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b3[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 }; b3[82] = { time: 82 * H, open: 97, high: 97, low: 95, close: 95.5 }; b3[90] = { time: 90 * H, open: 98, high: 98, low: 96.2, close: 97 };
+  const b3 = flush(bars.map((b) => ({ ...b }))); for (let i = 81; i < 100; i++) b3[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 }; b3[82] = { time: 82 * H, open: 97, high: 97, low: 94.5, close: 95 }; b3[90] = { time: 90 * H, open: 98, high: 98, low: 96.2, close: 97 };
   if (fires(b3.slice(0, 99), b3[99]).length) problems.push("flush: filled after the stop broke");
-  // 4. only 1.9% drop: not a flush
-  const b4 = bars.map((b) => ({ ...b })); b4[80] = { time: 80 * H, open: 100, high: 100, low: 98.1, close: 99 }; b4[90] = { time: 90 * H, open: 99, high: 99, low: 98.2, close: 99 };
-  if (fires(b4.slice(0, 99), b4[99]).length) problems.push("flush: a 1.9% drop counted");
+  // 4. only a 1.4% drop (under the 1.5% flush size): not a flush
+  const b4 = bars.map((b) => ({ ...b })); b4[80] = { time: 80 * H, open: 100, high: 100, low: 98.6, close: 99 }; b4[90] = { time: 90 * H, open: 99, high: 99, low: 98.2, close: 99 };
+  if (fires(b4.slice(0, 99), b4[99]).length) problems.push("flush: a 1.4% drop counted");
+  // 4b. a 4% flush in a calm market (ATR 1.0% of price, under the 1.5% gate): no plan, no trade (v25.0)
+  const calm = bars.map((b) => ({ ...b })); const bc = flush(calm); for (let i = 81; i < 100; i++) bc[i] = { time: i * H, open: 98, high: 98.5, low: 97.5, close: 98 }; bc[90] = { time: 90 * H, open: 98, high: 98, low: 96.2, close: 97 };
+  if (flushFires(bc.slice(0, 99), bc[99], bars.map(() => 1.0), now, 1e12, H).length) problems.push(`flush: a flush with ATR under ${FLUSH_MIN_ATR_PCT}% of price still traded`);
+  if (FLUSH_DROP_PCT !== 1.5 || FLUSH_MIN_ATR_PCT !== 1.5) problems.push("flush: the study's 1.5% flush and 1.5% volatility gate changed without a new study");
   // 5. tiny stop (risk under 0.6% of price): skipped
   const tiny = flushFires(flush(bars.map((b) => ({ ...b }))).slice(0, 99), null, bars.map(() => 0.3), now, 1e12, H);
   if (tiny.length) problems.push(`flush: a stop under ${FLUSH_MIN_RISK_PCT}% was not skipped`);
