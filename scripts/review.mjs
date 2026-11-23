@@ -266,7 +266,7 @@ for (const [f, t] of src) {
   for (const n of ["Trend Rider", "Rebound Rider"]) if (S.ALL_SIGNALS.some((x) => x.name === n) || S.VISIBLE_SIGNALS.includes(n) || S.isSignalVisible(n)) problems.push(`retire: ${n} is still listed or visible`);
   if (S.RETIRED_SIGNALS.join() !== "Trend Rider,Rebound Rider") problems.push("retire: RETIRED_SIGNALS should list Trend Rider and Rebound Rider");
   if (S.RETIRED_SIGNALS.some((n) => S.PUBLIC_TESTING.includes(n))) problems.push("retire: a retired signal is still a public test");
-  if (S.VISIBLE_SIGNALS.join() !== "Swing Rider,Flush Rider") problems.push("retire: VISIBLE_SIGNALS should be Swing Rider and Flush Rider");
+  if (S.VISIBLE_SIGNALS.join() !== "Swing Rider,Flush Rider,Flow Rider") problems.push("retire: VISIBLE_SIGNALS should be Swing Rider, Flush Rider and Flow Rider");
   // hand-built steady climb (every bar up, so RSI and ADX are high). Last finished bar closes near 275.
   const cfg = T.TREND_TFS["4h"];
   const B = []; for (let i = 0; i < 400; i++) { const p = 100 + i * 0.5; B.push({ time: i * cfg.baseSec * 1000, open: p, high: p + 1, low: p - 1, close: p + 0.5, vol: 1 }); }
@@ -319,6 +319,99 @@ for (const [f, t] of src) {
   if (tiny.length) problems.push(`flush: a stop under ${FLUSH_MIN_RISK_PCT}% was not skipped`);
   // 6. an old fill is never backfilled
   if (flushFires(b1.slice(0, 99), b1[99], atr, now, 1 * H, H).length) problems.push("flush: an old fill was backfilled");
+}
+
+// Flow Rider (lib/flow.js, v25.1): heavy selling while under the 50-day -> a short. Built by hand; the module must agree with the plain-English rules.
+{
+  const FL = await import(new URL("../lib/flow.js", import.meta.url));
+  const S = await import(new URL("../lib/signals.js", import.meta.url));
+  const { brandName } = await import(new URL("../lib/brand.js", import.meta.url));
+  const { resolveOpenTrades } = await import(new URL("../lib/resolve.js", import.meta.url));
+  const R = await import(new URL("../lib/readiness.js", import.meta.url));
+  const B15 = 15 * 60e3, DAY = 864e5;
+  if (FL.FLOW_Z !== -1.5 || FL.FLOW_STOP_PCT !== 5 || FL.FLOW_TARGET_PCT !== 10 || FL.FLOW_MAX_HOLD_MS !== 7 * DAY || FL.FLOW_AVG_DAYS !== 50 || FL.FLOW_WINDOW_BARS !== 96 || FL.FLOW_BASE_BARS !== 2880) problems.push("flow: the study's settings changed without a new study");
+  const n = 3200, t0 = Math.floor(Date.UTC(2026, 0, 1) / DAY) * DAY;
+  const mk = (heavy, price = 90) => Array.from({ length: n }, (_, i) => ({ time: t0 + i * B15, open: price, high: price + 0.2, low: price - 0.2, close: price, vol: 100, tb: heavy && i >= n - 96 ? 20 : 50 + ((i * 7) % 11) - 5 }));
+  const lastDay = Math.floor((t0 + n * B15) / DAY) * DAY;
+  const days = (close) => Array.from({ length: 60 }, (_, k) => ({ time: lastDay - (60 - k) * DAY, close }));
+  const yday = (close) => { const d = days(close); d.push({ time: lastDay - DAY, close }); return d; };
+  const dd = (close) => { const d = []; for (let k = 60; k >= 1; k--) d.push({ time: lastDay - k * DAY, close }); return d; };
+  const done = (b) => b.slice(0, n - 1), forming = (b) => b[n - 1];
+  const nowAt = t0 + (n - 1) * B15 + 3 * 60e3; // 3 minutes after the last full bar closed
+  const all = mk(true).map((b, i) => (i === n - 1 ? { ...b, open: 89.5, close: 89.4 } : b));
+  const f1 = FL.flowFires(all, dd(100), nowAt, 15 * 60e3);
+  if (!f1.length) problems.push("flow: heavy selling under the 50-day did not fire");
+  else {
+    const f = f1[f1.length - 1];
+    if (f.barTime !== t0 + (n - 2) * B15) problems.push("flow: wrong trigger bar");
+    if (Math.abs(f.entry - 89.5) > 1e-9 || Math.abs(f.stop - 89.5 * 1.05) > 1e-9 || Math.abs(f.target - 89.5 * 0.9) > 1e-9) problems.push("flow: entry should be the next open, stop 5% above, target 10% below: " + JSON.stringify(f));
+  }
+  if (FL.flowFires(mk(false), dd(100), nowAt, 15 * 60e3).length) problems.push("flow: balanced flow fired");
+  if (FL.flowFires(all, dd(80), nowAt, 15 * 60e3).length) problems.push("flow: fired while price was ABOVE its 50-day line");
+  if (FL.flowFires(all, dd(100), nowAt + 6 * 3600e3, 15 * 60e3).length) problems.push("flow: an old trigger was backfilled");
+  const hole = all.filter((_, i) => i !== 500);
+  if (FL.flowFires(hole, dd(100), nowAt, 15 * 60e3).length) problems.push("flow: fired across a hole in the data");
+  if (FL.flowFires(all.slice(-2000), dd(100), nowAt, 15 * 60e3).length) problems.push("flow: fired without the full 30 day history");
+  const st = FL.flowState(all, dd(100), nowAt);
+  if (!st || !st.below || !(st.z <= -1.5) || Math.abs(st.avg50 - 100) > 1e-9) problems.push("flow: state should read heavy selling under the 50-day: " + JSON.stringify(st));
+  // readiness wording
+  const fe = S.ALL_SIGNALS.find((x) => x.name === "Flow Rider");
+  const rr = (z, below) => R.signalReadiness(fe, { extra: { flow: { z, avg50: 100, price: below ? 90 : 110, below } }, now: nowAt, open: false });
+  if (rr(-2, true)?.badge !== "Ready" || rr(0, true)?.badge !== "1 of 2 met" || rr(0, false)?.badge !== "Quiet") problems.push("flow: readiness badges wrong");
+  if (R.signalReadiness(fe, { now: nowAt, open: false }) !== null) problems.push("flow: readiness without data should show nothing");
+  if (!fe || !fe.publicTest || !fe.serverOnly || fe.ready !== "flow" || fe.tfs.join() !== "4h" || brandName("Flow Rider") !== "Pressure") problems.push("flow: ALL_SIGNALS entry or brand name wrong");
+  // the shared resolver: 7-day close (meta.maxHoldMs)
+  const T0 = Date.UTC(2026, 10, 1), H4 = 4 * 3600e3;
+  const run = async (open4h, nowMs, priceAt) => {
+    const candles = Array.from({ length: 60 }, (_, i) => { const t = T0 + i * H4, p = open4h(i, t); return { time: t, open: p, high: p + 1, low: p - 1, close: p }; });
+    const upd = [];
+    const sql = async (strs, ...vals) => { const q = strs.join("?"); if (q.includes("SELECT")) return [{ id: 1, coin: "BTC", tf: "4h", dir: "bear", fired_at: new Date(T0), entry: "100", stop: "105", target: "90", meta: { maxHoldMs: 7 * DAY } }]; if (q.includes("UPDATE")) { upd.push(vals); return [{ id: 1 }]; } return []; };
+    await resolveOpenTrades(sql, { fetchCandles: async () => candles, now: nowMs });
+    return upd[0] || null;
+  };
+  const after7 = T0 + 7 * DAY + 3600e3;
+  const u1 = await run((i, t) => (t >= T0 + 7 * DAY ? 97 : 100), after7); // flat, then 97 at the deadline: short made +3 on a 5 risk
+  if (!u1 || u1[0] !== "win" || Math.abs(u1[2] - 97) > 1e-9 || Math.abs(u1[3] - 0.6) > 1e-9) problems.push("flow: 7-day close in profit should be a win at 97 with r 0.6: " + JSON.stringify(u1));
+  const u2 = await run((i, t) => (t >= T0 + 7 * DAY ? 103 : 100), after7);
+  if (!u2 || u2[0] !== "loss" || Math.abs(u2[3] + 0.6) > 1e-9) problems.push("flow: 7-day close at a loss should be a loss with r -0.6: " + JSON.stringify(u2));
+  const u3 = await run((i, t) => 100, T0 + 3 * DAY);
+  if (u3) problems.push("flow: a trade inside its 7 days with no stop or target touched must stay open");
+  const u4 = await run((i, t) => (t >= T0 + 7 * DAY ? 106 : 100), after7); // price above the stop only AFTER the deadline: the close is at the deadline open (106), r = -1.2, not the stop
+  if (!u4 || u4[0] !== "loss" || Math.abs(u4[3] + 1.2) > 1e-9) problems.push("flow: after the deadline the close is at the market, not at the stop: " + JSON.stringify(u4));
+  // the entry candle: a short logged mid-candle whose stop is touched inside the candle after the entry, before the next 4 hour candle opens, must lose (checked in 1 minute candles)
+  {
+    const FROM = T0 + 4 * H4 + 90 * 60e3; // 1h30 into the 4th 4 hour candle
+    const mkSql = (upd) => async (strs, ...vals) => { const q = strs.join("?"); if (q.includes("SELECT")) return [{ id: 1, coin: "BTC", tf: "4h", dir: "bear", fired_at: new Date(FROM), entry: "100", stop: "105", target: "90", meta: { maxHoldMs: 7 * DAY, scanFrom: FROM } }]; if (q.includes("UPDATE")) { upd.push(vals); return [{ id: 1 }]; } return []; };
+    const flat = Array.from({ length: 60 }, (_, i) => ({ time: T0 + i * H4, open: 100, high: 101, low: 99, close: 100 }));
+    const spike = [{ time: FROM + 60e3, low: 99, high: 106 }], quiet = [{ time: FROM + 60e3, low: 99, high: 101 }];
+    const upd1 = []; await resolveOpenTrades(mkSql(upd1), { fetchCandles: async () => flat, fetchMinute: async () => spike, now: T0 + 5 * H4 });
+    if (!upd1[0] || upd1[0][0] !== "loss" || upd1[0][2] !== 105) problems.push("flow: a stop touched inside the entry candle was missed: " + JSON.stringify(upd1[0]));
+    const upd2 = []; await resolveOpenTrades(mkSql(upd2), { fetchCandles: async () => flat, fetchMinute: async () => quiet, now: T0 + 5 * H4 });
+    if (upd2[0]) problems.push("flow: a quiet entry candle closed the trade");
+  }
+  const u5 = await run((i, t) => (i === 5 ? 89 : 100), after7); // target touched on day 1: a normal win at the target
+  if (!u5 || u5[0] !== "win" || u5[2] !== 90 || Math.abs(u5[3] - 2) > 1e-9) problems.push("flow: a target touch inside 7 days should win at 90 with r 2: " + JSON.stringify(u5));
+}
+
+// Flow Rider through the real runner (lib/trendRunner.js scanFlow) with a stand-in database: it logs one short with the right numbers and a 7 day limit, and a missing feed logs nothing.
+{
+  const RT = await import(new URL("../lib/trendRunner.js", import.meta.url));
+  const B15 = 900e3, DAY = 864e5, n = 3200, t0 = Math.floor(Date.UTC(2026, 0, 1) / DAY) * DAY;
+  const k15 = Array.from({ length: n }, (_, i) => ({ time: t0 + i * B15, open: 90, high: 90.2, low: 89.8, close: 90, vol: 100, tb: i >= n - 96 ? 20 : 50 + ((i * 7) % 11) - 5 }));
+  k15[n - 1] = { ...k15[n - 1], open: 89.5, close: 89.4 };
+  const lastDay = Math.floor((t0 + n * B15) / DAY) * DAY, days = []; for (let k = 60; k >= 1; k--) days.push({ time: lastDay - k * DAY, close: 100 });
+  const now = t0 + (n - 1) * B15 + 3 * 60e3, ins = [];
+  const sql = async (strs, ...vals) => { if (/INSERT INTO signal_track/.test(strs.join("?"))) { ins.push(vals); return [{ id: 1 }]; } return []; };
+  const fetchGran = async (s, p) => Array.from({ length: p * 300 }, (_, i) => ({ time: Math.floor(now / (s * 1000)) * s * 1000 - (p * 300 - 1 - i) * s * 1000, low: 99.9, high: 100.1, open: 100, close: 100, volumeto: 10 }));
+  const deps = (getFlow) => ({ now, forceFull: true, coins: ["BTC"], fetchGran, getDailySMA: async () => 100, crowd: async () => null, getFlow, resolveIo: { fetchCandles: async () => [], now } });
+  const r1 = await RT.runTrend(sql, null, deps(async () => ({ k15, days })));
+  const row = ins.find((v) => v[2] === "Flow Rider");
+  if (!row || ins.length !== 1 || row[3] !== "bear" || row[1] !== "4h" || Math.abs(row[5] - 89.5) > 1e-9 || Math.abs(row[6] - 89.5 * 1.05) > 1e-9 || Math.abs(row[7] - 89.5 * 0.9) > 1e-9) problems.push("flow runner: expected exactly one Flow Rider short 4h at 89.5 / 93.975 / 80.55: " + JSON.stringify(ins));
+  else if (!JSON.parse(row[9]).maxHoldMs || JSON.parse(row[9]).maxHoldMs !== 7 * DAY) problems.push("flow runner: the row must carry the 7 day limit");
+  if (r1.byCoin.BTC.byTf["flow:4h"]?.opened !== 1) problems.push("flow runner: result should count one opened trade");
+  ins.length = 0;
+  const r2 = await RT.runTrend(sql, null, deps(async () => null));
+  if (ins.length || r2.byCoin.BTC.byTf["flow:4h"]?.skipped !== "feed_unavailable" || r2.byCoin.BTC.feedFailed) problems.push("flow runner: a missing Binance feed must log nothing and must not count as a failed scan");
 }
 
 if (problems.length) {

@@ -7,7 +7,7 @@ import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatility
 import { brandName } from "../lib/brand.js";
 import { pickFocus } from "../lib/lineFocus.js";
 import { meterHeadline, meterStageLine, meterPos, meterMovesFrom, meterFreshLine } from "../lib/meter.js";
-import { signalReadiness, readyTf } from "../lib/readiness.js";
+import { signalReadiness, readyTf, READY_EXTRA } from "../lib/readiness.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
 import { useVisibleInterval } from "./useVisibleInterval.js";
@@ -1500,7 +1500,11 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                 if (r.ok) byTf[t] = ((await r.json()).coins || []).find((c) => c.sym === "BTC")?.candles || null;
               } catch { /* that signal's row is left out */ }
             }));
-            setBtcReady({ byTf, sma: j1.trendSma || null, at: Date.now() });
+            let extra = null; // facts a row needs beyond candles (Flow Rider's flow state), only fetched when a live signal asks for them
+            if (ALL_SIGNALS.some((x) => x.ready && READY_EXTRA[x.ready] && isSignalVisible(x.name))) {
+              try { const r = await fetch("/api/ready-state", { cache: "no-store" }); if (r.ok) extra = await r.json(); } catch { /* that signal's row is left out */ }
+            }
+            setBtcReady({ byTf, sma: j1.trendSma || null, at: Date.now(), extra });
           }
         } catch { /* leave the strip as it was */ }
       }
@@ -1804,7 +1808,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     if (!btcReady) return [];
     return ALL_SIGNALS.filter((x) => x.ready && isSignalVisible(x.name)).map((x) => {
       const tf = readyTf(x);
-      const r = signalReadiness(x, { candles: btcReady.byTf[tf], sma: btcReady.sma, now: btcReady.at, tf, open: openPositions.some((p) => p.label === x.name && p.coin === "BTC" && p.tf === tf) });
+      const r = signalReadiness(x, { candles: btcReady.byTf[tf], sma: btcReady.sma, now: btcReady.at, tf, extra: btcReady.extra, open: openPositions.some((p) => p.label === x.name && p.coin === "BTC" && p.tf === tf) });
       return r ? { name: brandName(x.name), tf, ...r } : null;
     }).filter(Boolean);
   }, [btcReady, openPositions]);
