@@ -5,9 +5,12 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
-import { pickFocus } from "../lib/lineFocus.js";
-import { meterHeadline, meterStageLine, meterPos, meterMovesFrom, meterFreshLine } from "../lib/meter.js";
-import { signalReadiness, readyTf, READY_EXTRA } from "../lib/readiness.js";
+import { fmtPrice, fmtPct, fmtVol, fngColor } from "../lib/format.js";
+import { LongTermLines, MeterCore } from "./components/MeterParts.jsx";
+import { METER_CSS } from "./components/meterCss.js";
+import { meterHeadline, meterPos, meterMovesFrom, buildMeterMoves } from "../lib/meter.js";
+import { signalReadiness, readyTf } from "../lib/readiness.js";
+import { fetchBtcReady } from "./fetchBtcReady.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
 import WatchLiveContent from "./WatchLiveContent.jsx";
 import { useVisibleInterval } from "./useVisibleInterval.js";
@@ -18,23 +21,6 @@ import { useVisibleInterval } from "./useVisibleInterval.js";
    Data: Coinbase (no key). Not financial advice.
    ========================================================================= */
 
-
-/* ------------------------------- formatting ------------------------------ */
-const fmtPrice = (p) => {
-  if (p == null || isNaN(p)) return "—";
-  if (p >= 1000) return p.toLocaleString("en-US", { maximumFractionDigits: 0 });
-  if (p >= 1) return p.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return p.toLocaleString("en-US", { maximumFractionDigits: 5 });
-};
-const fmtPct = (x) => (x == null || isNaN(x) ? "—" : (x > 0 ? "+" : "") + x.toFixed(2) + "%");
-const fmtVol = (v) => {
-  if (v == null || isNaN(v)) return "—";
-  if (v >= 1e9) return "$" + (v / 1e9).toFixed(1) + "B";
-  if (v >= 1e6) return "$" + (v / 1e6).toFixed(1) + "M";
-  if (v >= 1e3) return "$" + (v / 1e3).toFixed(0) + "K";
-  return "$" + v.toFixed(0);
-};
-const fngColor = (v) => (v >= 75 ? "#00D179" : v >= 55 ? "#5EE9AE" : v >= 45 ? "#93A69D" : v >= 25 ? "#F5B851" : "#FF5C6C");
 
 // Notable = posts from watched sources (Watcher Guru, Whale Alert, curated accounts).
 // The coin note is cached against this, so it only regenerates when something notable breaks.
@@ -95,248 +81,6 @@ function Ladder({ entry, stop, target, price, dir }) {
         <div className="tgt-row"><span className="up">{fmtPct(dir === "bull" ? Math.abs(toTarget) : -Math.abs(toTarget))}</span><span className="lab">to target</span></div>
         <div className="tgt-row"><span className="down">{fmtPct(dir === "bull" ? -Math.abs(toStop) : Math.abs(toStop))}</span><span className="lab">to stop</span></div>
       </div>
-    </div>
-  );
-}
-
-// A real, deliberately different visual from the horizontal volatility
-// meter used everywhere else, this is vertical, and the center of the
-// track IS the MA line itself, not a neutral midpoint of some abstract
-// score. The dot moves up when price is genuinely above the line,
-// down when it's genuinely below, clamped at the real, given range so
-// an extreme reading doesn't run off the track.
-// A real, simple line chart, no charting library, just plain SVG — two
-// real lines over the last 120 real days, so the actual crossover
-// moment is something you can see happen, not just infer from two
-// separate numbers. Marks the real, most recent point where the lines
-// actually crossed, when one exists inside this window.
-// Real price history plotted as an actual line, with the MA itself
-// drawn as a flat, horizontal reference across it — replaces a single,
-// static gauge with something that shows how price has actually
-// approached and moved away from this level over real time.
-// Real, evenly-spaced date labels pulled directly from a series' own
-// real timestamps, shared by both charts below rather than two separate
-// copies of the same real logic. Positioned by percentage, not pixels,
-// so they line up correctly regardless of how wide the chart actually
-// renders.
-function buildAxisLabels(series, count, withYear) {
-  if (!series || series.length < 2) return [];
-  const labels = [];
-  const step = (series.length - 1) / (count - 1);
-  for (let i = 0; i < count; i++) {
-    const idx = Math.round(i * step);
-    const d = new Date(series[idx].time);
-    const text = withYear ? d.toLocaleDateString(undefined, { month: "short", year: "2-digit" }) : d.toLocaleDateString(undefined, { month: "short" });
-    labels.push({ pct: (idx / (series.length - 1)) * 100, text });
-  }
-  return labels;
-}
-
-function ChartAxis({ labels }) {
-  if (!labels.length) return null;
-  return (
-    <div className="chart-axis">
-      {labels.map((l, i) => (
-        <span key={i} className="chart-axis-label" style={{ left: `${l.pct}%` }}>{l.text}</span>
-      ))}
-    </div>
-  );
-}
-
-// v20.9 (Na, Nov 3): all three long-term charts share one look: a white line, a dashed amber line, a translucent green fill where the
-// first line is above the second and red where it is below, a dot on the point that matters, and the same height. `bandPolygons`
-// builds the fill between two series and splits a segment at the exact point the lines cross, so a cross never smears across a day.
-function bandPolygons(a, b, x, y) {
-  const out = [];
-  const poly = (pts, up, key) => out.push(<polygon key={key} points={pts.map(([px, py]) => `${px},${py}`).join(" ")} fill={up ? "var(--green)" : "var(--red)"} fillOpacity=".2" />);
-  for (let i = 0; i < a.length - 1; i++) {
-    const d0 = a[i] - b[i], d1 = a[i + 1] - b[i + 1];
-    const A0 = [x(i), y(a[i])], A1 = [x(i + 1), y(a[i + 1])], B0 = [x(i), y(b[i])], B1 = [x(i + 1), y(b[i + 1])];
-    if ((d0 >= 0) === (d1 >= 0) || d0 === 0 || d1 === 0) {
-      poly([A0, A1, B1, B0], d0 + d1 >= 0, i);
-    } else {
-      const t = d0 / (d0 - d1);
-      const cx = x(i) + t * (x(i + 1) - x(i));
-      const cv = a[i] + t * (a[i + 1] - a[i]);
-      const C = [cx, y(cv)];
-      poly([A0, C, B0], d0 > 0, `${i}a`);
-      poly([C, A1, B1], d1 > 0, `${i}b`);
-    }
-  }
-  return out;
-}
-
-// v19.49 (Na, Oct 29): Bitcoin's daily price against its 50-day average over the last 90 days. The space between the
-// two is shaded green while price is above the line and red while it's below, so a test of the line is easy to see.
-// `price` is the live price; the last point of the series uses it so the dot is current.
-function PriceVs50Chart({ series, price, field = "sma50" }) {  // field: which average to draw (v24.3: "sma200" for the 200-day tab)
-  if (!series || series.length < 2) return null;
-  const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
-  const W = 300, H = 120, PAD = 6;
-  const vals = pts.flatMap((p) => [p.close, p[field]]);
-  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
-  const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
-  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const bands = bandPolygons(pts.map((p) => p.close), pts.map((p) => p[field]), x, y);
-  const last = pts[pts.length - 1];
-  const labels = [0, 1, 2, 3].map((k) => {
-    const idx = Math.round((k * (pts.length - 1)) / 3);
-    return { pct: (idx / (pts.length - 1)) * 100, text: new Date(pts[idx].time).toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" }) };
-  });
-  return (
-    <div className="chart-wrap">
-      <div className="chart-plot">
-      <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-        {bands}
-        <polyline points={pts.map((p, i) => `${x(i)},${y(p[field])}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
-        <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
-      </div>
-      <ChartAxis labels={labels} />
-    </div>
-  );
-}
-
-// v19.50 (Na, Oct 29): the three Bitcoin average panels (200-week, 50/200-day, price vs 50-day) were a lot of scrolling.
-// One card now: a price ladder showing where Bitcoin sits against each line, the exact close needed to break the 50-day,
-// and tabs that show one chart at a time (50-day first, since that's the one in play).
-function LongTermLines({ weekly200, price: livePrice }) {
-  const [tab, setTab] = useState("d50");
-  const [about, setAbout] = useState(false);
-  if (!weekly200) return null;
-  const line50 = weekly200.daily50, line200 = weekly200.daily200, lineW = weekly200.sma;
-  const lastClose = weekly200.dailyPrice?.length ? weekly200.dailyPrice[weekly200.dailyPrice.length - 1].close : null;
-  const price = livePrice || lastClose;
-  if (!price || line50 == null) return null;
-  // v24.8 (Na, Nov 13): the highlight follows the line price is closest to (v24.9: always the closest, no cutoff), coloured by danger or opportunity.
-  // Same rule as the share card (lib/lineFocus.js).
-  const f = pickFocus(price, { d50: line50, d200: line200, w200: lineW });
-  const toneVar = { amber: "var(--amber)", green: "var(--green-soft)", red: "var(--red-soft)" }[f.tone];
-  const tag = `${f.tone === "amber" ? `Testing the ${f.key} from ${f.above ? "above" : "below"}` : `${f.above ? "Above" : "Below"} the ${f.key}`}, ${f.dist >= 0 ? "+" : ""}${f.dist.toFixed(1)}%`;
-
-  // Ladder: every line and Bitcoin on one vertical scale, labels nudged apart so none overlap.
-  const rungs = [
-    { k: "50-day", v: line50, c: f.key === "50-day" ? toneVar : "var(--muted)" },
-    { k: "Bitcoin", v: price, c: toneVar, me: true },
-    line200 != null && { k: "200-day", v: line200, c: f.key === "200-day" ? toneVar : "var(--muted)" },
-    lineW != null && { k: "200-week", v: lineW, c: f.key === "200-week" ? toneVar : "var(--muted)" },
-  ].filter(Boolean).sort((x, y) => y.v - x.v);
-  const hi = rungs[0].v, lo = rungs[rungs.length - 1].v, pad = (hi - lo) * 0.05 || 1;
-  const LH = 190, top = 14, bot = LH - 14;
-  const yOf = (v) => top + ((hi + pad - v) / (hi - lo + 2 * pad)) * (bot - top);
-  let prevLabel = -99;
-  const placed = rungs.map((r) => {
-    const y = yOf(r.v);
-    const ly = Math.max(y, prevLabel + 20);
-    prevLabel = ly;
-    return { ...r, y, ly };
-  });
-
-  const need = <>{f.pre}<b className="mono">${fmtPrice(f.v)}</b>{f.post}</>;
-  const legends = {
-    d50: <>White line is Bitcoin's daily close, dashed amber is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
-    d200: line200 != null ? <>White line is Bitcoin's daily close, dashed amber is the 200-day average (${fmtPrice(line200)}), {Math.abs(((price - line200) / line200) * 100).toFixed(1)}% {price >= line200 ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
-    cross: line200 != null ? <>Dashed amber is the 50-day (${fmtPrice(line50)}), white is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross. Green fill: 50 above 200." : "The 50 is below the 200, a death cross. Red fill: 50 below 200."} The dot is the most recent cross.</> : null,
-    w200: lineW != null ? <>White line is Bitcoin's weekly close over the last 75 weeks, dashed amber is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
-  };
-  const tabs = [["d50", "50‑day", weekly200.dailyPrice?.length > 1], ["d200", "200‑day", weekly200.dailyPrice200?.length > 1 && line200 != null], ["w200", "200‑week", weekly200.priceSeries?.length > 1 && lineW != null], ["cross", "Golden cross", weekly200.dailySeries?.length > 1 && line200 != null]].filter((t) => t[2]);
-  const active = tabs.some((t) => t[0] === tab) ? tab : tabs[0]?.[0];
-  const golden = line200 != null && line50 >= line200;
-
-  return (
-    <div className="w200-panel lt-card">
-      <div className="w200-head">Price vs averages</div>
-      <div className={`cross-tag ${f.tone === "amber" ? "test" : f.tone === "green" ? "golden" : "death"}`}>{tag}</div>
-      <svg className="lt-ladder" viewBox={`0 0 330 ${LH}`} role="img" aria-label={`Where Bitcoin sits against its averages: ${rungs.map((r) => `${r.k} $${fmtPrice(r.v)}`).join(", ")}`}>
-        <line x1="14" y1={top - 4} x2="14" y2={bot + 4} stroke="var(--border)" strokeWidth="2" />
-        {placed.map((r) => (
-          <g key={r.k}>
-            <circle cx="14" cy={r.y} r={r.me ? 6 : 4} fill={r.c} />
-            <line x1="22" y1={r.y} x2="34" y2={r.ly - 4} stroke="var(--border)" />
-            <text x="40" y={r.ly} fontSize={r.me ? 13.5 : 13} fontWeight={r.me ? 700 : 500} fill={r.c}>
-              {r.k} ${fmtPrice(r.v)}
-              {!r.me && <tspan fill="var(--muted)" fontSize="11.5" fontWeight="500">{" "}{(((price / r.v) - 1) * 100) >= 0 ? "+" : ""}{(((price / r.v) - 1) * 100).toFixed(1)}%</tspan>}
-            </text>
-          </g>
-        ))}
-      </svg>
-      <div className="p50-need">{need}</div>
-      <div className="lt-tabs" role="tablist">
-        {tabs.map(([k, label]) => (
-          <button key={k} role="tab" aria-selected={active === k} className={`lt-tab ${active === k ? "on" : ""}`} onClick={() => setTab(k)}>{label}</button>
-        ))}
-      </div>
-      {active === "d50" && <PriceVs50Chart series={weekly200.dailyPrice} price={livePrice} />}
-      {active === "cross" && <CrossoverChart series={weekly200.dailySeries} />}
-      {active === "d200" && <PriceVs50Chart series={weekly200.dailyPrice200} price={livePrice} field="sma200" />}
-      {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} price={livePrice} />}
-      <div className="lt-legend">{legends[active]}</div>
-      <div className="w200-note">
-        Context, not a trading signal.{" "}
-        <button className="lt-about" onClick={() => setAbout((v) => !v)} aria-expanded={about}>{about ? "Hide" : "About these lines"}</button>
-      </div>
-      {about && (
-        <div className="w200-note lt-about-text">
-          The line moves a little every day, so check it again at the close. Over ten years of history a daily close back above the 50-day has leaned bullish and a close under it bearish, but only about 30 cases each way. {golden ? "When the 50-day crosses above the 200-day, traders call that a golden cross." : "When the 50-day sits below the 200-day, traders call that a death cross."} The 200-week line is the long-run floor: every prior Bitcoin bear market has bottomed at or near it.
-        </div>
-      )}
-    </div>
-  );
-}
-
-// 200-week: weekly closes against the flat 200-week average. Same look as the 50-day chart, so time spent above or below it shows.
-function PriceVsMaChart({ series, maValue, price }) {
-  if (!series || series.length < 2 || maValue == null) return null;
-  const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
-  const W = 300, H = 120, PAD = 6;
-  const vals = [...pts.map((p) => p.close), maValue];
-  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
-  const x = (i) => PAD + (i / (pts.length - 1)) * (W - PAD * 2);
-  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  const last = pts[pts.length - 1];
-  return (
-    <div className="chart-wrap">
-      <div className="chart-plot">
-      <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-        {bandPolygons(pts.map((p) => p.close), pts.map(() => maValue), x, y)}
-        <line x1={PAD} y1={y(maValue)} x2={W - PAD} y2={y(maValue)} stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
-        <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-      </svg>
-      <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
-      </div>
-      <ChartAxis labels={buildAxisLabels(series, 4, true)} />
-    </div>
-  );
-}
-
-// Golden cross: the 50-day (dashed amber, like everywhere else) against the 200-day (white). Green fill while the 50 is above the 200
-// (a golden cross), red while it is below (a death cross). The amber dot sits on the most recent cross.
-function CrossoverChart({ series }) {
-  if (!series || series.length < 2) return null;
-  const W = 300, H = 120, PAD = 6;
-  const vals = series.flatMap((p) => [p.sma50, p.sma200]);
-  const min = Math.min(...vals), max = Math.max(...vals), span = max - min || 1;
-  const x = (i) => PAD + (i / (series.length - 1)) * (W - PAD * 2);
-  const y = (v) => H - PAD - ((v - min) / span) * (H - PAD * 2);
-  // Most recent crossover inside this window, walking backward so the marker lands on the latest cross.
-  let crossIdx = null;
-  for (let i = series.length - 1; i > 0; i--) {
-    const prevDiff = series[i - 1].sma50 - series[i - 1].sma200;
-    const currDiff = series[i].sma50 - series[i].sma200;
-    if ((prevDiff <= 0 && currDiff > 0) || (prevDiff >= 0 && currDiff < 0)) { crossIdx = i; break; }
-  }
-  return (
-    <div className="chart-wrap">
-      <div className="chart-plot">
-      <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-        {bandPolygons(series.map((p) => p.sma50), series.map((p) => p.sma200), x, y)}
-        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma200)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
-      </svg>
-      {crossIdx != null && <span className="p50-dot cross-dot" style={{ left: `${(x(crossIdx) / W) * 100}%`, top: `${(y(series[crossIdx].sma50) / H) * 100}%` }} />}
-      </div>
-      <ChartAxis labels={buildAxisLabels(series, 4, false)} />
     </div>
   );
 }
@@ -854,7 +598,7 @@ function Guide({ onBack, account, liveGate, regimeGate, readyRows = [] }) {
         </div>
 
         <div className="guide-glossary">
-          <b>Watch It Live shows two groups.</b> Verified is the headline win rate. A trade counts if its setup was verified at the moment it fired, using each setup's last 20 trades, and it stays on the record even if the setup slips under the bar later (those setups are marked). Trades logged before this rule started only count while their setup is verified today. A trade also needs a big enough target to count: at least three quarters of what that timeframe calls a big move (0.23% on 1m, 0.53% on 5m, 0.9% on 15m, 1.9% on 1h, 3.4% on 4h), because a tiny target gets swallowed by the gap between the alert and your fill. Smaller ones are still tracked, they just never count as verified or send an alert. Some of those setups fire a few times a month, so the page can go quiet. Emerging is the second group: setups that are working lately, but on fewer trades than a verified one. They're labeled, kept out of the win rate, and never send an alert. If an emerging setup keeps winning, it moves up. If it fades, it drops off. Under the headline you'll also see how many separate setups sit behind the trades. When one move fires the same signal on several charts at once (say the 5 minute, 15 minute and 1 hour), those trades win or lose together, so they count as one setup. The setup win rate counts the first alert of each setup once, and it's the number to trust when judging a signal.
+          <b>The Market Meter page (setpointalerts.com/watch) is free to open.</b> It shows Bitcoin right now with the same meter and Price vs averages card as the Market tab, then the scoreboard, every live signal and every finished trade, wins and losses. Without an account Mood, Heavy volume, three of the four charts and each trade's entry and exit are blurred; a free account opens them. <b>Watch It Live, inside your dashboard, shows two groups.</b> Verified is the headline win rate. A trade counts if its setup was verified at the moment it fired, using each setup's last 20 trades, and it stays on the record even if the setup slips under the bar later (those setups are marked). Trades logged before this rule started only count while their setup is verified today. A trade also needs a big enough target to count: at least three quarters of what that timeframe calls a big move (0.23% on 1m, 0.53% on 5m, 0.9% on 15m, 1.9% on 1h, 3.4% on 4h), because a tiny target gets swallowed by the gap between the alert and your fill. Smaller ones are still tracked, they just never count as verified or send an alert. Some of those setups fire a few times a month, so the page can go quiet. Emerging is the second group: setups that are working lately, but on fewer trades than a verified one. They're labeled, kept out of the win rate, and never send an alert. If an emerging setup keeps winning, it moves up. If it fades, it drops off. Under the headline you'll also see how many separate setups sit behind the trades. When one move fires the same signal on several charts at once (say the 5 minute, 15 minute and 1 hour), those trades win or lose together, so they count as one setup. The setup win rate counts the first alert of each setup once, and it's the number to trust when judging a signal.
         </div>
       </div>
 
@@ -1522,20 +1266,8 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
             const cs = b1?.candles || [];
             const mv = meterMovesFrom(cs);
             if (mv) setBtcMoves(mv);
-            // v23.9: the charts the live signals read (from their own ALL_SIGNALS entries), for "How close is an alert".
-            const byTf = { "1h": cs };
-            const need = [...new Set(ALL_SIGNALS.filter((x) => x.ready && isSignalVisible(x.name)).map(readyTf).filter((t) => t && !byTf[t]))];
-            await Promise.all(need.map(async (t) => {
-              try {
-                const r = await fetch(`/api/market?symbols=BTC&tf=${t}`, { cache: "no-store" });
-                if (r.ok) byTf[t] = ((await r.json()).coins || []).find((c) => c.sym === "BTC")?.candles || null;
-              } catch { /* that signal's row is left out */ }
-            }));
-            let extra = null; // facts a row needs beyond candles (Flow Rider's flow state), only fetched when a live signal asks for them
-            if (ALL_SIGNALS.some((x) => x.ready && READY_EXTRA[x.ready] && isSignalVisible(x.name))) {
-              try { const r = await fetch("/api/ready-state", { cache: "no-store" }); if (r.ok) extra = await r.json(); } catch { /* that signal's row is left out */ }
-            }
-            setBtcReady({ byTf, sma: j1.trendSma || null, at: Date.now(), extra });
+            // v23.9: the charts the live signals read, for "How close is an alert" (app/fetchBtcReady.js, shared with /watch).
+            setBtcReady(await fetchBtcReady(cs, j1.trendSma));
           }
         } catch { /* leave the strip as it was */ }
       }
@@ -1877,14 +1609,9 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
     );
   }
 
-  // The meter's inputs: the 1h / 1d / 1w moves plus how far price sits from its 50-day average (percent, negative = below).
+  // The meter's inputs: the 15m / 1h / 1d / 1w moves and the line price is closest to (lib/meter.js buildMeterMoves, shared with the /watch page).
   const btcPrice = data.BTC?.snap?.price;
-  const d50 = weekly200?.daily50;
-  // v25.6: the headline names the long-term line price is closest to (lib/lineFocus.js, the same rule as the lines card and the share image).
-  // Same price as the headline's opener (the 1 hour candles), and only when all three lines are known (the share image requires that too).
-  const focusPx = btcMoves?.px > 0 ? btcMoves.px : btcPrice;
-  const meterFocus = focusPx > 0 && d50 > 0 && weekly200?.daily200 > 0 && weekly200?.sma > 0 ? pickFocus(focusPx, { d50, d200: weekly200.daily200, w200: weekly200.sma }) : null;
-  const meterMoves = btcMoves ? { ...btcMoves, vs50: btcPrice > 0 && d50 > 0 ? (btcPrice / d50 - 1) * 100 : null, focus: meterFocus, m15: btcM15 } : null;
+  const meterMoves = buildMeterMoves(btcMoves, btcPrice, weekly200, btcM15);
   return (
     <div className="dash">
       <div className="topbar">
@@ -2142,34 +1869,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
                   )}
                 </span>
               </div>
-              <div className="mm-headline">{meterHeadline(marketMeter, meterMoves)}</div>
-              {meterFreshLine(meterMoves) && <div className="mm-fresh">{meterFreshLine(meterMoves)}</div>}
-              <div className="mm-gauge" role="img" aria-label={`Short-term read: ${marketMeter.label}`}>
-                <div className="mm-gauge-bar"><span className="mm-marker" style={{ left: `${meterPos(marketMeter, meterMoves)}%` }} /></div>
-                <div className="mm-gauge-ends"><span>Falling</span><span>Flat</span><span>Rising</span></div>
-              </div>
-              {meterStageLine(marketMeter, meterMoves) && <div className={`mm-stage ${marketMeter.phase === "ending" ? "ending" : ""}`}>{meterStageLine(marketMeter, meterMoves)}</div>}
-              {meterMoves && (
-                <div className="mm-moves">
-                  {[["15m", meterMoves.m15], ["1h", meterMoves.h1], ["1d", meterMoves.h24], ["1w", meterMoves.w1]].filter(([, v]) => v != null).map(([k, v]) => (
-                    <div key={k} className="mm-move"><span className="mm-move-k">{k}</span><span className={`mm-move-v mono ${v >= 0 ? "up" : "down"}`}>{v >= 0 ? "+" : ""}{v.toFixed(1)}%</span></div>
-                  ))}
-                </div>
-              )}
-              {(fng || netFlow) && (
-                <div className="mm-ctx">
-                  {fng && (
-                    <div className="mm-ctx-i"><span className="mm-ctx-k">Mood</span><span className="mm-ctx-v"><span className="mono" style={{ color: fngColor(fng.value) }}>{fng.value}</span> {fng.label}</span></div>
-                  )}
-                  {netFlow && (
-                    <div className="mm-ctx-i"><span className="mm-ctx-k">Heavy volume 5h</span>
-                      {netFlow.txCount > 0 && netFlow.net !== 0
-                        ? <span className={`mm-ctx-v ${netFlow.net > 0 ? "sell" : "buy"}`}>{netFlow.net > 0 ? "Net selling" : "Net buying"} <span className="mono">{fmtVol(Math.abs(netFlow.net))}</span></span>
-                        : <span className="mm-ctx-v quiet">{netFlow.txCount > 0 ? "Even" : "None right now"}</span>}
-                    </div>
-                  )}
-                </div>
-              )}
+              <MeterCore meter={marketMeter} moves={meterMoves} fng={fng} netFlow={netFlow} />
               {risk && risk.level !== "low" && <div className={`risk-note ${risk.level}`}>{risk.level === "high" ? "⚠ " : ""}{risk.note}</div>}
               {marketMeter.confirmed && (
                 <div className="mm-confirm">⚡ Confirmed: your own watchlist and the bias scale independently agree</div>
@@ -2795,48 +2495,7 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .risk-note{font-size:11px;line-height:1.5;margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,.08)}
 .risk-note.high{color:var(--amber);font-weight:600}
 .risk-note.elevated{color:var(--muted)}
-.w200-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border);background:var(--panel)}
-.w200-panel.near{border-color:rgba(245,184,81,.4);background:var(--amber-dim)}
-.w200-head{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);font-weight:600;margin-bottom:6px}
-.w200-row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.w200-val{font-size:15px;font-weight:700}
-.w200-dist{font-size:11.5px;font-weight:600}
-.w200-dist.up{color:var(--muted)}
-.w200-dist.down{color:var(--amber)}
-.w200-note{color:var(--dim);font-size:10.5px;line-height:1.5;margin-top:7px}
-.w200-val.sm{font-size:12.5px}
-.w200-panel.dual{padding-bottom:12px}
-.cross-tag{font-size:11px;font-weight:700;padding:3px 9px;border-radius:6px;display:inline-block;margin-bottom:10px}
-.chart-wrap{position:relative}
-.chart-plot{position:relative;margin-bottom:2px}
-.chart-plot .cross-chart{margin-bottom:0}
-.cross-chart{width:100%;height:90px;display:block;margin-bottom:2px}
-.chart-axis{position:relative;height:16px;margin-bottom:8px}
-.chart-axis-label{position:absolute;top:0;transform:translateX(-50%);font-size:9.5px;color:var(--dim);white-space:nowrap}
-.chart-axis-label:first-child{transform:translateX(0)}
-.chart-axis-label:last-child{transform:translateX(-100%)}
-.cross-legend{display:flex;flex-direction:column;gap:4px;margin-bottom:8px}
-.cross-legend-item{font-size:11px;color:var(--muted);display:flex;align-items:center;gap:6px}
-.cross-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.cross-dot.fifty{background:var(--green-soft)}
-.cross-dot.twohundred{background:var(--muted)}
-.p50-chart{height:130px}
-.p50-dot.cross-dot{background:var(--amber)}
-.p50-dot{position:absolute;width:9px;height:9px;margin:-4.5px 0 0 -4.5px;border-radius:50%;background:var(--text);pointer-events:none}
-.cross-dot.p50-price{background:var(--text)}
-.cross-dot.p50-line{background:var(--amber)}
-.p50-need{font-size:12.5px;color:var(--text);line-height:1.5;margin:2px 0 4px}
-.lt-ladder{width:100%;max-width:330px;height:auto;display:block;margin:2px 0}
-.lt-tabs{display:flex;gap:3px;background:var(--ink);border:1px solid var(--border);border-radius:10px;padding:3px;margin:4px 0 8px}
-.lt-tab{flex:1;min-height:44px;border:0;border-radius:8px;background:transparent;color:var(--muted);font:inherit;font-size:12.5px;line-height:1.15;padding:0 2px;font-weight:500;cursor:pointer;text-wrap:balance}
-.lt-tab.on{background:var(--border);color:var(--text);font-weight:700}
-.lt-tab:focus-visible,.lt-about:focus-visible{outline:2px solid var(--green-soft);outline-offset:2px}
-.lt-legend{font-size:12px;color:var(--text);line-height:1.45;margin-top:2px}
-.lt-about{background:none;border:0;padding:0;font:inherit;color:var(--muted);text-decoration:underline;cursor:pointer}
-.lt-about-text{margin-top:6px}
-.cross-tag.golden{color:var(--green-soft);background:var(--green-dim)}
-.cross-tag.death{color:var(--red-soft);background:var(--red-dim)}
-.cross-tag.test{color:var(--amber);background:var(--amber-dim)}
+${METER_CSS}
 .macro-panel{padding:10px 12px;border-radius:10px;margin-bottom:12px;border:1px solid var(--border)}
 .macro-panel.bullish{background:var(--green-dim);border-color:rgba(0,209,121,.3)}
 .macro-panel.bearish{background:var(--red-dim);border-color:rgba(255,92,108,.3)}
@@ -2854,69 +2513,6 @@ button:disabled{opacity:.6;cursor:not-allowed}
 .macro-catalyst{color:var(--amber);font-size:11px;line-height:1.5;margin-top:7px;padding-top:7px;border-top:1px solid rgba(255,255,255,.08)}
 .fng{display:flex;align-items:center;gap:14px;padding:10px 0 16px;border-bottom:1px solid var(--hair);margin-bottom:12px}
 .mc-top-row{display:flex;flex-direction:column;gap:6px;margin-bottom:16px;padding:12px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px}
-.mm-headline{font-family:'Bricolage Grotesque';font-weight:700;font-size:21px;line-height:1.25;margin:2px 0 16px}
-.mm-gauge{margin-bottom:10px}
-.mm-gauge-bar{position:relative;height:8px;border-radius:6px;background:linear-gradient(90deg,var(--red-soft),var(--panel3) 50%,var(--green-soft))}
-.mm-marker{position:absolute;top:-5px;width:6px;height:18px;margin-left:-3px;border-radius:3px;background:var(--text);box-shadow:0 0 0 3px var(--panel2)}
-.mm-gauge-bar::after{content:"";position:absolute;left:50%;top:-2px;width:1px;height:12px;background:rgba(255,255,255,.28)}
-.mm-gauge-ends{display:flex;justify-content:space-between;font-size:12px;color:var(--muted);margin-top:8px}
-.mm-why-btn{margin-top:12px;background:none;border:none;padding:6px 0;color:var(--muted);font:inherit;font-size:12.5px;cursor:pointer;text-decoration:underline;text-underline-offset:3px}
-.mm-why{margin-top:8px;padding-top:12px;border-top:1px solid var(--hair)}
-.mm-panel{padding:14px 16px;background:var(--panel2);border:1px solid var(--border);border-radius:12px;margin-bottom:16px}
-.mm-panel.confirmed{border-color:rgba(245,184,81,.5);background:linear-gradient(180deg,rgba(245,184,81,.08),var(--panel2))}
-.mm-head{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px}
-.mm-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.mm-sub{font-size:12px;color:var(--muted)}
-.mm-panel{position:relative}
-.mm-head-r{display:flex;align-items:center;gap:4px;position:relative}
-.mm-share-btn{width:44px;height:44px;margin:-14px -12px -14px 0;display:flex;align-items:center;justify-content:center;background:transparent;border:0;border-radius:10px;cursor:pointer;color:var(--soft-text)}
-.mm-share-ic{width:32px;height:32px;display:flex;align-items:center;justify-content:center;border:1px solid #2C3B34;border-radius:9px;background:#1A2621}
-.mm-share-btn:hover .mm-share-ic,.mm-share-btn:focus-visible .mm-share-ic{border-color:var(--green)}
-.mm-share-btn.open .mm-share-ic{border-color:var(--green);background:#1F2E27;color:var(--text)}
-.mm-share-menu{position:absolute;top:34px;right:-4px;z-index:20;width:224px;padding:6px;background:#1B2822;border:1px solid #2C3B34;border-radius:12px;box-shadow:0 12px 32px rgba(0,0,0,.55);display:flex;flex-direction:column}
-.mm-share-item{display:flex;align-items:center;gap:12px;height:48px;padding:0 12px;background:transparent;border:0;border-radius:8px;color:var(--text);font:600 14px 'Inter',sans-serif;text-align:left;cursor:pointer}
-.mm-share-item:hover,.mm-share-item:focus-visible{background:#24342C}
-.mm-share-msg{padding:10px 12px 8px;font-size:13px;line-height:1.4;color:var(--soft-text);border-top:1px solid #2C3B34;margin-top:4px}
-.mm-moves{display:grid;grid-template-columns:repeat(auto-fit,minmax(58px,1fr));gap:6px;margin-top:10px}
-.mm-move{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mm-move-k{font-size:12px;color:var(--muted)}
-.mm-move-v{font-size:14px;font-weight:700}
-.mm-move-v.up{color:var(--green)}
-.mm-move-v.down{color:var(--red)}
-.mm-move-flag{grid-column:1/-1;font-size:12px;color:var(--amber);font-weight:600;line-height:1.4}
-.mm-synthesis{font-size:15px;font-weight:600;line-height:1.4;color:var(--text);background:var(--panel3);border-left:3px solid var(--amber);border-radius:8px;padding:10px 12px;margin-bottom:14px}
-.mm-levels{display:flex;gap:6px;margin-bottom:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--hair)}
-.mm-dot{width:100%;height:6px;border-radius:4px;background:var(--panel3)}
-.mm-dot.on.up{background:var(--green-soft)}
-.mm-dot.on.down{background:var(--red-soft)}
-.mm-dot.on.neutral{background:var(--muted)}
-.mm-dot.on.extreme{background:var(--amber)}
-.mm-level-text{font-family:'Bricolage Grotesque';font-weight:700;font-size:20px;margin-bottom:6px}
-.mm-stage{font-size:12.5px;font-weight:400;line-height:1.5;color:var(--text);margin-bottom:2px}
-.mm-stage.ending{color:var(--amber)}
-.mm-fresh{font-size:13.5px;font-weight:600;line-height:1.45;color:var(--amber);margin:0 0 10px}
-.mm-ctx{margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px}
-.mm-ctx-i{display:flex;flex-direction:column;gap:2px;min-width:0}
-.mm-ctx-k{font-size:12px;color:var(--muted);white-space:nowrap}
-.mm-ctx-v{font-size:13.5px;font-weight:600}
-.mm-ctx-v.sell{color:var(--red-soft)}
-.mm-ctx-v.buy{color:var(--green-soft)}
-.mm-ctx-v.quiet{color:var(--muted);font-weight:500}
-.mm-ready{margin-top:16px;padding-top:14px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:14px}
-.mm-ready-title{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
-.mm-ready-sig{display:flex;flex-direction:column;gap:8px}
-.mm-ready-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.mm-ready-name{font-size:14px;font-weight:600}
-.mm-ready-tf{font-weight:400;color:var(--muted)}
-.mm-ready-badge{font-size:13px;font-weight:600;color:var(--muted);white-space:nowrap}
-.mm-ready-badge.wait{color:var(--amber)}
-.mm-ready-badge.go{color:var(--green)}
-.mm-ready-line{display:flex;gap:8px;align-items:flex-start;font-size:13px;line-height:1.4;color:var(--soft-text)}
-.mm-ready-line.waiting{color:var(--text);font-weight:600}
-.mm-ready-ic{flex:none;margin-top:1px}
-.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
-.mm-scope-note{margin-top:6px;font-size:11px;color:var(--soft-text);line-height:1.4}
-.mm-confirm{margin-top:10px;font-size:12px;color:var(--amber);font-weight:600}
 .sb-head{display:flex;justify-content:flex-end;align-items:baseline;margin-bottom:8px}
 .sb-label{font-size:12px;font-weight:600}
 .sb-score{color:var(--dim);font-weight:400;margin-left:2px}
