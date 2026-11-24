@@ -8,7 +8,10 @@ name: Collect market data
 
 on:
   schedule:
-    - cron: "17 */5 * * *"
+    # Several start times: GitHub's scheduler is slow and skips starts (our signals cron lands about every 11 hours). The concurrency rule below keeps
+    # runs from overlapping, so extra triggers only fill gaps. (Nov 24: the first 5-hour trigger never fired in 10 hours.)
+    - cron: "17 */3 * * *"
+    - cron: "47 1,7,13,19 * * *"
   workflow_dispatch:
     inputs:
       minutes:
