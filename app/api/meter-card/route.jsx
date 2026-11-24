@@ -95,14 +95,14 @@ export async function GET(request) {
           <div style={{ display: "flex", position: "relative", marginTop: 26, height: 248 }}>
             <div style={{ position: "absolute", left: 219, top: 10, bottom: 10, width: 3, borderRadius: 2, background: "#26332D" }} />
             {c.ladder.map((r, i) => {
-              const isPx = r.cls === "px", t = r.hi ? TONE[r.tone] : null;
+              const isPx = r.cls === "px", t = r.hi ? TONE[r.tone] : null, tn = !t && !isPx && r.tint ? r.tint : null;
               return (
                 <div key={r.name} style={{ ...rowBase, top: pos[i], height: heights[i], ...(isPx ? { background: "rgba(255,255,255,0.07)", borderRadius: 12 } : {}) }}>
                   <span style={{ width: 190, display: "flex", justifyContent: "flex-end", fontSize: 27, fontWeight: 600, color: isPx || t ? "#fff" : GREY }}>{r.name}</span>
                   <span style={{ width: 60, display: "flex", justifyContent: "center" }}>
-                    <div style={isPx ? dot("#fff", "0 0 16px #fff") : t ? dot(t, `0 0 0 3px ${t}`) : dot("#26332D", "0 0 0 3px #3A4A43")} />
+                    <div style={isPx ? dot("#fff", "0 0 16px #fff") : t ? dot(t, `0 0 0 3px ${t}`) : tn ? dot(tn, `0 0 0 3px ${tn}`) : dot("#26332D", "0 0 0 3px #3A4A43")} />
                   </span>
-                  <span style={{ fontFamily: "Montserrat", fontWeight: 800, fontSize: isPx ? 42 : 36, color: t || "#EAF2EE" }}>{r.value}</span>
+                  <span style={{ fontFamily: "Montserrat", fontWeight: 800, fontSize: isPx ? 42 : 36, color: t || tn || "#EAF2EE" }}>{r.value}</span>
                   <span style={{ marginLeft: "auto", paddingRight: isPx ? 18 : 0, fontSize: 26, fontWeight: 600, color: isPx ? (c.bull ? GREEN : RED) : t || GREY }}>{r.note}</span>
                 </div>
               );

@@ -3,7 +3,7 @@
 // v25.7: the Market Meter card body and the Price vs averages card (ladder, tabs and the four charts), pulled out of app/page.jsx
 // so the dashboard and the public /watch page draw the same thing from the same code. Their styles are in ./meterCss.js.
 import React, { useState } from "react";
-import { pickFocus } from "../../lib/lineFocus.js";
+import { pickFocus, LINE_TINT } from "../../lib/lineFocus.js";
 import { meterHeadline, meterStageLine, meterPos, meterFreshLine } from "../../lib/meter.js";
 import { fmtPrice, fmtVol, fngColor } from "../../lib/format.js";
 
@@ -180,9 +180,9 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
 
   // Ladder: every line and Bitcoin on one vertical scale, labels nudged apart so none overlap.
   const rungs = [
-    { k: "50-day", v: line50, c: f.key === "50-day" ? toneVar : "var(--muted)" },
+    { k: "50-day", v: line50, c: f.key === "50-day" ? toneVar : LINE_TINT["50-day"] },
     { k: "Bitcoin", v: price, c: toneVar, me: true },
-    line200 != null && { k: "200-day", v: line200, c: f.key === "200-day" ? toneVar : "var(--muted)" },
+    line200 != null && { k: "200-day", v: line200, c: f.key === "200-day" ? toneVar : LINE_TINT["200-day"] },
     lineW != null && { k: "200-week", v: lineW, c: f.key === "200-week" ? toneVar : "var(--muted)" },
   ].filter(Boolean).sort((x, y) => y.v - x.v);
   const hi = rungs[0].v, lo = rungs[rungs.length - 1].v, pad = (hi - lo) * 0.05 || 1;
