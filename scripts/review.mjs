@@ -502,6 +502,14 @@ for (const [f, t] of src) {
   if (ins.filter((v) => v[2] === "Calm Rider" && v[1] === "30m").length) problems.push("calm runner: a missing 30 minute feed must not log a 30m trade");
 }
 
+// v25.9: the version shown on the site (lib/version.js) must match the newest entry in memory/version-history.md.
+{
+  const { APP_VERSION } = await import("../lib/version.js");
+  const hist = fs.readFileSync(path.join(root, "memory/version-history.md"), "utf8");
+  const nums = [...hist.matchAll(/^v(\d+\.\d)\b/gm)].map((x) => x[1]);
+  const newest = nums[nums.length - 1];
+  if (newest !== APP_VERSION) problems.push(`lib/version.js says ${APP_VERSION} but the newest memory/version-history.md entry is v${newest}`);
+}
 if (problems.length) {
   console.error(`REVIEW FAILED (${problems.length})\n` + problems.map((p) => " - " + p).join("\n"));
   process.exit(1);

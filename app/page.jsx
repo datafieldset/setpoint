@@ -5,6 +5,7 @@ import { COIN_PRESETS, NAME, maxCoinsForPlan } from "../lib/coins.js";
 import { TF } from "../lib/timeframes.js";
 import { computeSignals, DEFAULT_TH, thresholdsFor, belowTargetFloor, volatilityMeter, marketRegime, SIGNAL_RATES, PROVEN_THRESHOLD, TESTING_SIGNALS, canSeeTesting, publicTestWatches, provenContext, ALL_SIGNALS, isSignalVisible, FOCUS_MODE } from "../lib/signals.js";
 import { brandName } from "../lib/brand.js";
+import { APP_VERSION } from "../lib/version.js";
 import { fmtPrice, fmtPct, fmtVol, fngColor } from "../lib/format.js";
 import { LongTermLines, MeterCore } from "./components/MeterParts.jsx";
 import { METER_CSS } from "./components/meterCss.js";
@@ -12,7 +13,7 @@ import { meterHeadline, meterPos, meterMovesFrom, buildMeterMoves } from "../lib
 import { signalReadiness, readyTf } from "../lib/readiness.js";
 import { fetchBtcReady } from "./fetchBtcReady.js";
 import { PRICING_LIST, planLabel } from "../lib/pricing.js";
-import WatchLiveContent from "./WatchLiveContent.jsx";
+import MarketMeterPage from "./components/MarketMeterPage.jsx";
 import { useVisibleInterval } from "./useVisibleInterval.js";
 
 /* =========================================================================
@@ -1593,7 +1594,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         <div className="topbar">
           <div className="brand"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
         </div>
-        <WatchLiveContent onBack={() => closeSubView(setShowWatchLive)} coins={watchlist} />
+        <MarketMeterPage embedded onBack={() => closeSubView(setShowWatchLive)} />
       </div>
     );
   }
@@ -1961,7 +1962,7 @@ function Dashboard({ account, onSignOut, justUpgraded }) {
         )}
       </div>
 
-      <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (a stop and a target), not recommendations.</div>
+      <div className="dash-disc">Informational alerts only. Setpoint does not execute trades or provide financial advice. Levels are computed reference points (a stop and a target), not recommendations. <span className="app-ver mono">v{APP_VERSION}</span></div>
 
       {showSettings && (
         <div className="modal-bg" onClick={() => setShowSettings(false)}>
