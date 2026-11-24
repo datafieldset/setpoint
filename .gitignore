@@ -7,3 +7,4 @@ out
 recheck-candidates.flag
 report.md
 trades-live.json
+__pycache__/

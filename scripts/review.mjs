@@ -380,12 +380,20 @@ for (const [f, t] of src) {
   const hole = all.filter((_, i) => i !== 500);
   if (FL.flowFires(hole, dd(100), nowAt, 15 * 60e3).length) problems.push("flow: fired across a hole in the data");
   if (FL.flowFires(all.slice(-2000), dd(100), nowAt, 15 * 60e3).length) problems.push("flow: fired without the full 30 day history");
+  if (FL.FLOW_RSI_MIN !== 50 || FL.FLOW_RSI_LEN !== 14) problems.push("flow: the RSI settings changed without a new study");
+  // v26.0: the RSI check. A steady slide into the trigger (RSI far under 50) must NOT fire; a flat tape (RSI 100) must.
+  const washed = all.map((b, i) => (i >= n - 80 && i < n - 1 ? { ...b, close: 90 - (i - (n - 80)) * 0.05, open: 90 - (i - (n - 80)) * 0.05 + 0.05, high: 90.1, low: 80 } : b));
+  const rs = FL.rsiSeries(washed); if (!(rs[n - 2] < 50)) problems.push("flow: test fixture should be washed out, RSI " + rs[n - 2]);
+  if (FL.flowFires(washed, dd(100), nowAt, 15 * 60e3).length) problems.push("flow: fired while the RSI was under 50 (washed out)");
+  if (!(FL.rsiSeries(all)[n - 2] > 50) || f1[f1.length - 1]?.rsi == null) problems.push("flow: fire should carry its RSI");
+  const up2 = Array.from({ length: 200 }, (_, i) => ({ close: 100 + i })), dn2 = Array.from({ length: 200 }, (_, i) => ({ close: 300 - i }));
+  if (FL.rsiSeries(up2)[199] !== 100 || !(FL.rsiSeries(dn2)[199] < 1)) problems.push("flow: RSI maths wrong at the extremes");
   const st = FL.flowState(all, dd(100), nowAt);
   if (!st || !st.below || !(st.z <= -1.5) || Math.abs(st.avg50 - 100) > 1e-9) problems.push("flow: state should read heavy selling under the 50-day: " + JSON.stringify(st));
   // readiness wording
   const fe = S.ALL_SIGNALS.find((x) => x.name === "Flow Rider");
-  const rr = (z, below) => R.signalReadiness(fe, { extra: { flow: { z, avg50: 100, price: below ? 90 : 110, below } }, now: nowAt, open: false });
-  if (rr(-2, true)?.badge !== "Ready" || rr(0, true)?.badge !== "1 of 2 met" || rr(0, false)?.badge !== "Quiet") problems.push("flow: readiness badges wrong");
+  const rr = (z, below, rsi = 60) => R.signalReadiness(fe, { extra: { flow: { z, avg50: 100, price: below ? 90 : 110, below, rsi } }, now: nowAt, open: false });
+  if (rr(-2, true)?.badge !== "Ready" || rr(0, true)?.badge !== "2 of 3 met" || rr(0, false, 40)?.badge !== "Quiet" || rr(-2, true, 40)?.badge !== "2 of 3 met") problems.push("flow: readiness badges wrong");
   if (R.signalReadiness(fe, { now: nowAt, open: false }) !== null) problems.push("flow: readiness without data should show nothing");
   if (!fe || !fe.publicTest || !fe.serverOnly || fe.ready !== "flow" || fe.tfs.join() !== "4h" || brandName("Flow Rider") !== "Pressure") problems.push("flow: ALL_SIGNALS entry or brand name wrong");
   // the shared resolver: 7-day close (meta.maxHoldMs)

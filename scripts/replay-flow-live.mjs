@@ -5,10 +5,10 @@ const F = await import("../lib/flow.js");
 const B = JSON.parse(fs.readFileSync(process.env.F)), N = B.length, COST = 0.2;
 const dm = new Map(); for (const b of B) dm.set(Math.floor(b.time / 864e5) * 864e5, b.close); const days = [...dm.entries()].sort((a, b) => a[0] - b[0]).map(([time, close]) => ({ time, close }));
 const avg = (a) => a.reduce((s, v) => s + v, 0) / a.length, f = (v) => (v >= 0 ? "+" : "") + v.toFixed(2);
-const series = F.flowSeries(B), out = []; let free = 0;
+const series = F.flowSeries(B), rsi = F.rsiSeries(B), out = []; const USE_RSI = process.env.RSI !== "0"; let free = 0;
 for (let i = F.FLOW_BASE_BARS + F.FLOW_WINDOW_BARS; i < N - 2; i++) {
   if (i < free) continue; const z = F.flowZ(series, B, i); if (z == null || z > F.FLOW_Z) continue;
-  const a = F.avg50At(days, B[i].time); if (a == null || !(B[i].close < a)) continue;
+  const a = F.avg50At(days, B[i].time); if (a == null || !(B[i].close < a)) continue; if (USE_RSI && !(rsi[i] > F.FLOW_RSI_MIN)) continue;
   const E = B[i + 1].open, p = F.flowPlan(E), dl = B[i + 1].time + F.FLOW_MAX_HOLD_MS; let px = null, end = i + 1;
   for (let j = i + 1; j < N; j++) { end = j; if (B[j].time >= dl) { px = B[j].open; break; } if (B[j].high >= p.stop) { px = p.stop; break; } if (B[j].low <= p.target) { px = p.target; break; } }
   if (px == null) break; out.push({ r: (E - px) / E * 100 - COST, t: B[i + 1].time, y: new Date(B[i + 1].time).getUTCFullYear() }); free = end + 1;
