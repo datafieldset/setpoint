@@ -130,7 +130,7 @@ function bandPolygons(a, b, x, y) {
 // v19.49 (Na, Oct 29): Bitcoin's daily price against its 50-day average over the last 90 days. The space between the
 // two is shaded green while price is above the line and red while it's below, so a test of the line is easy to see.
 // `price` is the live price; the last point of the series uses it so the dot is current.
-function PriceVs50Chart({ series, price, field = "sma50" }) {  // field: which average to draw (v24.3: "sma200" for the 200-day tab)
+function PriceVs50Chart({ series, price, field = "sma50", lineColor = LINE_TINT["50-day"] }) {  // field: which average to draw (v24.3: "sma200" for the 200-day tab)
   if (!series || series.length < 2) return null;
   const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
   const W = 300, H = 120, PAD = 6;
@@ -149,7 +149,7 @@ function PriceVs50Chart({ series, price, field = "sma50" }) {  // field: which a
       <div className="chart-plot">
       <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {bands}
-        <polyline points={pts.map((p, i) => `${x(i)},${y(p[field])}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
+        <polyline points={pts.map((p, i) => `${x(i)},${y(p[field])}`).join(" ")} fill="none" stroke={lineColor} strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
         <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
       <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
@@ -198,10 +198,10 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
 
   const need = <>{f.pre}<b className="mono">${fmtPrice(f.v)}</b>{f.post}</>;
   const legends = {
-    d50: <>White line is Bitcoin's daily close, dashed amber is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
-    d200: line200 != null ? <>White line is Bitcoin's daily close, dashed amber is the 200-day average (${fmtPrice(line200)}), {Math.abs(((price - line200) / line200) * 100).toFixed(1)}% {price >= line200 ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
-    cross: line200 != null ? <>Dashed amber is the 50-day (${fmtPrice(line50)}), white is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross. Green fill: 50 above 200." : "The 50 is below the 200, a death cross. Red fill: 50 below 200."} The dot is the most recent cross.</> : null,
-    w200: lineW != null ? <>White line is Bitcoin's weekly close over the last 75 weeks, dashed amber is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
+    d50: <>White line is Bitcoin's daily close, dashed blue is the 50-day average (${fmtPrice(line50)}). Green fill: price above the line. Red: below.</>,
+    d200: line200 != null ? <>White line is Bitcoin's daily close, dashed violet is the 200-day average (${fmtPrice(line200)}), {Math.abs(((price - line200) / line200) * 100).toFixed(1)}% {price >= line200 ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
+    cross: line200 != null ? <>Dashed blue is the 50-day (${fmtPrice(line50)}), violet is the 200-day (${fmtPrice(line200)}). {line50 >= line200 ? "The 50 is above the 200, a golden cross. Green fill: 50 above 200." : "The 50 is below the 200, a death cross. Red fill: 50 below 200."} The dot is the most recent cross.</> : null,
+    w200: lineW != null ? <>White line is Bitcoin's weekly close over the last 75 weeks, the dashed line is the 200-week average (${fmtPrice(lineW)}), {Math.abs(((price - lineW) / lineW) * 100).toFixed(1)}% {price >= lineW ? "below" : "above"} price. Green fill: price above the line. Red: below.</> : null,
   };
   const tabs = [["d50", "50‑day", weekly200.dailyPrice?.length > 1], ["d200", "200‑day", weekly200.dailyPrice200?.length > 1 && line200 != null], ["w200", "200‑week", weekly200.priceSeries?.length > 1 && lineW != null], ["cross", "Golden cross", weekly200.dailySeries?.length > 1 && line200 != null]].filter((t) => t[2]);
   const isOpen = (k) => !locked || k === "w200";
@@ -235,8 +235,8 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
       </div>
       {active === "d50" && <PriceVs50Chart series={weekly200.dailyPrice} price={livePrice} />}
       {active === "cross" && <CrossoverChart series={weekly200.dailySeries} />}
-      {active === "d200" && <PriceVs50Chart series={weekly200.dailyPrice200} price={livePrice} field="sma200" />}
-      {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} price={livePrice} />}
+      {active === "d200" && <PriceVs50Chart series={weekly200.dailyPrice200} price={livePrice} field="sma200" lineColor={LINE_TINT["200-day"]} />}
+      {active === "w200" && <PriceVsMaChart series={weekly200.priceSeries} maValue={lineW} price={livePrice} lineColor={f.key === "200-week" ? toneVar : "var(--muted)"} />}
       <div className="lt-legend">{legends[active]}{locked ? " The other three charts unlock with a free account." : ""}</div>
       <div className="w200-note">
         Context, not a trading signal.{" "}
@@ -252,7 +252,7 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
 }
 
 // 200-week: weekly closes against the flat 200-week average. Same look as the 50-day chart, so time spent above or below it shows.
-function PriceVsMaChart({ series, maValue, price }) {
+function PriceVsMaChart({ series, maValue, price, lineColor = "var(--muted)" }) {
   if (!series || series.length < 2 || maValue == null) return null;
   const pts = series.map((p, i) => (i === series.length - 1 && price ? { ...p, close: price } : p));
   const W = 300, H = 120, PAD = 6;
@@ -266,7 +266,7 @@ function PriceVsMaChart({ series, maValue, price }) {
       <div className="chart-plot">
       <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {bandPolygons(pts.map((p) => p.close), pts.map(() => maValue), x, y)}
-        <line x1={PAD} y1={y(maValue)} x2={W - PAD} y2={y(maValue)} stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
+        <line x1={PAD} y1={y(maValue)} x2={W - PAD} y2={y(maValue)} stroke={lineColor} strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
         <polyline points={pts.map((p, i) => `${x(i)},${y(p.close)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
       </svg>
       <span className="p50-dot" style={{ left: `${(x(pts.length - 1) / W) * 100}%`, top: `${(y(last.close) / H) * 100}%` }} />
@@ -276,7 +276,7 @@ function PriceVsMaChart({ series, maValue, price }) {
   );
 }
 
-// Golden cross: the 50-day (dashed amber, like everywhere else) against the 200-day (white). Green fill while the 50 is above the 200
+// Golden cross: the 50-day (dashed blue, like everywhere else) against the 200-day (violet). Green fill while the 50 is above the 200
 // (a golden cross), red while it is below (a death cross). The amber dot sits on the most recent cross.
 function CrossoverChart({ series }) {
   if (!series || series.length < 2) return null;
@@ -297,8 +297,8 @@ function CrossoverChart({ series }) {
       <div className="chart-plot">
       <svg className="cross-chart p50-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
         {bandPolygons(series.map((p) => p.sma50), series.map((p) => p.sma200), x, y)}
-        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma200)}`).join(" ")} fill="none" stroke="var(--text)" strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
-        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ")} fill="none" stroke="var(--amber)" strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
+        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma200)}`).join(" ")} fill="none" stroke={LINE_TINT["200-day"]} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        <polyline points={series.map((p, i) => `${x(i)},${y(p.sma50)}`).join(" ")} fill="none" stroke={LINE_TINT["50-day"]} strokeWidth="1.5" strokeDasharray="5,4" vectorEffect="non-scaling-stroke" />
       </svg>
       {crossIdx != null && <span className="p50-dot cross-dot" style={{ left: `${(x(crossIdx) / W) * 100}%`, top: `${(y(series[crossIdx].sma50) / H) * 100}%` }} />}
       </div>
