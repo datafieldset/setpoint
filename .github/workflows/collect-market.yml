@@ -1,0 +1,65 @@
+name: Collect market data
+
+# Research collector (Nov 23). Not part of the site and never touches the database. Saves order-book snapshots (Coinbase, Binance spot,
+# KuCoin futures, OKX swap) and OKX liquidations every minute to plain files on the separate `data` branch, so order-book and liquidation ideas
+# can be tested later (no free history exists). Same pattern as signals-cron.yml: GitHub only starts the job every 5 hours (its scheduler is
+# unreliable at high frequency) and the job loops by itself for 4h45m. Gaps are expected and fine.
+# Rules and the test plan: memory/overhaul-plan.md (Nov 23).
+
+on:
+  schedule:
+    - cron: "17 */5 * * *"
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: "How long to collect (minutes)"
+        default: "5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: collect-market
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Get the data branch (create it the first time)
+        run: |
+          git config user.name "setpoint-collector"
+          git config user.email "nokanetmail@gmail.com"
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch origin data
+            git worktree add datastore origin/data
+            (cd datastore && git checkout -B data origin/data)
+          else
+            git worktree add --detach datastore
+            (cd datastore && git checkout --orphan data && git rm -rf . >/dev/null 2>&1 || true)
+          fi
+          mkdir -p datastore/raw
+      - name: Collect and save every 30 minutes
+        env:
+          MINUTES: ${{ github.event.inputs.minutes || '285' }}
+        run: |
+          END=$(( $(date +%s) + MINUTES * 60 ))
+          save() {
+            cd datastore
+            git add raw
+            if ! git diff --cached --quiet; then
+              git commit -q -m "data $(date -u +%Y-%m-%dT%H:%M)Z"
+              for i in 1 2 3; do git pull -q --rebase origin data 2>/dev/null || true; git push -q origin HEAD:data && break || sleep 5; done
+            fi
+            cd ..
+          }
+          while [ $(date +%s) -lt $END ]; do
+            LEFT=$(( (END - $(date +%s)) / 60 )); CHUNK=$(( LEFT < 30 ? LEFT : 30 )); [ $CHUNK -lt 1 ] && CHUNK=1
+            OUT=datastore/raw DURATION=$CHUNK INTERVAL=60 node scripts/collect-market.mjs || true
+            save
+          done
