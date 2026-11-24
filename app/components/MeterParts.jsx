@@ -181,7 +181,7 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
   // Ladder: every line and Bitcoin on one vertical scale, labels nudged apart so none overlap.
   const rungs = [
     { k: "50-day", v: line50, c: f.key === "50-day" ? toneVar : LINE_TINT["50-day"] },
-    { k: "Bitcoin", v: price, c: toneVar, me: true },
+    { k: "Bitcoin", v: price, c: "var(--text)", me: true },
     line200 != null && { k: "200-day", v: line200, c: f.key === "200-day" ? toneVar : LINE_TINT["200-day"] },
     lineW != null && { k: "200-week", v: lineW, c: f.key === "200-week" ? toneVar : "var(--muted)" },
   ].filter(Boolean).sort((x, y) => y.v - x.v);
