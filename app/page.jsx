@@ -2164,7 +2164,7 @@ export default function App() {
   if (status === "loading") {
     return (
       <div className="app">
-        <style>{CSS}</style>
+        <style dangerouslySetInnerHTML={{ __html: CSS }} />
         <VersionCheckBanner />
         <div className="boot-screen"><span className="logo-dot" /><span className="wm">SETPOINT<b>ALERTS</b></span></div>
       </div>
@@ -2173,7 +2173,7 @@ export default function App() {
 
   return (
     <div className="app">
-      <style>{CSS}</style>
+      <style dangerouslySetInnerHTML={{ __html: CSS }} />
       <VersionCheckBanner />
       {!account && view === "landing" && (
         <Landing

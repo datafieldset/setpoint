@@ -305,3 +305,8 @@ The Large trade flow note said "Real, unusually large individual trades ... Net 
 
 ## Nov 23: mockups drift from the real CSS when they are hand-styled
 Na said four times that the mockup's chart card "looks different" from the app. Fix that worked: copy the real CSS rules from app/page.jsx into the mockup and use the real class names, instead of imitating with inline styles. Also render with the real fonts (@fontsource packages from npm) or text widths are wrong.
+
+## Nov 23: two different "50-day" numbers on screen are two definitions, not a bug
+The Market Meter, the lines card and the share image use lib/marketContext.js `daily50`: the average of the LAST 50 daily closes from Coinbase, and the last one is today's candle still in progress, so the line moves a little all day. Flow Rider ("Pressure", lib/flow.js `avg50At`) uses the last 50 FINISHED daily closes (yesterday and back, Binance mirror), which is what its replay used and does not move intraday. In a falling market the two differ by roughly 1% ($76,158 vs $76,762 seen Nov 23). Left as is: each matches its own purpose (a live read versus a signal rule that must be stable to be tested). If a customer ever asks why the numbers differ, this is the answer. Changing the meter to finished days would shift every displayed line, share image and headline, so it needs Na's yes.
+## Nov 23: never put "&" or ">" CSS in a React <style>{string}</style>
+React escapes the text children of a style tag. Use dangerouslySetInnerHTML for any CSS string (fonts @import has "&", selectors can have ">"). Found by the 404 on "/&" and React errors 418/423/425 on the home page; fixed in v25.7 (/watch) and v25.8 (dashboard).
