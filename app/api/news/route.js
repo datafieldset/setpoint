@@ -217,7 +217,7 @@ export async function GET(req) {
     }).slice(0, 6);
   });
 
-  // Large trade flow: real, unusually large individual trades on Coinbase
+  // Large trade flow (called Heavy volume on screen since v25.6; it is volume bursts on 1 minute candles, not individual trades): Coinbase
   // itself, not scraped wallet-transfer alerts. Replaced the Telegram
   // scrape (Aug 5) after real evidence showed it was very likely blocked
   // specifically from this deployment platform's IP range, not fixable
@@ -267,7 +267,7 @@ async function getLargeTradeFlow() {
       txCount++;
       recent.push({ usd, side, when: c.time });
     }
-    if (txCount === 0) return null;
+    if (txCount === 0) return { toExchange: 0, fromExchange: 0, net: 0, txCount: 0, recent: [], quiet: true }; // v25.6: fetched fine, nothing heavy (null now means the feed failed)
     recent.sort((a, b) => b.when - a.when);
     return {
       toExchange: sellUsd,

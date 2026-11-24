@@ -89,6 +89,34 @@ for (const [f, t] of src) {
     for (const e of checkMeter({ stage, phase: "building", level: 3, label: LAB[stage] }, { h1: 0.1, h24, w1, vs50, dd7, hiDay: "Wednesday", hiAgo: 3, hi7: 81100 })) { if (bad++ < 5) problems.push("meter: " + e); }
   }
   if (bad > 5) problems.push(`meter: ${bad} disagreements between headline and numbers in ${n} cases`);
+  // v25.6: the headline names the long-term line price is closest to (Na, Nov 23). Expected phrases are written out, not read from the module.
+  const { meterHeadline: mh } = await import(new URL("../lib/meter.js", import.meta.url));
+  const { pickFocus: pf } = await import(new URL("../lib/lineFocus.js", import.meta.url));
+  const mm = { stage: "bearish-trending", phase: "building", level: 3, label: LAB["bearish-trending"] };
+  const base = { h1: -1.1, h24: -0.3, w1: -6, dd7: -1, hiDay: "Monday", hiAgo: 1, hi7: 61900, px: 61138, hi24: 61867, lo24: 60166 };
+  const L = { d50: 76157.59, d200: 72230.14, w200: 68548.4 };
+  const cases = [
+    [61138, L, "10.8% under its weekly 200 ($68,548)"],
+    [70000, L, "2.1% over its weekly 200 ($68,548)"],
+    [72300, L, "testing its 200-day ($72,230)"],
+    [80000, L, "5% over its 50-day ($76,158)"],
+  ];
+  for (const [px, lines, want] of cases) {
+    const mv = { ...base, px, hi24: px * 1.01, lo24: px * 0.99, vs50: (px / lines.d50 - 1) * 100, focus: pf(px, lines) };
+    const h = mh(mm, mv);
+    if (!h.includes(want)) problems.push(`meter focus: wanted "${want}" in: ${h}`);
+    for (const e of checkMeter(mm, mv)) problems.push("meter focus: " + e);
+  }
+  // the two spike-and-drop forms must name the line too (reviewer found the two sentence form skipped it)
+  const spikeA = { ...base, dd7: -8, hi7: 66500, hiAt: 1, hiAgo: 1, hiDay: "Monday", lo7: 60900, loAt: 2, loAgo: 0, loDay: "Tuesday", runStart: 62000, vs50: -19.7, focus: pf(61138, L) };
+  const spikeB = { ...spikeA, lo7: 0, loAt: 0 };
+  for (const [nm, mv] of [["spike two sentences", spikeA], ["spike one sentence", spikeB]]) {
+    const h = mh(mm, mv);
+    if (!h.includes("10.8% under its weekly 200 ($68,548)")) problems.push(`meter focus: ${nm} must name the line: ${h}`);
+    for (const e of checkMeter(mm, mv)) problems.push(`meter focus (${nm}): ` + e);
+  }
+  const noFocus = mh(mm, { ...base, vs50: -19.7 });
+  if (!noFocus.includes("still below its 50-day")) problems.push("meter focus: without a focus line the old 50-day wording must stay: " + noFocus);
 }
 
 // Freshness (v22.7): the meter must name a flush that just happened, and stay silent when there was none. Independent of lib/meter.js:
@@ -219,7 +247,7 @@ for (const [f, t] of src) {
   else {
     if (c.verdict !== "BEARISH" || c.bull) bad("price under the 50-day should read BEARISH");
     if (c.price !== "$88,060") bad("price should be $88,060, got " + c.price);
-    if (!c.sentence.startsWith("Down ") || !c.sentence.includes("still below its 50-day") || !c.sentence.endsWith("near the bottom of today's range, low $88,040.") || c.sentence.includes("$88,060,")) bad("sentence: " + c.sentence);
+    if (!c.sentence.startsWith("Down ") || !c.sentence.includes("2.2% under its 200-day ($90,000)") || !c.sentence.endsWith("near the bottom of today's range, low $88,040.") || c.sentence.includes("$88,060,")) bad("sentence: " + c.sentence);
     if (c.ladder.map((r) => r.name).join("|") !== "50-day|200-day|Current price|200-week") bad("ladder order: " + c.ladder.map((r) => r.name).join("|"));
     if (c.ladder[0].note !== "+7.9% to break" || c.ladder[1].note !== "+2.2% to reach" || c.ladder[3].note !== "+25.8% above") bad("ladder notes: " + c.ladder.map((r) => r.note).join(" | "));
     if (c.range.note !== "Near the low" || c.range.low !== "$88,040" || !(c.range.at >= 0 && c.range.at <= 0.25)) bad("range: " + JSON.stringify(c.range));
