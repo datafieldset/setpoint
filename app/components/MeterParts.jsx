@@ -185,16 +185,12 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
     line200 != null && { k: "200-day", v: line200, c: f.key === "200-day" ? toneVar : LINE_TINT["200-day"] },
     lineW != null && { k: "200-week", v: lineW, c: f.key === "200-week" ? toneVar : "var(--muted)" },
   ].filter(Boolean).sort((x, y) => y.v - x.v);
-  const hi = rungs[0].v, lo = rungs[rungs.length - 1].v, pad = (hi - lo) * 0.05 || 1;
-  const LH = 190, top = 14, bot = LH - 14;
-  const yOf = (v) => top + ((hi + pad - v) / (hi - lo + 2 * pad)) * (bot - top);
-  let prevLabel = -99;
-  const placed = rungs.map((r) => {
-    const y = yOf(r.v);
-    const ly = Math.max(y, prevLabel + 20);
-    prevLabel = ly;
-    return { ...r, y, ly };
-  });
+  // v26.7 (Na, Nov 24): even rows like the share image instead of a to-scale ladder, which left a big empty gap whenever price sat far from a line.
+  const RH = 34, top = 18, LH = top + (rungs.length - 1) * RH + 18;
+  const placed = rungs.map((r, i) => ({
+    ...r, y: top + i * RH,
+    note: r.me ? "now" : r.v > price ? `${((r.v / price - 1) * 100).toFixed(1).replace(/^/, "+")}% ${r.k === "50-day" ? "to break" : "to reach"}` : `${((price / r.v - 1) * 100).toFixed(1).replace(/^/, "+")}% above`,
+  }));
 
   const need = <>{f.pre}<b className="mono">${fmtPrice(f.v)}</b>{f.post}</>;
   const legends = {
@@ -213,15 +209,13 @@ export function LongTermLines({ weekly200, price: livePrice, locked = false, onL
       <div className="w200-head">Price vs averages</div>
       <div className={`cross-tag ${f.tone === "amber" ? "test" : f.tone === "green" ? "golden" : "death"}`}>{tag}</div>
       <svg className="lt-ladder" viewBox={`0 0 330 ${LH}`} role="img" aria-label={`Where Bitcoin sits against its averages: ${rungs.map((r) => `${r.k} $${fmtPrice(r.v)}`).join(", ")}`}>
-        <line x1="14" y1={top - 4} x2="14" y2={bot + 4} stroke="var(--border)" strokeWidth="2" />
+        <line x1="14" y1={top} x2="14" y2={top + (rungs.length - 1) * RH} stroke="var(--border)" strokeWidth="2" />
         {placed.map((r) => (
           <g key={r.k}>
-            <circle cx="14" cy={r.y} r={r.me ? 6 : 4} fill={r.c} />
-            <line x1="22" y1={r.y} x2="34" y2={r.ly - 4} stroke="var(--border)" />
-            <text x="40" y={r.ly} fontSize={r.me ? 13.5 : 13} fontWeight={r.me ? 700 : 500} fill={r.c}>
-              {r.k} ${fmtPrice(r.v)}
-              {!r.me && <tspan fill="var(--muted)" fontSize="11.5" fontWeight="500">{" "}{(((price / r.v) - 1) * 100) >= 0 ? "+" : ""}{(((price / r.v) - 1) * 100).toFixed(1)}%</tspan>}
-            </text>
+            <circle cx="14" cy={r.y} r={r.me ? 6 : 4.5} fill={r.c} />
+            <text x="32" y={r.y + 4.5} fontSize="13" fontWeight={r.me ? 700 : 500} fill={r.me ? "var(--text)" : "var(--muted)"}>{r.me ? "Current price" : r.k}</text>
+            <text x="132" y={r.y + 5} fontSize="16" fontWeight="700" fill={r.c}>${fmtPrice(r.v)}</text>
+            <text x="324" y={r.y + 4.5} fontSize="12" textAnchor="end" fontWeight="500" fill={r.c !== "var(--muted)" && r.c === toneVar ? toneVar : "var(--muted)"}>{r.note}</text>
           </g>
         ))}
       </svg>
